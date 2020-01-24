@@ -81,7 +81,4 @@ function computeViolation(opfdata::OPFData, network::OPFNetwork, params::ALADINP
     return (primviol, dualviol)
 end
 
-ARGS = ["case9"]
-opfdata = opf_loaddata(ARGS[1])
-
 
