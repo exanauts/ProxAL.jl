@@ -9,7 +9,7 @@ using Ipopt
 
 function acopf_solve(opfmodel, opfdata, network::OPFNetwork, partition_idx::Int)
 
-    # 
+    #
     # Initial point
     #
     for g in network.gener_part[partition_idx]
@@ -21,7 +21,7 @@ function acopf_solve(opfmodel, opfdata, network::OPFNetwork, partition_idx::Int)
         setvalue(opfmodel[:Va][b], opfdata.buses[opfdata.bus_ref].Va)
     end
 
-    # 
+    #
     # Solve model
     #
     status = solve(opfmodel)
@@ -94,13 +94,13 @@ function acopf_model(opfdata, network::OPFNetwork, params::ALADINParams, partiti
         for key in keys(params.λVM)
             (key[1] == b) || continue
             penalty += (params.λVM[key]*Vm[b]) + (0.5*params.ρ*(params.VM[partition_idx][b] - Vm[b])^2)
-            penalty += (params.λVA[key]*Vm[b]) + (0.5*params.ρ*(params.VA[partition_idx][b] - Va[b])^2)
+            penalty += (params.λVA[key]*Va[b]) + (0.5*params.ρ*(params.VA[partition_idx][b] - Va[b])^2)
         end
         for j in neighbors(network.graph, b)
             (get_prop(network.graph, j, :partition) == partition_idx) && continue
             @assert haskey(params.λVM, (j, partition_idx))
             penalty += -(params.λVM[(j, partition_idx)]*Vm[j]) + (0.5*params.ρ*(params.VM[partition_idx][j] - Vm[j])^2)
-            penalty += -(params.λVA[(j, partition_idx)]*Vm[j]) + (0.5*params.ρ*(params.VA[partition_idx][j] - Va[j])^2)
+            penalty += -(params.λVA[(j, partition_idx)]*Va[j]) + (0.5*params.ρ*(params.VA[partition_idx][j] - Va[j])^2)
         end
     end
 
@@ -133,7 +133,7 @@ function acopf_model(opfdata, network::OPFNetwork, params::ALADINParams, partiti
     #
     # Generation cost
     #
-    @expression(opfmodel, cost, sum( generators[i].coeff[generators[i].n-2]*(baseMVA*Pg[i])^2 
+    @expression(opfmodel, cost, sum( generators[i].coeff[generators[i].n-2]*(baseMVA*Pg[i])^2
         +generators[i].coeff[generators[i].n-1]*(baseMVA*Pg[i])
         +generators[i].coeff[generators[i].n  ] for i in gener_part))
 
@@ -148,16 +148,16 @@ function acopf_model(opfdata, network::OPFNetwork, params::ALADINParams, partiti
     for b in buses_part
         #real part
         @NLconstraint(
-            opfmodel, 
-            ( sum( YffR[l] for l in FromLines[b]) + sum( YttR[l] for l in ToLines[b]) + YshR[b] ) * Vm[b]^2 
-            + sum( Vm[b]*Vm[busIdx[lines[l].to]]  *( YftR[l]*cos(Va[b]-Va[busIdx[lines[l].to]]  ) + YftI[l]*sin(Va[b]-Va[busIdx[lines[l].to]]  )) for l in FromLines[b] )  
-            + sum( Vm[b]*Vm[busIdx[lines[l].from]]*( YtfR[l]*cos(Va[b]-Va[busIdx[lines[l].from]]) + YtfI[l]*sin(Va[b]-Va[busIdx[lines[l].from]])) for l in ToLines[b]   ) 
+            opfmodel,
+            ( sum( YffR[l] for l in FromLines[b]) + sum( YttR[l] for l in ToLines[b]) + YshR[b] ) * Vm[b]^2
+            + sum( Vm[b]*Vm[busIdx[lines[l].to]]  *( YftR[l]*cos(Va[b]-Va[busIdx[lines[l].to]]  ) + YftI[l]*sin(Va[b]-Va[busIdx[lines[l].to]]  )) for l in FromLines[b] )
+            + sum( Vm[b]*Vm[busIdx[lines[l].from]]*( YtfR[l]*cos(Va[b]-Va[busIdx[lines[l].from]]) + YtfI[l]*sin(Va[b]-Va[busIdx[lines[l].from]])) for l in ToLines[b]   )
             - ( sum(baseMVA*Pg[g] for g in BusGeners[b]) - buses[b].Pd ) / baseMVA      # Sbus part
-            ==0) 
+            ==0)
         #imaginary part
         @NLconstraint(
             opfmodel,
-            ( sum(-YffI[l] for l in FromLines[b]) + sum(-YttI[l] for l in ToLines[b]) - YshI[b] ) * Vm[b]^2 
+            ( sum(-YffI[l] for l in FromLines[b]) + sum(-YttI[l] for l in ToLines[b]) - YshI[b] ) * Vm[b]^2
             + sum( Vm[b]*Vm[busIdx[lines[l].to]]  *(-YftI[l]*cos(Va[b]-Va[busIdx[lines[l].to]]  ) + YftR[l]*sin(Va[b]-Va[busIdx[lines[l].to]]  )) for l in FromLines[b] )
             + sum( Vm[b]*Vm[busIdx[lines[l].from]]*(-YtfI[l]*cos(Va[b]-Va[busIdx[lines[l].from]]) + YtfR[l]*sin(Va[b]-Va[busIdx[lines[l].from]])) for l in ToLines[b]   )
             - ( sum(baseMVA*Qg[g] for g in BusGeners[b]) - buses[b].Qd ) / baseMVA      #Sbus part
@@ -183,9 +183,9 @@ function acopf_model(opfdata, network::OPFNetwork, params::ALADINParams, partiti
         @NLconstraint(opfmodel,
             Vm[busIdx[lines[l].from]]^2 *
             (
-                Yff_abs2*Vm[busIdx[lines[l].from]]^2 + Yft_abs2*Vm[busIdx[lines[l].to]]^2 
-                + 2*Vm[busIdx[lines[l].from]]*Vm[busIdx[lines[l].to]]*(Yre*cos(Va[busIdx[lines[l].from]]-Va[busIdx[lines[l].to]])-Yim*sin(Va[busIdx[lines[l].from]]-Va[busIdx[lines[l].to]])) 
-                ) 
+                Yff_abs2*Vm[busIdx[lines[l].from]]^2 + Yft_abs2*Vm[busIdx[lines[l].to]]^2
+                + 2*Vm[busIdx[lines[l].from]]*Vm[busIdx[lines[l].to]]*(Yre*cos(Va[busIdx[lines[l].from]]-Va[busIdx[lines[l].to]])-Yim*sin(Va[busIdx[lines[l].from]]-Va[busIdx[lines[l].to]]))
+                )
             - flowmax <=0)
 
         #branch apparent power limits (to bus)
@@ -219,7 +219,7 @@ function acopf_outputAll(opfmodel, opfdata, network::OPFNetwork, partition_idx::
     PG=getvalue(getindex(opfmodel,:Pg)); QG=getvalue(getindex(opfmodel,:Qg))
 
     @assert partition_idx >= 1 && partition_idx <= network.num_partitions
-    
+
     println("============================= BUSES ==================================")
     println("  BUS    Vm     Va    |  Pg (MW)    Qg(MVAr) ")
     println("----------------------------------------------------------------------")
@@ -245,7 +245,7 @@ function acopf_initialPt_IPOPT(opfdata, network::OPFNetwork, partition_idx::Int)
 
     Vm=zeros(length(network.buses_bloc[partition_idx]));
     for (i, b) in enumerate(network.buses_bloc[partition_idx])
-        Vm[i]=0.5*(opfdata.buses[b].Vmax+opfdata.buses[b].Vmin); 
+        Vm[i]=0.5*(opfdata.buses[b].Vmax+opfdata.buses[b].Vmin);
     end
 
     # set all angles to the angle of the reference bus
@@ -253,4 +253,3 @@ function acopf_initialPt_IPOPT(opfdata, network::OPFNetwork, partition_idx::Int)
 
     return Pg,Qg,Vm,Va
 end
-
