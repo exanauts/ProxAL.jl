@@ -3,7 +3,6 @@ include("partition.jl")
 include("params.jl")
 
 using MathProgBase
-using MathOptInterface
 using JuMP
 using Printf
 using Ipopt

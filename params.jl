@@ -7,6 +7,7 @@ mutable struct ALADINParams
     λVM::Dict{Tuple{Int, Int}, Float64} #[(i, p)] := λ for the consensus constraint VM[i,partition[i]] = VM[i,p], p ≢ partition[i]
     λVA::Dict{Tuple{Int, Int}, Float64} #[(i, p)] := λ for the consensus constraint VA[i,partition[i]] = VA[i,p], p ≢ partition[i]
     tol::Float64
+    zero::Float64 # tolerance below which is regarded as zero
     ρ::Float64
     μ::Float64
 end
@@ -46,8 +47,9 @@ function initializePararms(opfdata::OPFData, network::OPFNetwork)
     end
 
     tol = 1e-3
+    zero = 1e-4
     ρ = 10.0
     μ = 10.0
-    return ALADINParams(PG, QG, VM, VA, λVM, λVA, tol, ρ, μ)
+    return ALADINParams(PG, QG, VM, VA, λVM, λVA, tol, zero, ρ, μ)
 end
 
