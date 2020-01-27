@@ -12,24 +12,43 @@ function runAladin(opfdata::OPFData, num_partitions::Int)
     params = initializePararms(opfdata, network)
 
     iter = 0
-    while true
-         iter += 1
+    iterlim = 1
+    verbose_level = 1
+
+    while iter < iterlim
+        iter += 1
 
         # solve NLP models
         nlpmodel = solveNLP(opfdata, network, params)
 
         # check convergence
         (primviol, dualviol) = computeViolation(opfdata, network, params, nlpmodel)
-        if primviol <= params.tol && dualviol <= params.tol
-            println("converged")
-#            break
-        end
-
         @printf("iter %d: primviol = %.2f, dualviol = %.2f\n", iter, primviol, dualviol)
 
+        if primviol <= params.tol && dualviol <= params.tol
+            println("converged")
+            break
+        end
+
         # solve QP
-        solveQP(opfdata, network, params, nlpmodel)
-        break
+        qp, status = solveQP(opfdata, network, params, nlpmodel;
+                             verbose_level = verbose_level)
+
+        # Update primal and dual.
+        if status == :Optimal
+            for p in 1:length(nlpmodel), b in network.buses_part[p]
+                params.VM[p][b] = getvalue(nlpmodel[p][:Vm][b]) +
+                    getvalue(qp[:x][p, linearindex(nlpmodel[p][:Vm][b])])
+                params.VA[p][b] = getvalue(nlpmodel[p][:Va][b]) +
+                    getvalue(qp[:x][p, linearindex(nlpmodel[p][:Va][b])])
+            end
+
+            in_qp = internalmodel(qp).inner
+            for key in keys(params.λVM)
+                params.λVM[key] = in_qp.mult_g[linearindex(qp[:coupling_vm][key])]
+                params.λVA[key] = in_qp.mult_g[linearindex(qp[:coupling_va][key])]
+            end
+        end
     end
 end
 
@@ -89,7 +108,7 @@ function computeViolation(opfdata::OPFData, network::OPFNetwork, params::ALADINP
 end
 
 function solveQP(opfdata::OPFData, network::OPFNetwork, params::ALADINParams,
-                 nlpmodel::Vector{JuMP.Model})
+                 nlpmodel::Vector{JuMP.Model}; verbose_level = 1)
     nNLPs = length(nlpmodel)
     d = Vector{JuMP.NLPEvaluator}(undef, nNLPs)               # [p]: NLP evaluator for NLP p
     grad = Vector{Vector{Float64}}(undef, nNLPs)              # [p]: gradient value of NLP p
@@ -104,8 +123,12 @@ function solveQP(opfdata::OPFData, network::OPFNetwork, params::ALADINParams,
         d[p] = JuMP.NLPEvaluator(nlpmodel[p])
         MathProgBase.initialize(d[p], [:Grad, :Jac, :Hess])
 
+        # We could generalize this to allow other solvers.
+        # But, at this stage we enforce to use IPOPT.
+        @assert isa(internalmodel(nlpmodel[p]), Ipopt.IpoptMathProgModel)
+
         inner = internalmodel(nlpmodel[p]).inner
-        nvar_nlp = length(inner.x)
+        nvar_nlp = MathProgBase.numvar(nlpmodel[p])
         nconstr_nlp = MathProgBase.numconstr(nlpmodel[p])
 
         # Evaluate the gradient of NLP p.
@@ -148,21 +171,30 @@ function solveQP(opfdata::OPFData, network::OPFNetwork, params::ALADINParams,
     # Construct the QP model.
     qp = JuMP.Model(solver = IpoptSolver(print_level=1))
 
-    @variable(qp, x[p=1:nNLPs, j=1:MathProgBase.numvar(nlpmodel[p])])
+    # Δy_p variables for each p=1..N.
+    @variable(qp, x[p=1:nNLPs, j=1:MathProgBase.numvar(nlpmodel[p])], start = 0)
 
-    # For the bound constraints, stay at the active-set.
+    # For the bound constraints, stay values at the active-set.
     for p = 1:nNLPs
         m = nlpmodel[p]
-        inner = internalmodel(m).inner
 
-        for j = 1:length(inner.x)
-            if abs(inner.x[j] - m.colLower[j]) <= params.zero ||
-                abs(inner.x[j] - m.colUpper[j]) <= params.zero
+        for j = 1:MathProgBase.numvar(m)
+            if abs(m.colVal[j] - m.colLower[j]) <= params.zero ||
+                abs(m.colVal[j] - m.colUpper[j]) <= params.zero
                 setlowerbound(x[p, j], 0)
                 setupperbound(x[p, j], 0)
             end
         end
     end
+
+    # s variable for coupling constraints.
+    part = Dict{Tuple{Int,Int}, Int}()
+    for key in keys(params.λVM)
+        part[key] = get_prop(network.graph, key[1], :partition)
+    end
+
+    @variable(qp, sVM[key in keys(params.λVM)], start = 0)
+    @variable(qp, sVA[key in keys(params.λVA)], start = 0)
 
     # Quadratic objective: 0.5*Δy_p*H_p*Δy_p for p=1..N.
     @NLexpression(qp, obj_qp_expr[p=1:nNLPs],
@@ -174,7 +206,29 @@ function solveQP(opfdata::OPFData, network::OPFNetwork, params::ALADINParams,
                   sum(grad[p][j]*x[p, j]
                       for j=1:MathProgBase.numvar(nlpmodel[p])))
 
-    @NLobjective(qp, Min, sum(obj_qp_expr[p] + obj_g_expr[p] for p=1:nNLPs))
+    @NLexpression(qp, obj_s_expr,
+                  sum(params.λVM[key]*sVM[key] for key in keys(params.λVM))
+                  + (0.5*params.μ)*sum(sVM[key]^2 for key in keys(params.λVM))
+                  + sum(params.λVA[key]*sVA[key] for key in keys(params.λVA))
+                  + (0.5*params.μ)*sum(sVA[key]^2 for key in keys(params.λVA)))
+
+    @NLobjective(qp, Min,
+                 sum(obj_qp_expr[p] + obj_g_expr[p] for p=1:nNLPs) + obj_s_expr)
+
+    # Coupling constraints.
+    @constraint(qp, coupling_vm[key in keys(params.λVM)],
+                getvalue(nlpmodel[part[key]][:Vm][key[1]])
+                + x[part[key], linearindex(nlpmodel[part[key]][:Vm][key[1]])]
+                - (getvalue(nlpmodel[key[2]][:Vm][key[1]])
+                   + x[key[2], linearindex(nlpmodel[key[2]][:Vm][key[1]])])
+                == sVM[key])
+
+    @constraint(qp, coupling_va[key in keys(params.λVA)],
+                getvalue(nlpmodel[part[key]][:Va][key[1]])
+                + x[part[key], linearindex(nlpmodel[part[key]][:Va][key[1]])]
+                - (getvalue(nlpmodel[key[2]][:Va][key[1]])
+                   + x[key[2], linearindex(nlpmodel[key[2]][:Va][key[1]])])
+                == sVA[key])
 
     # Active constraints: C_p*Δy_p = 0 for p=1..N.
     @constraint(qp, active_constr[p=1:nNLPs, i in active_row[p]],
@@ -182,9 +236,14 @@ function solveQP(opfdata::OPFData, network::OPFNetwork, params::ALADINParams,
                     for e = 1:length(active_col[p][i])) == 0)
 
     status = solve(qp)
-    @printf("\n ## Summary of QP solve\n")
-    @printf("Status  . . . . . %s\n", status)
-    @printf("Objective . . . . %e\n", getobjectivevalue(qp))
+
+    if verbose_level > 0
+        @printf("\n ## Summary of QP solve\n")
+        @printf("Status  . . . . . %s\n", status)
+        @printf("Objective . . . . %e\n", getobjectivevalue(qp))
+    end
+
+    return qp, status
 end
 
 ARGS = ["data/case9"]
