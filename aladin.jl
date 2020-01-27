@@ -36,7 +36,7 @@ function runAladin(opfdata::OPFData, num_partitions::Int)
 
         # Update primal and dual.
         if status == :Optimal
-            for p in 1:length(nlpmodel), b in network.buses_part[p]
+            for p in 1:length(nlpmodel), b in network.buses_bloc[p]
                 params.VM[p][b] = getvalue(nlpmodel[p][:Vm][b]) +
                     getvalue(qp[:x][p, linearindex(nlpmodel[p][:Vm][b])])
                 params.VA[p][b] = getvalue(nlpmodel[p][:Va][b]) +
