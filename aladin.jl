@@ -135,6 +135,30 @@ function solveQP(opfdata::OPFData, network::OPFNetwork, params::ALADINParams,
         grad[p] = zeros(nvar_nlp)
         MathProgBase.eval_grad_f(d[p], grad[p], inner.x)
 
+        # Remove the effect of the Lagrangian and the augmented term.
+        for b in network.buses_part[p]
+            (b in network.consensus_nodes) || continue
+            for key in keys(params.λVM)
+                (key[1] == b) || continue
+                idx_vm = linearindex(nlpmodel[p][:Vm][b])
+                idx_va = linearindex(nlpmodel[p][:Va][b])
+                grad[p][idx_vm] -= params.λVM[key]
+                grad[p][idx_vm] += params.ρ*(params.VM[p][b] - inner.x[idx_vm])
+                grad[p][idx_va] -= params.λVA[key]
+                grad[p][idx_va] += params.ρ*(params.VA[p][b] - inner.x[idx_va])
+            end
+
+            for j in neighbors(network.graph, b)
+                (get_prop(network.graph, j, :partition) == p) && continue
+                idx_vm = linearindex(nlpmodel[p][:Vm][j])
+                idx_va = linearindex(nlpmodel[p][:Va][j])
+                grad[p][idx_vm] += params.λVM[(j, p)]
+                grad[p][idx_vm] += params.ρ*(params.VM[p][j] - inner.x[idx_vm])
+                grad[p][idx_va] += params.λVA[(j, p)]
+                grad[p][idx_va] += params.ρ*(params.VA[p][j] - inner.x[idx_va])
+            end
+        end
+
         # Evaluate the constraint g of NLP p.
         gval[p] = zeros(nconstr_nlp)
         MathProgBase.eval_g(d[p], gval[p], inner.x)
@@ -165,6 +189,14 @@ function solveQP(opfdata::OPFData, network::OPFNetwork, params::ALADINParams,
         Ih, Jh = MathProgBase.hesslag_structure(d[p])
         Kh = zeros(length(Ih))
         MathProgBase.eval_hesslag(d[p], Kh, inner.x, 1.0, inner.mult_g)
+
+        # Remove the effect of the augmented term from the Hessian.
+        for e = 1:length(Ih)
+            if Ih[e] == Jh[e]
+                Kh[e] -= params.ρ
+            end
+        end
+
         hess[p] = Triplet(Ih, Jh, Kh)
     end
 
