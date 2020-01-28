@@ -2,6 +2,8 @@
 
 include("acopf.jl")
 
+using SparseArrays
+
 mutable struct Triplet
     i::Vector{Int}
     j::Vector{Int}
@@ -188,9 +190,17 @@ function solveQP(opfdata::OPFData, network::OPFNetwork, params::ALADINParams,
         end
 
         # Evaluate the Hessian of NLP p.
-        Ih, Jh = MathProgBase.hesslag_structure(d[p])
+        Ih_tmp, Jh_tmp = MathProgBase.hesslag_structure(d[p])
+        Kh_tmp = zeros(length(Ih_tmp))
+        MathProgBase.eval_hesslag(d[p], Kh_tmp, inner.x, 1.0, inner.mult_g)
+
+        # Merge duplicates.
+        Ih, Jh, Vh = findnz(sparse(Ih_tmp, Jh_tmp, [Int[e] for e=1:length(Ih_tmp)],
+                                   nvar_nlp, nvar_nlp, vcat))
         Kh = zeros(length(Ih))
-        MathProgBase.eval_hesslag(d[p], Kh, inner.x, 1.0, inner.mult_g)
+        for e = 1:length(Ih)
+            Kh[e] = sum(Kh_tmp[Vh[e]])
+        end
 
         # Indices of consensus nodes.
         linidx_consensus = Vector{Int}()
