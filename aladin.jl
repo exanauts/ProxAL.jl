@@ -190,9 +190,19 @@ function solveQP(opfdata::OPFData, network::OPFNetwork, params::ALADINParams,
         Kh = zeros(length(Ih))
         MathProgBase.eval_hesslag(d[p], Kh, inner.x, 1.0, inner.mult_g)
 
+        # Indices of consensus nodes.
+        linidx_consensus = Vector{Int}()
+
+        for b in network.buses_bloc[p]
+            (b in network.consensus_nodes) || continue
+            push!(linidx_consensus, linearindex(nlpmodel[p][:Vm][b]))
+            push!(linidx_consensus, linearindex(nlpmodel[p][:Va][b]))
+        end
+        unique!(linidx_consensus)
+
         # Remove the effect of the augmented term from the Hessian.
         for e = 1:length(Ih)
-            if Ih[e] == Jh[e]
+            if (Ih[e] == Jh[e]) && (e in linidx_consensus)
                 Kh[e] -= params.ρ
             end
         end
@@ -280,5 +290,5 @@ end
 
 ARGS = ["data/case9"]
 opfdata = opf_loaddata(ARGS[1])
-runAladin(opfdata, 1)
+runAladin(opfdata, 2)
 
