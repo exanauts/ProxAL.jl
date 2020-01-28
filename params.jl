@@ -48,8 +48,8 @@ function initializePararms(opfdata::OPFData, network::OPFNetwork)
 
     tol = 1e-3
     zero = 1e-4
-    ρ = 10.0
-    μ = 10.0
+    ρ = 100000.0
+    μ = 100000.0
     return ALADINParams(PG, QG, VM, VA, λVM, λVA, tol, zero, ρ, μ)
 end
 

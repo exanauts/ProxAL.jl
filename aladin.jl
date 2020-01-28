@@ -16,18 +16,19 @@ function runAladin(opfdata::OPFData, num_partitions::Int)
     params = initializePararms(opfdata, network)
 
     iter = 0
-    iterlim = 1
+    iterlim = 1000
     verbose_level = 1
 
     while iter < iterlim
         iter += 1
 
         # solve NLP models
-        nlpmodel = solveNLP(opfdata, network, params)
+        nlpmodel = solveNLP(opfdata, network, params;
+                             verbose_level = verbose_level)
 
         # check convergence
         (primviol, dualviol) = computeViolation(opfdata, network, params, nlpmodel)
-        @printf("iter %d: primviol = %.2f, dualviol = %.2f\n", iter, primviol, dualviol)
+        (iter%10 == 0) && @printf("iter %d: primviol = %.2f, dualviol = %.2f\n", iter, primviol, dualviol)
 
         if primviol <= params.tol && dualviol <= params.tol
             println("converged")
@@ -58,7 +59,7 @@ end
 
 
 
-function solveNLP(opfdata::OPFData, network::OPFNetwork, params::ALADINParams)
+function solveNLP(opfdata::OPFData, network::OPFNetwork, params::ALADINParams; verbose_level = 1)
     nlpmodel = Vector{JuMP.Model}(undef, network.num_partitions)
     for p in 1:network.num_partitions
         nlpmodel[p] = acopf_model(opfdata, network, params, p)
@@ -67,7 +68,9 @@ function solveNLP(opfdata::OPFData, network::OPFNetwork, params::ALADINParams)
             error("something went wrong with status ", status)
         end
 
-        acopf_outputAll(nlpmodel[p], opfdata, network, p)
+        if verbose_level > 0
+            acopf_outputAll(nlpmodel[p], opfdata, network, p)
+        end
     end
 
     return nlpmodel
@@ -202,6 +205,7 @@ function solveQP(opfdata::OPFData, network::OPFNetwork, params::ALADINParams,
             Kh[e] = sum(Kh_tmp[Vh[e]])
         end
 
+        #=
         # Indices of consensus nodes.
         linidx_consensus = Vector{Int}()
 
@@ -218,6 +222,7 @@ function solveQP(opfdata::OPFData, network::OPFNetwork, params::ALADINParams,
                 Kh[e] -= params.ρ
             end
         end
+        =#
 
         hess[p] = Triplet(Ih, Jh, Kh)
     end

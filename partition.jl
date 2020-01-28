@@ -41,6 +41,7 @@ function buildNetworkPartition(opfdata, num_partitions::Int)
     # partition[i] = index of the partition that vertex i belongs to
     #
     partition = Metis.partition(SimpleGraph(network), num_partitions)
+    #partition = [1,2,1,1,1,1,2,2,2]
     for i in vertices(network)
         set_prop!(network, i, :partition, partition[i])
 
