@@ -10,7 +10,7 @@ mutable struct Triplet
     k::Vector{Float64}
 end
 
-function runAladin(opfdata::OPFData, num_partitions::Int)
+function runAladin(opfdata::OPFData, num_partitions::Int; globalization::Bool = false)
     num_partitions = max(min(length(opfdata.buses), num_partitions), 1)
     network = buildNetworkPartition(opfdata, num_partitions)
     params = initializePararms(opfdata, network)
@@ -24,10 +24,11 @@ function runAladin(opfdata::OPFData, num_partitions::Int)
 
         # solve NLP models
         nlpmodel = solveNLP(opfdata, network, params;
-                             verbose_level = verbose_level)
+                             verbose_level = Int(iter%100 == 0))
 
         # check convergence
-        (primviol, dualviol) = computeViolation(opfdata, network, params, nlpmodel)
+        primviol = computePrimalViolation(opfdata, network, params, nlpmodel)
+        dualviol = computeDualViolation(opfdata, network, params, nlpmodel)
         (iter%10 == 0) && @printf("iter %d: primviol = %.2f, dualviol = %.2f\n", iter, primviol, dualviol)
 
         if primviol <= params.tol && dualviol <= params.tol
@@ -37,23 +38,13 @@ function runAladin(opfdata::OPFData, num_partitions::Int)
 
         # solve QP
         qp, status = solveQP(opfdata, network, params, nlpmodel;
-                             verbose_level = verbose_level)
+                             verbose_level = Int(iter%100 == 0))
 
         # Update primal and dual.
-        if status == :Optimal
-            for p in 1:length(nlpmodel), b in network.buses_bloc[p]
-                params.VM[p][b] = getvalue(nlpmodel[p][:Vm][b]) +
-                    getvalue(qp[:x][p, linearindex(nlpmodel[p][:Vm][b])])
-                params.VA[p][b] = getvalue(nlpmodel[p][:Va][b]) +
-                    getvalue(qp[:x][p, linearindex(nlpmodel[p][:Va][b])])
-            end
-
-            in_qp = internalmodel(qp).inner
-            for key in keys(params.λVM)
-                params.λVM[key] = in_qp.mult_g[linearindex(qp[:coupling_vm][key])]
-                params.λVA[key] = in_qp.mult_g[linearindex(qp[:coupling_va][key])]
-            end
+        if status != :Optimal
+            error("QP not solved to optimality. status = ", status)
         end
+        updateParams(params, opfdata, network, nlpmodel, qp; globalization = globalization)
     end
 end
 
@@ -77,25 +68,36 @@ function solveNLP(opfdata::OPFData, network::OPFNetwork, params::ALADINParams; v
 end
 
 
-
-function computeViolation(opfdata::OPFData, network::OPFNetwork, params::ALADINParams, nlpmodel::Vector{JuMP.Model})
+function computePrimalViolation(opfdata::OPFData, network::OPFNetwork, params::ALADINParams, nlpmodel::Vector{JuMP.Model}; evalParams::Bool = false)
     #
     # primal violation
     #
     primviol = 0.0
-    for n in network.consensus_nodes
-        partition = get_prop(network.graph, n, :partition)
-        blocks = get_prop(network.graph, n, :blocks)
-        VMtrue = getvalue(nlpmodel[partition][:Vm])[n]
-        VAtrue = getvalue(nlpmodel[partition][:Va])[n]
-        for p in blocks
-            (p == partition) && continue
-            VMcopy = getvalue(nlpmodel[p][:Vm])[n]
-            VAcopy = getvalue(nlpmodel[p][:Va])[n]
-            primviol += abs(VMtrue - VMcopy) + abs(VAtrue - VAcopy)
+    for key in keys(params.λVM)
+        part = get_prop(network.graph, key[1], :partition)
+        if evalParams
+            primviol += abs(params.VM[part][key[1]] -
+                            params.VM[key[2]][key[1]])
+        else
+            primviol += abs(getvalue(nlpmodel[part][:Vm][key[1]]) -
+                            getvalue(nlpmodel[key[2]][:Vm][key[1]]))
+        end
+    end
+    for key in keys(params.λVA)
+        part = get_prop(network.graph, key[1], :partition)
+        if evalParams
+            primviol += abs(params.VA[part][key[1]] -
+                            params.VA[key[2]][key[1]])
+        else
+            primviol += abs(getvalue(nlpmodel[part][:Va][key[1]]) -
+                            getvalue(nlpmodel[key[2]][:Va][key[1]]))
         end
     end
 
+    return primviol
+end
+
+function computeDualViolation(opfdata::OPFData, network::OPFNetwork, params::ALADINParams, nlpmodel::Vector{JuMP.Model})
     #
     # dual violation
     #
@@ -111,7 +113,7 @@ function computeViolation(opfdata::OPFData, network::OPFNetwork, params::ALADINP
     end
     dualviol *= params.ρ
 
-    return (primviol, dualviol)
+    return dualviol
 end
 
 function solveQP(opfdata::OPFData, network::OPFNetwork, params::ALADINParams,
@@ -305,7 +307,144 @@ function solveQP(opfdata::OPFData, network::OPFNetwork, params::ALADINParams,
     return qp, status
 end
 
+function Phi(opfdata::OPFData, network::OPFNetwork, params::ALADINParams, nlpmodel::Vector{JuMP.Model}; evalParams::Bool = false)
+    #
+    # Compute objective
+    #
+    objval = 0.0
+    generators = opfdata.generators
+    for p in 1:network.num_partitions
+        for i in network.gener_part[p]
+            PG = (evalParams ? params.PG[p][i] : getvalue(nlpmodel[p][:Pg][i]))
+            objval += generators[i].coeff[generators[i].n-2]*(opfdata.baseMVA*PG)^2 +
+                      generators[i].coeff[generators[i].n-1]*(opfdata.baseMVA*PG) +
+                      generators[i].coeff[generators[i].n  ]
+        end
+    end
+
+    #
+    # compute primal violation
+    #
+    primviol = computePrimalViolation(opfdata, network, params, nlpmodel; evalParams = evalParams)
+    (primviol <= params.tol) && (primviol = 0.0)
+
+    #
+    # compute constraint violation
+    #
+    constrviol = 0.0
+    for p in 1:length(nlpmodel)
+        d = JuMP.NLPEvaluator(nlpmodel[p])
+        MathProgBase.initialize(d, [:Jac])
+
+        # re-construct x-vector
+        xsol = zeros(MathProgBase.numvar(nlpmodel[p]))
+        if evalParams
+            for b in network.buses_bloc[p]
+                xsol[linearindex(nlpmodel[p][:Vm][b])] = params.VM[p][b]
+                xsol[linearindex(nlpmodel[p][:Va][b])] = params.VA[p][b]
+            end
+            for g in network.gener_part[p]
+                xsol[linearindex(nlpmodel[p][:Pg][g])] = params.PG[p][g]
+                xsol[linearindex(nlpmodel[p][:Qg][g])] = params.QG[p][g]
+            end
+        else
+            xsol .= internalmodel(nlpmodel[p]).inner.x
+        end
+
+        # evaluate constraints
+        gval = zeros(MathProgBase.numconstr(nlpmodel[p]))
+        MathProgBase.eval_g(d, gval, xsol)
+
+        # get the sign of the constraints
+        (gL, gU) = JuMP.constraintbounds(nlpmodel[p])
+
+        # evaluate constraint violation
+        for i in 1:length(gval)
+            @assert iszero(gL[i]) || iszero(gU[i])
+            iszero(gL[i]) && (gval[i] *= -1.0) # flip sign if >= constraint
+            (gval[i] < params.zero) && (gval[i] = 0)
+
+            constrviol += max(gval[i], 0.0)
+        end
+    end
+
+    return (objval, primviol, constrviol)
+end
+
+function updateParams(params::ALADINParams, opfdata::OPFData, network::OPFNetwork,
+                      nlpmodel::Vector{JuMP.Model}, qp::JuMP.Model;
+                      globalization::Bool = false)
+    # Value of α3 from paper
+    α3 = 1.0
+
+
+    # Compute the old value of Phi
+    if globalization
+        (objval_old, primviol_old, constrviol_old) = Phi(opfdata, network, params, nlpmodel; evalParams = true)
+    end
+
+    # compute the full step
+    for p in 1:length(nlpmodel)
+        for b in network.buses_bloc[p]
+            params.VM[p][b] = getvalue(nlpmodel[p][:Vm][b]) +
+                getvalue(qp[:x][p, linearindex(nlpmodel[p][:Vm][b])])
+            params.VA[p][b] = getvalue(nlpmodel[p][:Va][b]) +
+                getvalue(qp[:x][p, linearindex(nlpmodel[p][:Va][b])])
+        end
+        for g in network.gener_part[p]
+            params.PG[p][g] = getvalue(nlpmodel[p][:Pg][g]) +
+                getvalue(qp[:x][p, linearindex(nlpmodel[p][:Pg][g])])
+            params.QG[p][g] = getvalue(nlpmodel[p][:Qg][g]) +
+                getvalue(qp[:x][p, linearindex(nlpmodel[p][:Qg][g])])
+        end
+    end
+
+    # Compute the new value of Phi at the full step
+    if globalization
+        (objval_new, primviol_new, constrviol_new) = Phi(opfdata, network, params, nlpmodel; evalParams = true)
+    end
+
+
+    # Check if full step should be accepted
+    if (globalization && 
+            objval_new >= objval_old && 
+            primviol_new >= primviol_old && 
+            constrviol_new >= constrviol_old)
+        # reject full step
+        (objval_nlp, primviol_nlp, constrviol_nlp) = Phi(opfdata, network, params, nlpmodel; evalParams = false)
+
+        # Check if NLP step can be accepted
+        if objval_nlp >= objval_old && primviol_nlp >= primviol_old && constrviol_nlp >= constrviol_old
+            # reject NLP step also -- default to full step
+            #println("both steps rejected -- descent not guaranteed")
+            α3 = 1.0
+        else
+            # accept NLP step
+            α3 = 0.0 # should this be 1???
+            #println("nlp step accepted -- Improvement = ", objval_old - objval_nlp, " ", primviol_old - primviol_nlp, " ", constrviol_old - constrviol_nlp)
+            for p in 1:length(nlpmodel)
+                for b in network.buses_bloc[p]
+                    params.VM[p][b] = getvalue(nlpmodel[p][:Vm][b])
+                    params.VA[p][b] = getvalue(nlpmodel[p][:Va][b])
+                end
+                for g in network.gener_part[p]
+                    params.PG[p][g] = getvalue(nlpmodel[p][:Pg][g])
+                    params.QG[p][g] = getvalue(nlpmodel[p][:Qg][g])
+                end
+            end
+        end
+    end
+
+    # Update the Lagrange multipliers
+    in_qp = internalmodel(qp).inner
+    for key in keys(params.λVM)
+        params.λVM[key] += α3*(in_qp.mult_g[linearindex(qp[:coupling_vm][key])] - params.λVM[key])
+        params.λVA[key] += α3*(in_qp.mult_g[linearindex(qp[:coupling_va][key])] - params.λVA[key])
+    end
+end
+
+
 ARGS = ["data/case9"]
 opfdata = opf_loaddata(ARGS[1])
-runAladin(opfdata, 2)
+runAladin(opfdata, 3; globalization = false)
 
