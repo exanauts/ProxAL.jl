@@ -74,20 +74,6 @@ function acopf_model(opfdata, network::OPFNetwork, params::ALADINParams, partiti
     #
     # Penalty terms
     #
-    #=
-    @NLparameter(opfmodel, VMsrcT[i=1:network.num_consensus] == params.VMsrcT[i])
-    @NLparameter(opfmodel, VMsrcC[i=1:network.num_consensus] == params.VMsrcC[i])
-    @NLparameter(opfmodel, VMdstT[i=1:network.num_consensus] == params.VMdstT[i])
-    @NLparameter(opfmodel, VMdstC[i=1:network.num_consensus] == params.VMdstC[i])
-    @NLparameter(opfmodel, VAsrcT[i=1:network.num_consensus] == params.VAsrcT[i])
-    @NLparameter(opfmodel, VAsrcC[i=1:network.num_consensus] == params.VAsrcC[i])
-    @NLparameter(opfmodel, VAdstT[i=1:network.num_consensus] == params.VAdstT[i])
-    @NLparameter(opfmodel, VAdstC[i=1:network.num_consensus] == params.VAdstC[i])
-    @NLparameter(opfmodel, λVMsrc[i=1:network.num_consensus] == params.λVMsrc[i])
-    @NLparameter(opfmodel, λVMdst[i=1:network.num_consensus] == params.λVMdst[i])
-    @NLparameter(opfmodel, λVAsrc[i=1:network.num_consensus] == params.λVAsrc[i])
-    @NLparameter(opfmodel, λVAdst[i=1:network.num_consensus] == params.λVAdst[i])
-    =#
     @expression(opfmodel, penalty, 0)
     for b in buses_part
         (b in network.consensus_nodes) || continue
@@ -103,31 +89,6 @@ function acopf_model(opfdata, network::OPFNetwork, params::ALADINParams, partiti
             penalty += -(params.λVA[(j, partition_idx)]*Va[j]) + (0.5*params.ρ*(params.VA[partition_idx][j] - Va[j])^2)
         end
     end
-
-    #=
-    for e in edges(network.graph)
-        get_prop(network.graph, e, :consensus) || continue
-        i = src(e)
-        j = dst(e)
-        psrc = get_prop(network.graph, i, :partition)
-        pdst = get_prop(network.graph, j, :partition)
-        if i in buses_part
-            idx = get_prop(network.graph, e, :index)
-            ρ = params.ρ
-            penalty += +(params.λVMsrc[idx]*Vm[i]) + (0.5*ρ*(params.VMsrcT[idx] - Vm[i])^2)
-            penalty += +(params.λVAsrc[idx]*Va[i]) + (0.5*ρ*(params.VAsrcT[idx] - Va[i])^2)
-            penalty += -(params.λVMdst[idx]*Vm[j]) + (0.5*ρ*(params.VMdstC[idx] - Vm[j])^2)
-            penalty += -(params.λVAdst[idx]*Va[j]) + (0.5*ρ*(params.VAdstC[idx] - Va[j])^2)
-        elseif j in buses_part
-            idx = get_prop(network.graph, e, :index)
-            ρ = params.ρ
-            penalty += -(params.λVMsrc[idx]*Vm[i]) + (0.5*ρ*(params.VM[pdst][i] - Vm[i])^2)
-            penalty += -(params.λVAsrc[idx]*Va[i]) + (0.5*ρ*(params.VA[pdst][i] - Va[i])^2)
-            penalty += +(params.λVMdst[idx]*Vm[j]) + (0.5*ρ*(params.VM[pdst][j] - Vm[j])^2)
-            penalty += +(params.λVAdst[idx]*Va[j]) + (0.5*ρ*(params.VA[pdst][j] - Va[j])^2)
-        end
-    end
-    =#
 
 
     #
