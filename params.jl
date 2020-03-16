@@ -14,8 +14,7 @@ mutable struct AlgParams
     θ::Float64     # Relaxation parameter for update of dual variables
     updateρ::Bool  # Dynamically update ρ
     updateτ::Bool  # (only for Proximal ALM) Dynamically update τ
-    ipoptiterlim::Int
-    maxjacobiroundsperiter::Int
+    nlpiterlim::Int# Maximum # of iterations in NLP step
 end
 
 function initializeParams(ρ = 10.0; aladin::Bool, jacobi::Bool)
@@ -25,16 +24,15 @@ function initializeParams(ρ = 10.0; aladin::Bool, jacobi::Bool)
     if aladin
         τ = 0.0
         μ = ρ
-        ipoptiterlim = 10000
+        nlpiterlim = 10000
     else
         τ = 2ρ
         μ = 0.0
-        ipoptiterlim = 10000
+        nlpiterlim = 10000
     end
     θ = 1.0
     updateρ = false
     updateτ = false
-    maxjacobiroundsperiter = 1
-    return AlgParams(aladin, jacobi, iterlim, tol, zero, ρ, τ, μ, θ, updateρ, updateτ, ipoptiterlim, maxjacobiroundsperiter)
+    return AlgParams(aladin, jacobi, iterlim, tol, zero, ρ, τ, μ, θ, updateρ, updateτ, nlpiterlim)
 end
 

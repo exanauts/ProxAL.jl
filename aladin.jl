@@ -47,8 +47,9 @@ function runAladin(case::String, num_partitions::Int, perturbation::Number = 0.1
     if num_partitions > 1
         ρVM = maximum([abs(λstar.λVM[key]) for key in keys(λstar.λVM)])
         ρVA = maximum([abs(λstar.λVA[key]) for key in keys(λstar.λVA)])
-        stepρ = max(ρVM, ρVA)
-        maxρ = 5.0num_partitions
+        stepρ = max(ρVM, ρVA) 
+        maxρ = (length(opfdata.buses) > 200 ? 25.0 : 5.0)*stepρ
+        #maxρ = 5.0num_partitions #case30
     else
         stepρ = 0.0
         maxρ = 0.0
@@ -77,7 +78,6 @@ function runAladin(case::String, num_partitions::Int, perturbation::Number = 0.1
             if status != :Optimal && status != :UserLimit
                 error("something went wrong in the x-update of ALADIN with status ", status)
             end
-            #(verbose_level > 0) && acopf_outputAll(nlpmodel[p], opfdata, network, p)
         end
         #
 

@@ -39,8 +39,8 @@ function runProxALM(case::String, num_partitions::Int, perturbation::Number = 0.
     if num_partitions > 1
         ρVM = maximum([abs(λstar.λVM[key]) for key in keys(λstar.λVM)])
         ρVA = maximum([abs(λstar.λVA[key]) for key in keys(λstar.λVA)])
-        #maxρ = 2.0max(ρVM, ρVA) + 3.0
-        maxρ = num_partitions + 3.0
+        maxρ = 5.0max(ρVM, ρVA)
+        #maxρ = num_partitions + 2.0 #case30
     else
         maxρ = 1.0
     end
