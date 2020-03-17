@@ -1,6 +1,6 @@
-# Main algorithm file.
-
-include("acopf.jl")
+#
+# ALADIN implementation
+#
 
 using SparseArrays
 
@@ -10,127 +10,241 @@ mutable struct Triplet
     k::Vector{Float64}
 end
 
-function runAladin(opfdata::OPFData, num_partitions::Int; globalization::Bool = false)
+function runAladin(case::String, num_partitions::Int, perturbation::Number = 0.1)
+    opfdata = opf_loaddata(case)
     num_partitions = max(min(length(opfdata.buses), num_partitions), 1)
     network = buildNetworkPartition(opfdata, num_partitions)
-    params = initializePararms(opfdata, network)
 
+    #
+    # start from perturbation of optimal solution
+    #
+    monolithic = acopf_model_monolithic(opfdata, network)
+    xstar, λstar = acopf_solve_monolithic(monolithic, opfdata, network)
+    @printf("Optimal generation cost = %.2f\n", computePrimalCost(xstar, opfdata))
+    
+    x = deepcopy(xstar); perturb(x, perturbation)
+    λ = deepcopy(λstar); perturb(λ, perturbation)
+
+    #
+    # Start from scratch
+    #
+    #x = initializePrimalSolution(opfdata, network)
+    #λ = initializeDualSolution(opfdata, network)
+
+
+    verbose_level = 0
+    
+    plt = nothing
+    if verbose_level > 1
+        plt = initializePlot_iterative()
+    end
+
+
+
+    #
+    # Initialize algorithmic parameters
+    #
+    if num_partitions > 1
+        ρVM = maximum([abs(λstar.λVM[key]) for key in keys(λstar.λVM)])
+        ρVA = maximum([abs(λstar.λVA[key]) for key in keys(λstar.λVA)])
+        stepρ = max(ρVM, ρVA) 
+        maxρ = (length(opfdata.buses) > 200 ? 25.0 : 5.0)*stepρ
+        #maxρ = 5.0num_partitions #case30
+    else
+        stepρ = 0.0
+        maxρ = 0.0
+    end
+    params = initializeParams(maxρ; aladin = true, jacobi = true)
+    savedata = zeros(params.iterlim, 8)
+    xnlp = initializePrimalSolution(opfdata, network)
+    xqp = initializePrimalSolution(opfdata, network)
+    tstart = time()
+    timeNLP = 0.0
+    timeQP = 0.0
     iter = 0
-    iterlim = 1000
-    verbose_level = 1
-
-    while iter < iterlim
+    while iter < params.iterlim
         iter += 1
 
+
+        #
         # solve NLP models
-        nlpmodel = solveNLP(opfdata, network, params;
-                             verbose_level = Int(iter%100 == 0))
+        #
+        nlpmodel = Vector{JuMP.Model}(undef, num_partitions)
+        for p in 1:num_partitions
+            nlpmodel[p] = acopf_model(opfdata, network, p; params = params, primal = x, dual = λ)
+            t0 = time()
+            nlpmodel[p], status = acopf_solve(nlpmodel[p], opfdata, network, p; initial = x)
+            t1 = time(); timeNLP += t1 - t0
+            if status != :Optimal && status != :UserLimit
+                error("something went wrong in the x-update of ALADIN with status ", status)
+            end
+        end
+        #
 
-        # check convergence
-        primviol = computePrimalViolation(opfdata, network, params, nlpmodel)
-        dualviol = computeDualViolation(opfdata, network, params, nlpmodel)
-        (iter%10 == 0) && @printf("iter %d: primviol = %.2f, dualviol = %.2f\n", iter, primviol, dualviol)
-
-        if primviol <= params.tol && dualviol <= params.tol
-            println("converged")
-            break
+        #
+        # get NLP solution
+        #
+        xnlp = deepcopy(x)
+        for p in 1:num_partitions
+            updatePrimalSolution(xnlp, nlpmodel, network, p)
         end
 
-        # solve QP
-        qp, status = solveQP(opfdata, network, params, nlpmodel;
-                             verbose_level = Int(iter%100 == 0))
 
-        # Update primal and dual.
+
+
+
+        #
+        # check convergence
+        #
+        dist = computeDistance(xnlp, xstar; lnorm=Inf)
+        primfeas, kkterror = computePrimalDualError_manual(opfdata, network, nlpmodel, xnlp; lnorm = Inf, compute_dual_error = true)
+        primviol = computePrimalViolation(xnlp, network; lnorm = Inf)
+        dualviol = computeDualViolation(xnlp, x, network; lnorm = Inf, params = params)
+        if verbose_level > 1
+            updatePlot_iterative(plt, iter, dist, primviol, dualviol, primfeas, kkterror)
+        end
+
+        #
+        # Various termination criteria
+        converged = min(dist, max(primfeas, dualviol)) <= params.tol
+        #converged = min(dist, max(primfeas, min(dualviol, kkterror))) <= params.tol
+
+
+        if verbose_level > 0 || converged
+            @printf("iter %d: primviol = %.2f, primfeas = %.2f, kkterror = %.2f, dualviol = %.2f, gencost = %.2f, dist = %.3f\n", iter, primviol, primfeas, kkterror, dualviol, computePrimalCost(xnlp, opfdata), dist)
+        end
+        if false
+            x = deepcopy(xnlp)
+            @printf("converged\n")
+            break
+        end  
+
+
+
+
+        #
+        # Solve QP
+        #
+        t2 = time()
+        qp, status = solveQP(xnlp, nlpmodel, network, x, λ;
+                                verbose_level = 0, params = params,
+                                enforce_equality = false, enforce_convexity = false)
+        #
+        # If unbounded, attempt to enforce
+        # the consensus constraints as strict equalities
+        #
+        if status == :Unbounded
+            qp, status = solveQP(xnlp, nlpmodel, network, x, λ;
+                                    verbose_level = 0, params = params,
+                                    enforce_equality = true, enforce_convexity = false)
+        end
+        #
+        # If infeasible, try again by making
+        # the Hessian convex by adding diagonal terms
+        #
+        if status == :Infeasible || status == :UserLimit
+            while true
+                params.μ *= 2.0
+                params.θ /= 2.0
+                @printf("increasing μ = %.2f\n", params.μ)
+                qp, status = solveQP(xnlp, nlpmodel, network, x, λ;
+                                    verbose_level = 0, params = params,
+                                    enforce_equality = false, enforce_convexity = true)
+                if status == :Unbounded || status == :UserLimit
+                    continue
+                else
+                    break
+                end
+            end
+        end
+        t3 = time(); timeQP += t3 - t2
         if status != :Optimal
             error("QP not solved to optimality. status = ", status)
         end
-        updateParams(params, opfdata, network, nlpmodel, qp; globalization = globalization)
+
+
+
+
+        #
+        # Compute the qp solution
+        #
+        for p in 1:num_partitions
+            for b in network.buses_bloc[p]
+                xqp.VM[p][b] = getvalue(qp[:x][p, linearindex(nlpmodel[p][:Vm][b])])
+                xqp.VA[p][b] = getvalue(qp[:x][p, linearindex(nlpmodel[p][:Vm][b])])
+            end
+            for g in network.gener_part[p]
+                xqp.PG[p][g] = getvalue(qp[:x][p, linearindex(nlpmodel[p][:Pg][g])])
+                xqp.QG[p][g] = getvalue(qp[:x][p, linearindex(nlpmodel[p][:Qg][g])])
+            end
+        end
+
+
+
+
+        #
+        # Update primal and dual
+        #
+        updateAladinPrimalSolution(x, xnlp, xqp)
+        updateAladinDualSolution(x, λ; params = params)
+
+        
+
+
+        #
+        # Update parameters (optional)
+        #
+        if params.updateρ && primfeas > 0.1
+            if params.ρ + stepρ <= maxρ
+                params.ρ += stepρ
+                params.τ += stepρ
+                params.μ += stepρ
+            end
+        end
+
+        savedata[iter,:] = [dist, primviol, dualviol, primfeas, kkterror, timeNLP, timeQP, time() - tstart]
     end
+
+    writedlm(getDataFilename("", case, "aladin", num_partitions, perturbation, params.jacobi), savedata)
+
+    return x, λ
 end
 
-
-
-function solveNLP(opfdata::OPFData, network::OPFNetwork, params::ALADINParams; verbose_level = 1)
-    nlpmodel = Vector{JuMP.Model}(undef, network.num_partitions)
+function computeDualViolation(xnlp::PrimalSolution, xprev::PrimalSolution, network::OPFNetwork; lnorm = 1, params::AlgParams)
+    dualviol = []
     for p in 1:network.num_partitions
-        nlpmodel[p] = acopf_model(opfdata, network, params, p)
-        nlpmodel[p], status = acopf_solve(nlpmodel[p], opfdata, network, p)
-        if status != :Optimal
-            error("something went wrong with status ", status)
-        end
-
-        if verbose_level > 0
-            acopf_outputAll(nlpmodel[p], opfdata, network, p)
-        end
-    end
-
-    return nlpmodel
-end
-
-
-function computePrimalViolation(opfdata::OPFData, network::OPFNetwork, params::ALADINParams, nlpmodel::Vector{JuMP.Model}; evalParams::Bool = false)
-    #
-    # primal violation
-    #
-    primviol = 0.0
-    for key in keys(params.λVM)
-        part = get_prop(network.graph, key[1], :partition)
-        if evalParams
-            primviol += abs(params.VM[part][key[1]] -
-                            params.VM[key[2]][key[1]])
-        else
-            primviol += abs(getvalue(nlpmodel[part][:Vm][key[1]]) -
-                            getvalue(nlpmodel[key[2]][:Vm][key[1]]))
-        end
-    end
-    for key in keys(params.λVA)
-        part = get_prop(network.graph, key[1], :partition)
-        if evalParams
-            primviol += abs(params.VA[part][key[1]] -
-                            params.VA[key[2]][key[1]])
-        else
-            primviol += abs(getvalue(nlpmodel[part][:Va][key[1]]) -
-                            getvalue(nlpmodel[key[2]][:Va][key[1]]))
-        end
-    end
-
-    return primviol
-end
-
-function computeDualViolation(opfdata::OPFData, network::OPFNetwork, params::ALADINParams, nlpmodel::Vector{JuMP.Model})
-    #
-    # dual violation
-    #
-    dualviol = 0.0
-    for p in 1:network.num_partitions
-        VM = getvalue(nlpmodel[p][:Vm])
-        VA = getvalue(nlpmodel[p][:Va])
         for n in network.consensus_nodes
             (n in network.buses_bloc[p]) || continue
-            dualviol += abs(VM[n] - params.VM[p][n])
-            dualviol += abs(VA[n] - params.VA[p][n])
+            push!(dualviol, (params.ρ + params.τ)*abs(xnlp.VM[p][n] - xprev.VM[p][n]))
+            push!(dualviol, (params.ρ + params.τ)*abs(xnlp.VA[p][n] - xprev.VA[p][n]))
+        end
+        for g in network.gener_part[p]
+            push!(dualviol, params.τ*abs(xnlp.PG[p][g] - xprev.PG[p][g]))
+            push!(dualviol, params.τ*abs(xnlp.QG[p][g] - xprev.QG[p][g]))
+        end
+        for b in network.buses_bloc[p]
+            (b in network.consensus_nodes) && continue
+            push!(dualviol, params.τ*abs(xnlp.VM[p][b] - xprev.VM[p][b]))
+            push!(dualviol, params.τ*abs(xnlp.VA[p][b] - xprev.VA[p][b]))
         end
     end
-    dualviol *= params.ρ
 
-    return dualviol
+    return (isempty(dualviol) ? 0.0 : norm(dualviol, lnorm))
 end
 
-function solveQP(opfdata::OPFData, network::OPFNetwork, params::ALADINParams,
-                 nlpmodel::Vector{JuMP.Model}; verbose_level = 1)
-    nNLPs = length(nlpmodel)
-    d = Vector{JuMP.NLPEvaluator}(undef, nNLPs)               # [p]: NLP evaluator for NLP p
-    grad = Vector{Vector{Float64}}(undef, nNLPs)              # [p]: gradient value of NLP p
-    gval = Vector{Vector{Float64}}(undef, nNLPs)              # [p]: constraint value of NLP p
-    hess = Vector{Triplet}(undef, nNLPs)                      # [p]: vectors of triple (i, j, k)
-    active_row = Vector{Vector{Int}}(undef, nNLPs)            # [p]: a list of active rows of NLP p
-    active_col = Vector{Dict{Int, Vector{Int}}}(undef, nNLPs) # [p][i]: column indices of active row i of NLP p
-    active_val = Vector{Dict{Int, Vector{Float64}}}(undef, nNLPs) # [p][i]: values of active row i of NLP p
+function solveQP(xnlp::PrimalSolution, nlpmodel::Vector{JuMP.Model}, network::OPFNetwork, xprev::PrimalSolution, dual::DualSolution; verbose_level = 1, params::AlgParams, enforce_equality=false, enforce_convexity=false)
+    NP = network.num_partitions
+    grad = Vector{Vector{Float64}}(undef, NP)              # [p]: gradient value of NLP p
+    gval = Vector{Vector{Float64}}(undef, NP)              # [p]: constraint value of NLP p
+    hess = Vector{Triplet}(undef, NP)                      # [p]: vectors of triple (i, j, k)
+    active_row = Vector{Vector{Int}}(undef, NP)            # [p]: a list of active rows of NLP p
+    active_col = Vector{Dict{Int, Vector{Int}}}(undef, NP) # [p][i]: column indices of active row i of NLP p
+    active_val = Vector{Dict{Int, Vector{Float64}}}(undef, NP) # [p][i]: values of active row i of NLP p
 
     # Compute the gradient, Jacobian, and Hessian of each NLP.
-    for p = 1:nNLPs
-        d[p] = JuMP.NLPEvaluator(nlpmodel[p])
-        MathProgBase.initialize(d[p], [:Grad, :Jac, :Hess])
+    for p = 1:NP
+        d = JuMP.NLPEvaluator(nlpmodel[p])
+        MathProgBase.initialize(d, [:Grad, :Jac, :Hess])
 
         # We could generalize this to allow other solvers.
         # But, at this stage we enforce to use IPOPT.
@@ -142,46 +256,55 @@ function solveQP(opfdata::OPFData, network::OPFNetwork, params::ALADINParams,
 
         # Evaluate the gradient of NLP p.
         grad[p] = zeros(nvar_nlp)
-        MathProgBase.eval_grad_f(d[p], grad[p], inner.x)
+        MathProgBase.eval_grad_f(d, grad[p], inner.x)
 
+        #
         # Remove the effect of the Lagrangian and the augmented term.
-        for b in network.buses_part[p]
-            (b in network.consensus_nodes) || continue
-            for key in keys(params.λVM)
-                (key[1] == b) || continue
-                idx_vm = linearindex(nlpmodel[p][:Vm][b])
-                idx_va = linearindex(nlpmodel[p][:Va][b])
-                grad[p][idx_vm] -= params.λVM[key]
-                grad[p][idx_vm] += params.ρ*(params.VM[p][b] - inner.x[idx_vm])
-                grad[p][idx_va] -= params.λVA[key]
-                grad[p][idx_va] += params.ρ*(params.VA[p][b] - inner.x[idx_va])
-            end
+        #
+        for (b, s, t) in network.consensus_tuple
+            (b in network.buses_bloc[p]) || continue
+            (s!=p && t!=p) && continue
 
-            for j in neighbors(network.graph, b)
-                (get_prop(network.graph, j, :partition) == p) && continue
-                idx_vm = linearindex(nlpmodel[p][:Vm][j])
-                idx_va = linearindex(nlpmodel[p][:Va][j])
-                grad[p][idx_vm] += params.λVM[(j, p)]
-                grad[p][idx_vm] += params.ρ*(params.VM[p][j] - inner.x[idx_vm])
-                grad[p][idx_va] += params.λVA[(j, p)]
-                grad[p][idx_va] += params.ρ*(params.VA[p][j] - inner.x[idx_va])
-            end
+            idx_vm = linearindex(nlpmodel[p][:Vm][b])
+            idx_va = linearindex(nlpmodel[p][:Va][b])
+
+            key = (b, s, t)
+            coef = (s == p) ? 1.0 : -1.0
+            grad[p][idx_vm] -= coef*dual.λVM[key] + (params.ρ*(xnlp.VM[p][b] - xprev.VM[p][b]))
+            grad[p][idx_va] -= coef*dual.λVA[key] + (params.ρ*(xnlp.VA[p][b] - xprev.VA[p][b]))
+        end
+        for g in network.gener_part[p]
+            idx_pg = linearindex(nlpmodel[p][:Pg][g])
+            idx_qg = linearindex(nlpmodel[p][:Qg][g])
+
+            grad[p][idx_pg] -= params.τ*(xnlp.PG[p][g] - xprev.PG[p][g])
+            grad[p][idx_qg] -= params.τ*(xnlp.QG[p][g] - xprev.QG[p][g])
+        end
+        for b in network.buses_bloc[p]
+            idx_vm = linearindex(nlpmodel[p][:Vm][b])
+            idx_va = linearindex(nlpmodel[p][:Va][b])
+
+            grad[p][idx_vm] -= params.τ*(xnlp.VM[p][b] - xprev.VM[p][b])
+            grad[p][idx_va] -= params.τ*(xnlp.VA[p][b] - xprev.VA[p][b])
         end
 
+
+
         # Evaluate the constraint g of NLP p.
-        gval[p] = zeros(nconstr_nlp)
-        MathProgBase.eval_g(d[p], gval[p], inner.x)
+        gval = zeros(nconstr_nlp)
+        MathProgBase.eval_g(d, gval, inner.x)
+
 
         # Evaluate the Jacobian of NLP p.
-        Ij, Jj = MathProgBase.jac_structure(d[p])
+        Ij, Jj = MathProgBase.jac_structure(d)
         Kj = zeros(length(Ij))
-        MathProgBase.eval_jac_g(d[p], Kj, inner.x)
+        MathProgBase.eval_jac_g(d, Kj, inner.x)
+
 
         # Leave only the entries corresponding to the active-set.
-        active_row[p] = [k for (k,v) in enumerate(gval[p]) if abs(v) < params.zero]
+        active_row[p] = [k for (k,v) in enumerate(gval) if abs(v) < params.zero]
         active_col[p] = Dict{Int, Vector{Int}}()
         active_val[p] = Dict{Int, Vector{Float64}}()
-
         for e = 1:length(Ij)
             if Ij[e] in active_row[p]
                 if haskey(active_col[p], Ij[e])
@@ -195,9 +318,9 @@ function solveQP(opfdata::OPFData, network::OPFNetwork, params::ALADINParams,
         end
 
         # Evaluate the Hessian of NLP p.
-        Ih_tmp, Jh_tmp = MathProgBase.hesslag_structure(d[p])
+        Ih_tmp, Jh_tmp = MathProgBase.hesslag_structure(d)
         Kh_tmp = zeros(length(Ih_tmp))
-        MathProgBase.eval_hesslag(d[p], Kh_tmp, inner.x, 1.0, inner.mult_g)
+        MathProgBase.eval_hesslag(d, Kh_tmp, inner.x, 1.0, inner.mult_g)
 
         # Merge duplicates.
         Ih, Jh, Vh = findnz(sparse(Ih_tmp, Jh_tmp, [Int[e] for e=1:length(Ih_tmp)],
@@ -207,10 +330,8 @@ function solveQP(opfdata::OPFData, network::OPFNetwork, params::ALADINParams,
             Kh[e] = sum(Kh_tmp[Vh[e]])
         end
 
-        #=
         # Indices of consensus nodes.
         linidx_consensus = Vector{Int}()
-
         for b in network.buses_bloc[p]
             (b in network.consensus_nodes) || continue
             push!(linidx_consensus, linearindex(nlpmodel[p][:Vm][b]))
@@ -219,12 +340,32 @@ function solveQP(opfdata::OPFData, network::OPFNetwork, params::ALADINParams,
         unique!(linidx_consensus)
 
         # Remove the effect of the augmented term from the Hessian.
+        # ---->
+        # Let's not remove the effect of ρ so as to
+        # keep the QP convex along the critical cone
+        # (hopefully IPOPT ensures that Hess L is PSD in the critical cone)
+        #=
         for e = 1:length(Ih)
-            if (Ih[e] == Jh[e]) && (e in linidx_consensus)
-                Kh[e] -= params.ρ
+            if (Ih[e] == Jh[e])
+                Kh[e] -= params.τ
+                if e in linidx_consensus
+                    Kh[e] -= params.ρ
+                end
             end
         end
         =#
+
+
+        #
+        # Make the Hessian convex
+        #
+        if enforce_convexity
+            for e = 1:length(Ih)
+                if (Ih[e] == Jh[e])
+                    Kh[e] += params.μ
+                end
+            end
+        end
 
         hess[p] = Triplet(Ih, Jh, Kh)
     end
@@ -233,10 +374,10 @@ function solveQP(opfdata::OPFData, network::OPFNetwork, params::ALADINParams,
     qp = JuMP.Model(solver = IpoptSolver(print_level=1))
 
     # Δy_p variables for each p=1..N.
-    @variable(qp, x[p=1:nNLPs, j=1:MathProgBase.numvar(nlpmodel[p])], start = 0)
+    @variable(qp, x[p=1:NP, j=1:MathProgBase.numvar(nlpmodel[p])], start = 0)
 
     # For the bound constraints, stay values at the active-set.
-    for p = 1:nNLPs
+    for p = 1:NP
         m = nlpmodel[p]
 
         for j = 1:MathProgBase.numvar(m)
@@ -248,55 +389,75 @@ function solveQP(opfdata::OPFData, network::OPFNetwork, params::ALADINParams,
         end
     end
 
-    # s variable for coupling constraints.
-    part = Dict{Tuple{Int,Int}, Int}()
-    for key in keys(params.λVM)
-        part[key] = get_prop(network.graph, key[1], :partition)
+
+
+    # OPTION 1
+    # directly incorporate coupling constraints
+    # in the objective function
+    if true
+        @NLexpression(qp, sVM[key in keys(dual.λVM)],
+                    +(xnlp.VM[key[2]][key[1]] + x[key[2], linearindex(nlpmodel[key[2]][:Vm][key[1]])])
+                    -(xnlp.VM[key[3]][key[1]] + x[key[3], linearindex(nlpmodel[key[3]][:Vm][key[1]])])
+                    )
+        @NLexpression(qp, sVA[key in keys(dual.λVA)], 
+                    +(xnlp.VA[key[2]][key[1]] + x[key[2], linearindex(nlpmodel[key[2]][:Va][key[1]])])
+                    -(xnlp.VA[key[3]][key[1]] + x[key[3], linearindex(nlpmodel[key[3]][:Va][key[1]])])
+                    )
+    # OPTION 2
+    # Add explicit s variables for
+    # coupling constraints
+    else
+        @variable(qp, sVM[key in keys(dual.λVM)], start=0)
+        @variable(qp, sVA[key in keys(dual.λVM)], start=0)
+        @constraint(qp, coupling_vm[key in keys(dual.λVM)],
+                    +(xnlp.VM[key[2]][key[1]] + x[key[2], linearindex(nlpmodel[key[2]][:Vm][key[1]])])
+                    -(xnlp.VM[key[3]][key[1]] + x[key[3], linearindex(nlpmodel[key[3]][:Vm][key[1]])])
+                    == sVM[key])
+
+        @constraint(qp, coupling_va[key in keys(dual.λVA)],
+                    +(xnlp.VA[key[2]][key[1]] + x[key[2], linearindex(nlpmodel[key[2]][:Va][key[1]])])
+                    -(xnlp.VA[key[3]][key[1]] + x[key[3], linearindex(nlpmodel[key[3]][:Va][key[1]])])
+                    == sVA[key])
     end
 
-    @variable(qp, sVM[key in keys(params.λVM)], start = 0)
-    @variable(qp, sVA[key in keys(params.λVA)], start = 0)
+
 
     # Quadratic objective: 0.5*Δy_p*H_p*Δy_p for p=1..N.
-    @NLexpression(qp, obj_qp_expr[p=1:nNLPs],
+    @NLexpression(qp, obj_qp_expr[p=1:NP],
                   0.5*sum(hess[p].k[e]*x[p, hess[p].i[e]]*x[p, hess[p].j[e]]
                           for e=1:length(hess[p].i)))
 
     # Linear objective: g_p*Δy_p for p=1..N
-    @NLexpression(qp, obj_g_expr[p=1:nNLPs],
+    @NLexpression(qp, obj_g_expr[p=1:NP],
                   sum(grad[p][j]*x[p, j]
                       for j=1:MathProgBase.numvar(nlpmodel[p])))
 
-    @NLexpression(qp, obj_s_expr,
-                  sum(params.λVM[key]*sVM[key] for key in keys(params.λVM))
-                  + (0.5*params.μ)*sum(sVM[key]^2 for key in keys(params.λVM))
-                  + sum(params.λVA[key]*sVA[key] for key in keys(params.λVA))
-                  + (0.5*params.μ)*sum(sVA[key]^2 for key in keys(params.λVA)))
 
-    @NLobjective(qp, Min,
-                 sum(obj_qp_expr[p] + obj_g_expr[p] for p=1:nNLPs) + obj_s_expr)
+    if enforce_equality
+        @NLobjective(qp, Min,
+                     sum(obj_qp_expr[p] + obj_g_expr[p] for p=1:NP))
+        @NLconstraint(qp, [key in keys(dual.λVM)], sVM[key] == 0)
+        @NLconstraint(qp, [key in keys(dual.λVA)], sVA[key] == 0)
+    else
+        # coupling expression in objective
+        @NLexpression(qp, obj_s_expr,
+                      sum(dual.λVM[key]*sVM[key] for key in keys(dual.λVM))
+                      + (0.5*params.μ)*sum(sVM[key]^2 for key in keys(dual.λVM))
+                      + sum(dual.λVA[key]*sVA[key] for key in keys(dual.λVA))
+                      + (0.5*params.μ)*sum(sVA[key]^2 for key in keys(dual.λVA)))
+        @NLobjective(qp, Min,
+                     sum(obj_qp_expr[p] + obj_g_expr[p] for p=1:NP) + obj_s_expr)
+    end
 
-    # Coupling constraints.
-    @constraint(qp, coupling_vm[key in keys(params.λVM)],
-                getvalue(nlpmodel[part[key]][:Vm][key[1]])
-                + x[part[key], linearindex(nlpmodel[part[key]][:Vm][key[1]])]
-                - (getvalue(nlpmodel[key[2]][:Vm][key[1]])
-                   + x[key[2], linearindex(nlpmodel[key[2]][:Vm][key[1]])])
-                == sVM[key])
-
-    @constraint(qp, coupling_va[key in keys(params.λVA)],
-                getvalue(nlpmodel[part[key]][:Va][key[1]])
-                + x[part[key], linearindex(nlpmodel[part[key]][:Va][key[1]])]
-                - (getvalue(nlpmodel[key[2]][:Va][key[1]])
-                   + x[key[2], linearindex(nlpmodel[key[2]][:Va][key[1]])])
-                == sVA[key])
 
     # Active constraints: C_p*Δy_p = 0 for p=1..N.
-    @constraint(qp, active_constr[p=1:nNLPs, i in active_row[p]],
+    @constraint(qp, active_constr[p=1:NP, i in active_row[p]],
                 sum(active_val[p][i][e]*x[p, active_col[p][i][e]]
                     for e = 1:length(active_col[p][i])) == 0)
 
+
     status = solve(qp)
+
 
     if verbose_level > 0
         @printf("\n ## Summary of QP solve\n")
@@ -304,10 +465,35 @@ function solveQP(opfdata::OPFData, network::OPFNetwork, params::ALADINParams,
         @printf("Objective . . . . %e\n", getobjectivevalue(qp))
     end
 
+
     return qp, status
 end
 
-function Phi(opfdata::OPFData, network::OPFNetwork, params::ALADINParams, nlpmodel::Vector{JuMP.Model}; evalParams::Bool = false)
+function updateAladinPrimalSolution(x::PrimalSolution, xnlp::PrimalSolution, xqp::PrimalSolution)
+    # primal update
+    for p in 1:length(x.VM)
+        for b in keys(x.VM[p])
+            x.VM[p][b] = xnlp.VM[p][b] + xqp.VM[p][b]
+            x.VA[p][b] = xnlp.VA[p][b] + xqp.VA[p][b]
+        end
+        for g in keys(x.PG[p])
+            x.PG[p][g] = xnlp.PG[p][g] + xqp.PG[p][g]
+            x.QG[p][g] = xnlp.QG[p][g] + xqp.QG[p][g]
+        end
+    end
+end
+
+function updateAladinDualSolution(x::PrimalSolution, dual::DualSolution; params::AlgParams)
+    # dual update
+    for (b, p, q) in keys(dual.λVM)
+        key = (b, p, q)
+        dual.λVM[key] += params.θ*params.μ*(x.VM[p][b] - x.VM[q][b])
+        dual.λVA[key] += params.θ*params.μ*(x.VA[p][b] - x.VA[q][b])
+    end
+end
+
+#=
+function Phi(opfdata::OPFData, network::OPFNetwork, params::AlgParams, nlpmodel::Vector{JuMP.Model}; evalParams::Bool = false)
     #
     # Compute objective
     #
@@ -371,9 +557,7 @@ function Phi(opfdata::OPFData, network::OPFNetwork, params::ALADINParams, nlpmod
     return (objval, primviol, constrviol)
 end
 
-function updateParams(params::ALADINParams, opfdata::OPFData, network::OPFNetwork,
-                      nlpmodel::Vector{JuMP.Model}, qp::JuMP.Model;
-                      globalization::Bool = false)
+function updateParams(params::AlgParams, opfdata::OPFData, network::OPFNetwork, nlpmodel::Vector{JuMP.Model}, qp::JuMP.Model; globalization::Bool = false)
     # Value of α3 from paper
     α3 = 1.0
 
@@ -442,9 +626,5 @@ function updateParams(params::ALADINParams, opfdata::OPFData, network::OPFNetwor
         params.λVA[key] += α3*(in_qp.mult_g[linearindex(qp[:coupling_va][key])] - params.λVA[key])
     end
 end
-
-
-ARGS = ["data/case9"]
-opfdata = opf_loaddata(ARGS[1])
-runAladin(opfdata, 3; globalization = false)
+=#
 
