@@ -119,8 +119,8 @@ function computeDualViolation(x::PrimalSolution, xprev::PrimalSolution, nlpmodel
 
                 vm_idx = linearindex(nlpmodel[p][:Vm][b])
                 va_idx = linearindex(nlpmodel[p][:Va][b])
-                kkt[vm_idx] += params.ρ*abs(x.VM[p][b] - xprev.VM[p][b])
-                kkt[va_idx] += params.ρ*abs(x.VA[p][b] - xprev.VA[p][b])
+                kkt[vm_idx] -= params.ρ*abs(x.VM[p][b] - xprev.VM[p][b])
+                kkt[va_idx] -= params.ρ*abs(x.VA[p][b] - xprev.VA[p][b])
             end
 
         else
@@ -135,19 +135,19 @@ function computeDualViolation(x::PrimalSolution, xprev::PrimalSolution, nlpmodel
                 key = (b, s, t)
                 if s == p
                     if params.jacobi || t > s
-                        kkt[vm_idx] += params.ρ*(((1.0 - params.θ)*x.VM[s][b]) - (xprev.VM[t][b] - (params.θ*x.VM[t][b])))
-                        kkt[va_idx] += params.ρ*(((1.0 - params.θ)*x.VA[s][b]) - (xprev.VA[t][b] - (params.θ*x.VA[t][b])))
+                        kkt[vm_idx] -= params.ρ*(((1.0 - params.θ)*x.VM[s][b]) - (xprev.VM[t][b] - (params.θ*x.VM[t][b])))
+                        kkt[va_idx] -= params.ρ*(((1.0 - params.θ)*x.VA[s][b]) - (xprev.VA[t][b] - (params.θ*x.VA[t][b])))
                     else
-                        kkt[vm_idx] += params.ρ*(1.0 - params.θ)*(x.VM[s][b] - x.VM[t][b])
-                        kkt[va_idx] += params.ρ*(1.0 - params.θ)*(x.VA[s][b] - x.VA[t][b])
+                        kkt[vm_idx] -= params.ρ*(1.0 - params.θ)*(x.VM[s][b] - x.VM[t][b])
+                        kkt[va_idx] -= params.ρ*(1.0 - params.θ)*(x.VA[s][b] - x.VA[t][b])
                     end
                 elseif t == p
                     if params.jacobi || s > t
-                        kkt[vm_idx] += params.ρ*(((1.0 - params.θ)*x.VM[t][b]) - (xprev.VM[s][b] - (params.θ*x.VM[s][b])))
-                        kkt[va_idx] += params.ρ*(((1.0 - params.θ)*x.VA[t][b]) - (xprev.VA[s][b] - (params.θ*x.VA[s][b])))
+                        kkt[vm_idx] -= params.ρ*(((1.0 - params.θ)*x.VM[t][b]) - (xprev.VM[s][b] - (params.θ*x.VM[s][b])))
+                        kkt[va_idx] -= params.ρ*(((1.0 - params.θ)*x.VA[t][b]) - (xprev.VA[s][b] - (params.θ*x.VA[s][b])))
                     else
-                        kkt[vm_idx] += params.ρ*(1.0 - params.θ)*(x.VM[t][b] - x.VM[s][b])
-                        kkt[va_idx] += params.ρ*(1.0 - params.θ)*(x.VA[t][b] - x.VA[s][b])
+                        kkt[vm_idx] -= params.ρ*(1.0 - params.θ)*(x.VM[t][b] - x.VM[s][b])
+                        kkt[va_idx] -= params.ρ*(1.0 - params.θ)*(x.VA[t][b] - x.VA[s][b])
                     end
                 else
                     @assert false
@@ -158,14 +158,14 @@ function computeDualViolation(x::PrimalSolution, xprev::PrimalSolution, nlpmodel
         for g in network.gener_part[p]
             pg_idx = linearindex(nlpmodel[p][:Pg][g])
             qg_idx = linearindex(nlpmodel[p][:Qg][g])
-            kkt[pg_idx] += params.τ*(x.PG[p][g] - xprev.PG[p][g])
-            kkt[qg_idx] += params.τ*(x.QG[p][g] - xprev.QG[p][g])
+            kkt[pg_idx] -= params.τ*(x.PG[p][g] - xprev.PG[p][g])
+            kkt[qg_idx] -= params.τ*(x.QG[p][g] - xprev.QG[p][g])
         end
         for b in network.buses_bloc[p]
             vm_idx = linearindex(nlpmodel[p][:Vm][b])
             va_idx = linearindex(nlpmodel[p][:Va][b])
-            kkt[vm_idx] += params.τ*(x.VM[p][b] - xprev.VM[p][b])
-            kkt[va_idx] += params.τ*(x.VA[p][b] - xprev.VA[p][b])
+            kkt[vm_idx] -= params.τ*(x.VM[p][b] - xprev.VM[p][b])
+            kkt[va_idx] -= params.τ*(x.VA[p][b] - xprev.VA[p][b])
         end
 
         #
