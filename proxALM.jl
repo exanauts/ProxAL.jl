@@ -45,7 +45,7 @@ function runProxALM(case::String, num_partitions::Int, perturbation::Number = 0.
         maxρ = 1.0
     end
     params = initializeParams(maxρ; aladin = false, jacobi = true)
-    savedata = zeros(params.iterlim, 8)
+    savedata = zeros(params.iterlim, 6)
     tstart = time()
     timeNLP = 0.0
     iter = 0
@@ -111,14 +111,17 @@ function runProxALM(case::String, num_partitions::Int, perturbation::Number = 0.
 
         #
         # Alternate metric of infeasibility
+        # The following computes the primal and dual violations of
+        # an "average" solution (think of it as a heuristic solution)
         #
-        primfeas, kkterror = computePrimalDualError_manual(opfdata, network, nlpmodel, x; lnorm = Inf, compute_dual_error = true)
+        # xavg_primviol, xavg_dualviol = computePrimalDualError_manual(opfdata, network, nlpmodel, x; lnorm = Inf, compute_dual_error = true)
         
 
 
         #
         # Update the parameters (optional)
         #
+        #=
         x_distprev = computeDistance(x, xprev; lnorm = 2)
         λ_distprev = computeDistance(λ, λprev; lnorm = 2)
         prox_value = x_distprev^2 + λ_distprev^2
@@ -162,29 +165,27 @@ function runProxALM(case::String, num_partitions::Int, perturbation::Number = 0.
                 params.τ *= 2.0
             end
         end
+        =#
         
         dist = computeDistance(x, xstar; lnorm = Inf)
         gencost = computePrimalCost(x, opfdata)
 
         if verbose_level > 1
-            updatePlot_iterative(plt, iter, dist, primviol, dualviol, primfeas, kkterror)
+            updatePlot_iterative(plt, iter, dist, primviol, dualviol)#, xavg_primviol, xavg_dualviol)
         end
 
         #
-        # Various termination criteria
-        converged = min(dist, max(primfeas, dualviol)) <= params.tol
-        #converged = min(dist, max(primviol, min(dualviol, kkterror))) <= params.tol
-
-
+        # Termination criteria
+        converged = min(dist, max(primviol, dualviol)) <= params.tol
         if verbose_level > 0 || converged
-            @printf("iter %d: primviol = %.2f, primfeas = %.2f, dualviol = %.2f, gencost = %.2f, primdist = %.3f\n", iter, primviol, primfeas, dualviol, gencost, dist)
+            @printf("iter %d: primviol = %.2f, dualviol = %.2f, gencost = %.2f, primdist = %.3f\n", iter, primviol, dualviol, gencost, dist)
         end
         if false
             @printf("converged\n")
             break
         end
 
-        savedata[iter,:] = [dist, primviol, dualviol, primfeas, kkterror, timeNLP, 0, time() - tstart]
+        savedata[iter,:] = [dist, primviol, dualviol, timeNLP, 0, time() - tstart]
     end
 
     writedlm(getDataFilename("", case, "proxALM", num_partitions, perturbation, params.jacobi), savedata)

@@ -259,9 +259,7 @@ function computePrimalDualError_manual(opfdata::OPFData, network::OPFNetwork, nl
                 # These line limits may appear multiple times
                 # in different partitions so pick a tie-breaking rule
                 #
-                partition_to = get_prop(network.graph, busIdx[lines[l].to], :partition)
-                if busIdx[lines[l].from] in network.buses_part[p] &&
-                    busIdx[lines[l].to] in network.buses_part[partition_to]
+                if busIdx[lines[l].from] in network.buses_part[p]
                     idx += 1; mult_linelimit_from[l] = mult_g[idx]
                     idx += 1; mult_linelimit_to[l] = mult_g[idx]
                 else

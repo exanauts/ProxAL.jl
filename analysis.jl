@@ -14,18 +14,18 @@ end
 
 function initializePlot_iterative()
     gr()
-    plt = plot([Inf,Inf], Any[[1,1],[1,1],[1,1],[1,1],[1,1]],
-                lab=["|x - xopt|"  "primal viol"  "dual viol" "primal infeas" "KKT error"])
+    plt = plot([Inf,Inf], Any[[1,1],[1,1],[1,1]],
+                lab=["|x - xopt|"  "primal viol"  "dual viol"])
     optionsPlot(plt)
     return plt
 end
 
-function updatePlot_iterative(plt, iter, distance, primviol, dualviol, primfeas, kkterror)
-    push!(plt, 1, iter, distance);
-    push!(plt, 2, iter, primviol);
-    push!(plt, 3, iter, dualviol);
-    push!(plt, 4, iter, primfeas);
-    push!(plt, 5, iter, kkterror);
+function updatePlot_iterative(plt, iter, distance, primviol, dualviol)#, xavg_primviol=nothing, xavg_dualviol=nothing)
+    push!(plt, 1, iter, distance)
+    push!(plt, 2, iter, primviol)
+    push!(plt, 3, iter, dualviol)
+    #push!(plt, 4, iter, xavg_primviol)
+    #push!(plt, 5, iter, xavg_dualviol)
     gui()
 end
 

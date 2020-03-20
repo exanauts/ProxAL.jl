@@ -55,7 +55,7 @@ function runAladin(case::String, num_partitions::Int, perturbation::Number = 0.1
         maxρ = 0.0
     end
     params = initializeParams(maxρ; aladin = true, jacobi = true)
-    savedata = zeros(params.iterlim, 8)
+    savedata = zeros(params.iterlim, 6)
     xnlp = initializePrimalSolution(opfdata, network)
     xqp = initializePrimalSolution(opfdata, network)
     tstart = time()
@@ -90,6 +90,11 @@ function runAladin(case::String, num_partitions::Int, perturbation::Number = 0.1
         end
 
 
+        #
+        # The following computes the primal and dual violations of
+        # an "average" solution (think of it as a heuristic solution)
+        #
+        #xavg_primviol, xavg_dualviol = computePrimalDualError_manual(opfdata, network, nlpmodel, xnlp; lnorm = Inf, compute_dual_error = true)
 
 
 
@@ -97,21 +102,17 @@ function runAladin(case::String, num_partitions::Int, perturbation::Number = 0.1
         # check convergence
         #
         dist = computeDistance(xnlp, xstar; lnorm=Inf)
-        primfeas, kkterror = computePrimalDualError_manual(opfdata, network, nlpmodel, xnlp; lnorm = Inf, compute_dual_error = true)
         primviol = computePrimalViolation(xnlp, network; lnorm = Inf)
         dualviol = computeDualViolation(xnlp, x, nlpmodel, network; lnorm = Inf, params = params)
         if verbose_level > 1
-            updatePlot_iterative(plt, iter, dist, primviol, dualviol, primfeas, kkterror)
+            updatePlot_iterative(plt, iter, dist, primviol, dualviol)#, xavg_primviol, xavg_dualviol)
         end
 
         #
         # Various termination criteria
-        converged = min(dist, max(primfeas, dualviol)) <= params.tol
-        #converged = min(dist, max(primfeas, min(dualviol, kkterror))) <= params.tol
-
-
+        converged = min(dist, max(primviol, dualviol)) <= params.tol
         if verbose_level > 0 || converged
-            @printf("iter %d: primviol = %.2f, primfeas = %.2f, kkterror = %.2f, dualviol = %.2f, gencost = %.2f, dist = %.3f\n", iter, primviol, primfeas, kkterror, dualviol, computePrimalCost(xnlp, opfdata), dist)
+            @printf("iter %d: primviol = %.2f, dualviol = %.2f, gencost = %.2f, dist = %.3f\n", iter, primviol, dualviol, computePrimalCost(xnlp, opfdata), dist)
         end
         if false
             x = deepcopy(xnlp)
@@ -194,7 +195,7 @@ function runAladin(case::String, num_partitions::Int, perturbation::Number = 0.1
         #
         # Update parameters (optional)
         #
-        if params.updateρ && primfeas > 0.1
+        if params.updateρ && primviol > 0.1
             if params.ρ + stepρ <= maxρ
                 params.ρ += stepρ
                 params.τ += stepρ
@@ -202,7 +203,7 @@ function runAladin(case::String, num_partitions::Int, perturbation::Number = 0.1
             end
         end
 
-        savedata[iter,:] = [dist, primviol, dualviol, primfeas, kkterror, timeNLP, timeQP, time() - tstart]
+        savedata[iter,:] = [dist, primviol, dualviol, timeNLP, timeQP, time() - tstart]
     end
 
     writedlm(getDataFilename("", case, "aladin", num_partitions, perturbation, params.jacobi), savedata)
