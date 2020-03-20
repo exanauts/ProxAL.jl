@@ -1,33 +1,41 @@
 using Plots, Measures, DelimitedFiles
 
-function initializePlot_iterative()
-    gr()
-    return plot([Inf,Inf], Any[[1,1],[1,1],[1,1],[1,1],[1,1]],
-                lw = 2,
-                linealpha = 0.7,
-                xlim = [1, 2000],
-                ylim = [1e-5, 1e1],
-                framestyle = :box,
-                size = (800,800),
-                yscale = :log10,
-                lab=["distance"  "primviol"  "dualviol" "prinfeas" "KKTerror"])
+function optionsPlot(plt)
+    plot!(plt,
+            linewidth = 2.0,
+            linealpha = 0.7,
+            yscale = :log10,
+            framestyle = :box,
+            ylim = [1e-5, 1e1],
+            guidefontsize = 14,
+            titlefontsize = 14,
+            size = (1000, 1000))
 end
 
-function updatePlot_iterative(plt, iter, dist, primviol, dualviol, primfeas, kkterror)
-    push!(plt, 2, iter, primviol); 
-    push!(plt, 3, iter, dualviol); 
+function initializePlot_iterative()
+    gr()
+    plt = plot([Inf,Inf], Any[[1,1],[1,1],[1,1],[1,1],[1,1]],
+                lab=["|x - xopt|"  "primal viol"  "dual viol" "primal infeas" "KKT error"])
+    optionsPlot(plt)
+    return plt
+end
+
+function updatePlot_iterative(plt, iter, distance, primviol, dualviol, primfeas, kkterror)
+    push!(plt, 1, iter, distance);
+    push!(plt, 2, iter, primviol);
+    push!(plt, 3, iter, dualviol);
     push!(plt, 4, iter, primfeas);
-    push!(plt, 5, iter, kkterror); 
-    push!(plt, 1, iter, dist); 
+    push!(plt, 5, iter, kkterror);
     gui()
 end
 
 function getDataFilename(prefix::String, case::String, algo::String,
-                            num_partitions::Int, perturbation::Number, jacobi::Bool)
+                            num_partitions::Int, perturbation::Number, jacobi::Bool, ramp_scale = nothing)
     return prefix * 
             basename(case) * 
             "_" * algo * 
             "_n" * string(num_partitions) * 
+            (ramp_scale == nothing ? "" : ("_r" * string(100ramp_scale))) *
             "_f" * string(perturbation) * 
             "_j" * string(Int(jacobi)) * 
             ".txt"
@@ -41,57 +49,58 @@ function getSaveFilename(prefix::String, case::String, algo::String, jacobi::Boo
             ".png"
 end
 
-function main_plot(fileprefix::String, savefileprefix::String, case::String, algo::String, jacobi::Bool;
-                    partitions, perturbation)
+function plot_fixedCaseAlgo(fileprefix::String, savefileprefix::String, case::String, algo::String;
+                partitions, other, array2, array2_type::Symbol)
     pyplot()
     p = []
-    for i in 1:length(partitions)
-        for j in 1:length(perturbation)
-            datafile = getDataFilename(fileprefix, case, algo, partitions[i], perturbation[j], jacobi)
-            if isfile(datafile)
-                savedata = readdlm(datafile)
-            else
-                savedata = 1e-12*ones(2000, 8)
+    for (i, ti) in enumerate(partitions)
+        for (j, tj) in enumerate(array2)
+            if array2_type == :perturb
+                datafile = getDataFilename(fileprefix, case, algo, ti, tj, true, other)
+            elseif array2_type == :ramping
+                datafile = getDataFilename(fileprefix, case, algo, ti, other, true, tj)
+            else @assert(false)
             end
+            savedata = isfile(datafile) ? readdlm(datafile) : 1e-12ones(2000, 4)
             push!(p,
-                plot(savedata[:,[1,2,3,4]],
-                    lab=["distance"  "primviol"  "dualviol" "prinfeas"],
-                    lw = 1.8,
-                    framestyle = :box,
-                    linealpha = 0.7,
-                    ylim = [1e-5, 1e1],
-                    yscale = :log10))
-            if j == 1
-                plot!(p[end],
-                    guidefontsize = 14,
-                    ylabel="parts="* string(partitions[i]))
-            end
-            if i == 1
-                plot!(p[end],
-                    titlefontsize = 14,
-                    title="perturb="* string(perturbation[j]))
-            end
+                    plot(savedata[:,1:3],
+                        lab=["|x - xopt|"  "primal viol"  "dual viol"])
+            )
+            optionsPlot(p[end])
+            (j == 1) && plot!(p[end], ylabel="parts="*string(ti))
+            (i == 1) && plot!(p[end], title=string(array2_type)*"="*string(tj))
         end
     end
     if !isempty(p)
-        plot(p..., layout = (5,5), size = (1000,1000))
-        savefig(getSaveFilename(savefileprefix, case, algo, jacobi))
+        plot(p..., layout = (length(partitions), length(array2)), size = (1000, 1000))
+        savefig(getSaveFilename(savefileprefix, case, algo, true))
     end
 end
 
-function all_plot(fileprefix::String, savefileprefix::String)
-    for case in ["case30", "case57", "case118", "case300"]
-        for algo in ["aladin", "proxALM"]
-            for jacobi in [true]
-                if algo == "aladin" && !jacobi
-                    continue
-                end
-                main_plot(fileprefix, savefileprefix, case, algo, jacobi;
-                            partitions = [1,2,3,5,10], perturbation=[0, 0.01, 0.1, 0.2, 0.5])
+function plot_fixedPartitions(fileprefix::String, savefileprefix::String, num_partitions;
+                case, algo, other1, other2, other2_type::Symbol)
+    pyplot()
+    p = []
+    for (i, ti) in enumerate(case)
+        for (j, tj) in enumerate(algo)
+            if other2_type == :perturb
+                datafile = getDataFilename(fileprefix, ti, tj, num_partitions, other2, true, other1)
+            elseif other2_type == :ramping
+                datafile = getDataFilename(fileprefix, ti, tj, num_partitions, other1, true, other2)
+            else @assert(false)
             end
+            savedata = isfile(datafile) ? readdlm(datafile) : 1e-12ones(2000, 4)
+            push!(p,
+                    plot(savedata[:,1:3],
+                        lab=["|x - xopt|"  "primal viol"  "dual viol"])
+            )
+            optionsPlot(p[end])
+            (j == 1) && plot!(p[end], ylabel=string(ti))
+            (i == 1) && plot!(p[end], title=string(tj))
         end
     end
+    if !isempty(p)
+        plot(p..., layout = (length(case), length(algo)), size = (1000, 1000))
+        savefig(getSaveFilename(savefileprefix, "T" * string(num_partitions), string(other2_type) * string(other2), true))
+    end
 end
-
-
-
