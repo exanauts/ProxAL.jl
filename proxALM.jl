@@ -110,63 +110,8 @@ function runProxALM(case::String, num_partitions::Int, perturbation::Number = 0.
         dualviol = computeDualViolation(x, xprev, nlpmodel, network; lnorm = Inf, params = params)
 
         #
-        # Alternate metric of infeasibility
-        # The following computes the primal and dual violations of
-        # an "average" solution (think of it as a heuristic solution)
+        # Compute the distance to optimal solution
         #
-        # xavg_primviol, xavg_dualviol = computePrimalDualError_manual(opfdata, network, nlpmodel, x; lnorm = Inf, compute_dual_error = true)
-        
-
-
-        #
-        # Update the parameters (optional)
-        #
-        #=
-        x_distprev = computeDistance(x, xprev; lnorm = 2)
-        λ_distprev = computeDistance(λ, λprev; lnorm = 2)
-        prox_value = x_distprev^2 + λ_distprev^2
-        #
-        # compute the scaled distance between old (x, λ) and new (x, λ)
-        # See Deng, Lai, Peng and Yin, J. Sci. Comput., 2016
-        #
-        delta = 0.5params.τ*x_distprev^2
-        for p in 1:network.num_partitions
-            for b in network.buses_bloc[p]
-                if b in network.consensus_nodes
-                    delta += params.ρ*(x.VM[p][b] - xprev.VM[p][b])^2
-                    delta += params.ρ*(x.VA[p][b] - xprev.VA[p][b])^2
-                end
-            end
-        end
-        delta += (2.0 - params.θ)/(params.θ^2*params.ρ)*λ_distprev^2
-        for (b, p, q) in network.consensus_tuple
-            key = (b, p, q)
-            delta -= (2.0/params.θ)*(λ.λVM[key]-λprev.λVM[key])*((x.VM[p][b] - xprev.VM[p][b]) - (x.VM[q][b] - xprev.VM[q][b]))
-            delta -= (2.0/params.θ)*(λ.λVA[key]-λprev.λVA[key])*((x.VA[p][b] - xprev.VA[p][b]) - (x.VA[q][b] - xprev.VA[q][b]))
-        end
-
-
-
-        #
-        # ρ update (based on Boyd's monograph)
-        #
-        if params.updateρ
-            if (primviol > 10dualviol)
-                params.ρ *= 2.0
-            elseif (dualviol > 10primviol)
-                params.ρ /= 2.0
-            end
-        end
-        #
-        # τ update (based on Deng, Lai, Peng and Yin, J. Sci. Comput., 2016)
-        #
-        if params.updateτ
-            if (delta < 0.01(x_distprev^2+λ_distprev^2))
-                params.τ *= 2.0
-            end
-        end
-        =#
-        
         dist = computeDistance(x, xstar; lnorm = Inf)
         gencost = computePrimalCost(x, opfdata)
 

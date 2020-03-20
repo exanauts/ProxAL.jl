@@ -91,14 +91,6 @@ function runAladin(case::String, num_partitions::Int, perturbation::Number = 0.1
 
 
         #
-        # The following computes the primal and dual violations of
-        # an "average" solution (think of it as a heuristic solution)
-        #
-        #xavg_primviol, xavg_dualviol = computePrimalDualError_manual(opfdata, network, nlpmodel, xnlp; lnorm = Inf, compute_dual_error = true)
-
-
-
-        #
         # check convergence
         #
         dist = computeDistance(xnlp, xstar; lnorm=Inf)
