@@ -107,7 +107,7 @@ function runProxALM(case::String, num_partitions::Int, perturbation::Number = 0.
         # Compute the KKT error --> has meaningful value
         #                           only if both x and λ have been updated
         #
-        dualviol = computeKKTError(x, xprev, network; lnorm = Inf, params = params)
+        dualviol = computeDualViolation(x, xprev, nlpmodel, network; lnorm = Inf, params = params)
 
         #
         # Alternate metric of infeasibility
@@ -215,62 +215,3 @@ function updateDualSolution(dual::DualSolution, x::PrimalSolution; params::AlgPa
 end
 
 
-function computeKKTError(x::PrimalSolution, xprev::PrimalSolution, network::OPFNetwork; lnorm = 1, params::AlgParams)
-    dualviol = []
-    for p = 1:network.num_partitions
-        err_pg = Dict{Int, Float64}()
-        err_qg = Dict{Int, Float64}()
-        err_vm = Dict{Int, Float64}()
-        err_va = Dict{Int, Float64}()
-        for (b, s, t) in network.consensus_tuple
-            (b in network.buses_bloc[p]) || continue
-            (s!=p && t!=p) && continue
-
-            err_vm[b] = 0.0
-            err_va[b] = 0.0
-
-            key = (b, s, t)
-            if s == p
-                if params.jacobi || t > s
-                    err_vm[b] += params.ρ*(((1.0 - params.θ)*x.VM[s][b]) - (xprev.VM[t][b] - (params.θ*x.VM[t][b])))
-                    err_va[b] += params.ρ*(((1.0 - params.θ)*x.VA[s][b]) - (xprev.VA[t][b] - (params.θ*x.VA[t][b])))
-                else
-                    err_vm[b] += params.ρ*(1.0 - params.θ)*(x.VM[s][b] - x.VM[t][b])
-                    err_va[b] += params.ρ*(1.0 - params.θ)*(x.VA[s][b] - x.VA[t][b])
-                end
-            elseif t == p
-                if params.jacobi || s > t
-                    err_vm[b] += params.ρ*(((1.0 - params.θ)*x.VM[t][b]) - (xprev.VM[s][b] - (params.θ*x.VM[s][b])))
-                    err_va[b] += params.ρ*(((1.0 - params.θ)*x.VA[t][b]) - (xprev.VA[s][b] - (params.θ*x.VA[s][b])))
-                else
-                    err_vm[b] += params.ρ*(1.0 - params.θ)*(x.VM[t][b] - x.VM[s][b])
-                    err_va[b] += params.ρ*(1.0 - params.θ)*(x.VA[t][b] - x.VA[s][b])
-                end
-            else
-                @assert false
-            end
-        end
-
-        # Next the proximal part
-        for g in network.gener_part[p]
-            err_pg[g] = params.τ*(x.PG[p][g] - xprev.PG[p][g])
-            err_qg[g] = params.τ*(x.QG[p][g] - xprev.QG[p][g])
-        end
-        for b in network.buses_bloc[p]
-            if haskey(err_vm, b)
-                err_vm[b] += params.τ*(x.VM[p][b] - xprev.VM[p][b])
-                err_va[b] += params.τ*(x.VA[p][b] - xprev.VA[p][b])
-            else
-                err_vm[b] =  params.τ*(x.VM[p][b] - xprev.VM[p][b])
-                err_va[b] =  params.τ*(x.VA[p][b] - xprev.VA[p][b])
-            end
-        end
-
-        for i in keys(err_pg); push!(dualviol, err_pg[i]); end
-        for i in keys(err_qg); push!(dualviol, err_qg[i]); end
-        for i in keys(err_vm); push!(dualviol, err_vm[i]); end
-        for i in keys(err_va); push!(dualviol, err_va[i]); end
-    end
-
-    return (isempty(dualviol) ? 0.0 : norm(dualviol, lnorm))
-end

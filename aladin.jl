@@ -99,7 +99,7 @@ function runAladin(case::String, num_partitions::Int, perturbation::Number = 0.1
         dist = computeDistance(xnlp, xstar; lnorm=Inf)
         primfeas, kkterror = computePrimalDualError_manual(opfdata, network, nlpmodel, xnlp; lnorm = Inf, compute_dual_error = true)
         primviol = computePrimalViolation(xnlp, network; lnorm = Inf)
-        dualviol = computeDualViolation(xnlp, x, network; lnorm = Inf, params = params)
+        dualviol = computeDualViolation(xnlp, x, nlpmodel, network; lnorm = Inf, params = params)
         if verbose_level > 1
             updatePlot_iterative(plt, iter, dist, primviol, dualviol, primfeas, kkterror)
         end
@@ -210,29 +210,8 @@ function runAladin(case::String, num_partitions::Int, perturbation::Number = 0.1
     return x, λ
 end
 
-function computeDualViolation(xnlp::PrimalSolution, xprev::PrimalSolution, network::OPFNetwork; lnorm = 1, params::AlgParams)
-    dualviol = []
-    for p in 1:network.num_partitions
-        for n in network.consensus_nodes
-            (n in network.buses_bloc[p]) || continue
-            push!(dualviol, (params.ρ + params.τ)*abs(xnlp.VM[p][n] - xprev.VM[p][n]))
-            push!(dualviol, (params.ρ + params.τ)*abs(xnlp.VA[p][n] - xprev.VA[p][n]))
-        end
-        for g in network.gener_part[p]
-            push!(dualviol, params.τ*abs(xnlp.PG[p][g] - xprev.PG[p][g]))
-            push!(dualviol, params.τ*abs(xnlp.QG[p][g] - xprev.QG[p][g]))
-        end
-        for b in network.buses_bloc[p]
-            (b in network.consensus_nodes) && continue
-            push!(dualviol, params.τ*abs(xnlp.VM[p][b] - xprev.VM[p][b]))
-            push!(dualviol, params.τ*abs(xnlp.VA[p][b] - xprev.VA[p][b]))
-        end
-    end
-
-    return (isempty(dualviol) ? 0.0 : norm(dualviol, lnorm))
-end
-
-function solveQP(xnlp::PrimalSolution, nlpmodel::Vector{JuMP.Model}, network::OPFNetwork, xprev::PrimalSolution, dual::DualSolution; verbose_level = 1, params::AlgParams, enforce_equality=false, enforce_convexity=false)
+function solveQP(xnlp::PrimalSolution, nlpmodel::Vector{JuMP.Model}, network::OPFNetwork, xprev::PrimalSolution, dual::DualSolution;
+                    verbose_level = 1, params::AlgParams, enforce_equality=false, enforce_convexity=false)
     NP = network.num_partitions
     grad = Vector{Vector{Float64}}(undef, NP)              # [p]: gradient value of NLP p
     gval = Vector{Vector{Float64}}(undef, NP)              # [p]: constraint value of NLP p

@@ -3,8 +3,7 @@
 # NOTE: we do not check complementary slackness
 #
 
-using ForwardDiff
-using LinearAlgebra
+using ForwardDiff, LinearAlgebra, SparseArrays
 
 
 function generation_cost(x;
@@ -107,6 +106,35 @@ function grad_linelimit_to(x;
     return ForwardDiff.gradient(g, x)
 end
 
+
+function grad_Lagrangian(m::JuMP.Model, x::Vector, mult_g::Vector)
+    @assert isa(internalmodel(m), Ipopt.IpoptMathProgModel)
+    @assert (length(x) == MathProgBase.numvar(m))
+    @assert (length(mult_g) == MathProgBase.numconstr(m))
+
+    d = JuMP.NLPEvaluator(m)
+    MathProgBase.initialize(d, [:Grad, :Jac, :Hess])
+    nvar = MathProgBase.numvar(m)
+    nconstr = MathProgBase.numconstr(m)
+
+    # Evaluate the gradient
+    grad = zeros(nvar)
+    MathProgBase.eval_grad_f(d, grad, x)
+
+    # Evaluate the Jacobian
+    Ij_tmp, Jj_tmp = MathProgBase.jac_structure(d)
+    Kj_tmp = zeros(length(Ij_tmp))
+    MathProgBase.eval_jac_g(d, Kj_tmp, x)
+
+    # Merge duplicates.
+    Ij, Jj, Vj = findnz(sparse(Ij_tmp, Jj_tmp, [Int[e] for e=1:length(Ij_tmp)],
+                            nconstr, nvar, vcat)
+                        )
+    Kj = [sum(Kj_tmp[Vj[e]]) for e=1:length(Ij)]
+
+    # Get the KKT expression
+    return grad .+ (transpose(sparse(Ij, Jj, Kj))*mult_g)
+end
 
 function computePrimalDualError_manual(opfdata::OPFData, network::OPFNetwork, nlpmodel::Vector{JuMP.Model}, primal::PrimalSolution;
     lnorm = 1, compute_dual_error = true)

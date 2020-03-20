@@ -100,6 +100,124 @@ function computeDistance(x1::DualSolution, x2::DualSolution; lnorm = 1)
     return (isempty(xd) ? 0.0 : norm(xd, lnorm))
 end
 
+function computeDualViolation(x::PrimalSolution, xprev::PrimalSolution, nlpmodel::Vector{JuMP.Model}, network::OPFNetwork; lnorm = 1, params::AlgParams)
+    dualviol = []
+    for p = 1:network.num_partitions
+        #
+        # First get ∇_x Lagrangian
+        #
+        inner = internalmodel(nlpmodel[p]).inner
+        kkt = grad_Lagrangian(nlpmodel[p], inner.x, inner.mult_g)
+
+        #
+        # Now adjust it so that the final quantity represents the error in the KKT conditions
+        #
+        if params.aladin
+            # The Aug Lag part in ALADIN
+            for b in network.consensus_nodes
+                (b in network.buses_bloc[p]) || continue
+
+                vm_idx = linearindex(nlpmodel[p][:Vm][b])
+                va_idx = linearindex(nlpmodel[p][:Va][b])
+                kkt[vm_idx] += params.ρ*abs(x.VM[p][b] - xprev.VM[p][b])
+                kkt[va_idx] += params.ρ*abs(x.VA[p][b] - xprev.VA[p][b])
+            end
+
+        else
+            # The Aug Lag part in proximal ALM
+            for (b, s, t) in network.consensus_tuple
+                (b in network.buses_bloc[p]) || continue
+                (s!=p && t!=p) && continue
+
+                vm_idx = linearindex(nlpmodel[p][:Vm][b])
+                va_idx = linearindex(nlpmodel[p][:Va][b])
+
+                key = (b, s, t)
+                if s == p
+                    if params.jacobi || t > s
+                        kkt[vm_idx] += params.ρ*(((1.0 - params.θ)*x.VM[s][b]) - (xprev.VM[t][b] - (params.θ*x.VM[t][b])))
+                        kkt[va_idx] += params.ρ*(((1.0 - params.θ)*x.VA[s][b]) - (xprev.VA[t][b] - (params.θ*x.VA[t][b])))
+                    else
+                        kkt[vm_idx] += params.ρ*(1.0 - params.θ)*(x.VM[s][b] - x.VM[t][b])
+                        kkt[va_idx] += params.ρ*(1.0 - params.θ)*(x.VA[s][b] - x.VA[t][b])
+                    end
+                elseif t == p
+                    if params.jacobi || s > t
+                        kkt[vm_idx] += params.ρ*(((1.0 - params.θ)*x.VM[t][b]) - (xprev.VM[s][b] - (params.θ*x.VM[s][b])))
+                        kkt[va_idx] += params.ρ*(((1.0 - params.θ)*x.VA[t][b]) - (xprev.VA[s][b] - (params.θ*x.VA[s][b])))
+                    else
+                        kkt[vm_idx] += params.ρ*(1.0 - params.θ)*(x.VM[t][b] - x.VM[s][b])
+                        kkt[va_idx] += params.ρ*(1.0 - params.θ)*(x.VA[t][b] - x.VA[s][b])
+                    end
+                else
+                    @assert false
+                end
+            end
+        end
+        # The proximal part in both ALADIN and proximal ALM
+        for g in network.gener_part[p]
+            pg_idx = linearindex(nlpmodel[p][:Pg][g])
+            qg_idx = linearindex(nlpmodel[p][:Qg][g])
+            kkt[pg_idx] += params.τ*(x.PG[p][g] - xprev.PG[p][g])
+            kkt[qg_idx] += params.τ*(x.QG[p][g] - xprev.QG[p][g])
+        end
+        for b in network.buses_bloc[p]
+            vm_idx = linearindex(nlpmodel[p][:Vm][b])
+            va_idx = linearindex(nlpmodel[p][:Va][b])
+            kkt[vm_idx] += params.τ*(x.VM[p][b] - xprev.VM[p][b])
+            kkt[va_idx] += params.τ*(x.VA[p][b] - xprev.VA[p][b])
+        end
+
+        #
+        # Compute the KKT error now
+        #
+        for j = 1:length(kkt)
+            if (abs(nlpmodel[p].colLower[j] - nlpmodel[p].colUpper[j]) <= params.zero)
+                kkt[j] = 0.0 # ignore
+            elseif abs(inner.x[j] - nlpmodel[p].colLower[j]) <= params.zero
+                kkt[j] = max(0, -kkt[j])
+            elseif abs(inner.x[j] - nlpmodel[p].colUpper[j]) <= params.zero
+                kkt[j] = max(0, +kkt[j])
+            else
+                kkt[j] = abs(kkt[j])
+            end
+        end
+        dualviol = [dualviol; kkt]
+    end
+
+    return (isempty(dualviol) ? 0.0 : norm(dualviol, lnorm))
+end
+
+function computePrimalViolation(primal::PrimalSolution, network::OPFNetwork; lnorm = 1)
+
+    #
+    # primal violation
+    #
+    err = []
+    for (n, p, q) in network.consensus_tuple
+        push!(err, primal.VM[p][n] - primal.VM[q][n])
+        push!(err, primal.VA[p][n] - primal.VA[q][n])
+    end
+
+    return (isempty(err) ? 0.0 : norm(err, lnorm))
+end
+
+function computePrimalCost(primal::PrimalSolution, opfdata::OPFData)
+    generators = opfdata.generators
+    baseMVA = opfdata.baseMVA
+    gencost = 0.0
+    for p in 1:length(primal.PG)
+        for i in keys(primal.PG[p])
+            Pg = primal.PG[p][i]
+            gencost += generators[i].coeff[generators[i].n-2]*(baseMVA*Pg)^2 +
+                       generators[i].coeff[generators[i].n-1]*(baseMVA*Pg)   +
+                       generators[i].coeff[generators[i].n  ]
+        end
+    end
+
+    return gencost
+end
+
 function constructPrimalSolution(opfdata::OPFData, network::OPFNetwork, primal::PrimalSolution)
     nbus  = length(opfdata.buses)
     ngen  = length(opfdata.generators)
@@ -136,34 +254,4 @@ function constructPrimalSolution(opfdata::OPFData, network::OPFNetwork, primal::
     end
 
     return Pg,Qg,Vm,Va
-end
-
-function computePrimalViolation(primal::PrimalSolution, network::OPFNetwork; lnorm = 1)
-
-    #
-    # primal violation
-    #
-    err = []
-    for (n, p, q) in network.consensus_tuple
-        push!(err, primal.VM[p][n] - primal.VM[q][n])
-        push!(err, primal.VA[p][n] - primal.VA[q][n])
-    end
-
-    return (isempty(err) ? 0.0 : norm(err, lnorm))
-end
-
-function computePrimalCost(primal::PrimalSolution, opfdata::OPFData)
-    generators = opfdata.generators
-    baseMVA = opfdata.baseMVA
-    gencost = 0.0
-    for p in 1:length(primal.PG)
-        for i in keys(primal.PG[p])
-            Pg = primal.PG[p][i]
-            gencost += generators[i].coeff[generators[i].n-2]*(baseMVA*Pg)^2 +
-                       generators[i].coeff[generators[i].n-1]*(baseMVA*Pg)   +
-                       generators[i].coeff[generators[i].n  ]
-        end
-    end
-
-    return gencost
 end
