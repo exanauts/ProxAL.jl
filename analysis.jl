@@ -7,23 +7,27 @@ function optionsPlot(plt)
             yscale = :log10,
             framestyle = :box,
             ylim = [1e-5, 1e1],
+            xtickfontsize = 12,
+            ytickfontsize = 12,
             guidefontsize = 14,
             titlefontsize = 14,
+            legendfontsize = 10,
             size = (1000, 1000))
 end
 
 function initializePlot_iterative()
     gr()
-    plt = plot([Inf,Inf], Any[[1,1],[1,1],[1,1]],
-                lab=["|x - xopt|"  "primal viol"  "dual viol"])
+    plt = plot([Inf,Inf], Any[[1,1],[1,1],[1,1],[1,1]],
+                lab=["Distance to optimal"  "Primal infeasibility"  "Dual infeasibility" "Optimality gap"])
     optionsPlot(plt)
     return plt
 end
 
-function updatePlot_iterative(plt, iter, distance, primviol, dualviol)#, xavg_primviol=nothing, xavg_dualviol=nothing)
+function updatePlot_iterative(plt, iter, distance, primviol, dualviol, optimgap)#, xavg_primviol=nothing, xavg_dualviol=nothing)
     push!(plt, 1, iter, distance)
     push!(plt, 2, iter, primviol)
     push!(plt, 3, iter, dualviol)
+    push!(plt, 4, iter, optimgap)
     #push!(plt, 4, iter, xavg_primviol)
     #push!(plt, 5, iter, xavg_dualviol)
     gui()
@@ -55,20 +59,21 @@ function plot_fixedCaseAlgo(fileprefix::String, savefileprefix::String, case::St
     p = []
     for (i, ti) in enumerate(partitions)
         for (j, tj) in enumerate(array2)
-            if array2_type == :perturb
+            if array2_type == :Perturb
                 datafile = getDataFilename(fileprefix, case, algo, ti, tj, true, other)
-            elseif array2_type == :ramping
+            elseif array2_type == :Ramping
                 datafile = getDataFilename(fileprefix, case, algo, ti, other, true, tj)
             else @assert(false)
             end
             savedata = isfile(datafile) ? readdlm(datafile) : 1e-12ones(2000, 4)
             push!(p,
-                    plot(savedata[:,1:3],
-                        lab=["|x - xopt|"  "primal viol"  "dual viol"])
+                    plot(savedata[:,1:3], 
+                        lab=["Distance to optimal"  "Primal infeasibility"  "Dual infeasibility"])
             )
             optionsPlot(p[end])
-            (j == 1) && plot!(p[end], ylabel="parts="*string(ti))
-            (i == 1) && plot!(p[end], title=string(array2_type)*"="*string(tj))
+            (j == 1) && plot!(p[end], ylabel="Partitions = "*string(ti))
+            (i == 1) && plot!(p[end], title=string(array2_type)*" = "*string(100tj)*"%")
+            (i == length(partitions)) && plot!(p[end], xlabel="Iterations")
         end
     end
     if !isempty(p)
@@ -83,16 +88,16 @@ function plot_fixedPartitions(fileprefix::String, savefileprefix::String, num_pa
     p = []
     for (i, ti) in enumerate(case)
         for (j, tj) in enumerate(algo)
-            if other2_type == :perturb
+            if other2_type == :Perturb
                 datafile = getDataFilename(fileprefix, ti, tj, num_partitions, other2, true, other1)
-            elseif other2_type == :ramping
+            elseif other2_type == :Ramping
                 datafile = getDataFilename(fileprefix, ti, tj, num_partitions, other1, true, other2)
             else @assert(false)
             end
             savedata = isfile(datafile) ? readdlm(datafile) : 1e-12ones(2000, 4)
             push!(p,
-                    plot(savedata[:,1:3],
-                        lab=["|x - xopt|"  "primal viol"  "dual viol"])
+                    plot(savedata[:,1:4],
+                        lab=["Distance to optimal"  "Primal infeasibility"  "Dual infeasibility" "Optimality gap"])
             )
             optionsPlot(p[end])
             (j == 1) && plot!(p[end], ylabel=string(ti))

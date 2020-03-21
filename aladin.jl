@@ -20,7 +20,8 @@ function runAladin(case::String, num_partitions::Int, perturbation::Number = 0.1
     #
     monolithic = acopf_model_monolithic(opfdata, network)
     xstar, λstar = acopf_solve_monolithic(monolithic, opfdata, network)
-    @printf("Optimal generation cost = %.2f\n", computePrimalCost(xstar, opfdata))
+    zstar = computePrimalCost(xstar, opfdata)
+    @printf("Optimal generation cost = %.2f\n", zstar)
     
     x = deepcopy(xstar); perturb(x, perturbation)
     λ = deepcopy(λstar); perturb(λ, perturbation)
@@ -96,15 +97,18 @@ function runAladin(case::String, num_partitions::Int, perturbation::Number = 0.1
         dist = computeDistance(xnlp, xstar; lnorm=Inf)
         primviol = computePrimalViolation(xnlp, network; lnorm = Inf)
         dualviol = computeDualViolation(xnlp, x, nlpmodel, network; lnorm = Inf, params = params)
+        gencost = computePrimalCost(xnlp, opfdata)
+        gap = (gencost - zstar)/zstar
+
         if verbose_level > 1
-            updatePlot_iterative(plt, iter, dist, primviol, dualviol)#, xavg_primviol, xavg_dualviol)
+            updatePlot_iterative(plt, iter, dist, primviol, dualviol, gap)
         end
 
         #
         # Various termination criteria
         converged = min(dist, max(primviol, dualviol)) <= params.tol
         if verbose_level > 0 || converged
-            @printf("iter %d: primviol = %.2f, dualviol = %.2f, gencost = %.2f, dist = %.3f\n", iter, primviol, dualviol, computePrimalCost(xnlp, opfdata), dist)
+            @printf("iter %d: primviol = %.2f, dualviol = %.2f, gencost = %.2f, dist = %.3f\n", iter, primviol, dualviol, gencost, dist)
         end
         if false
             x = deepcopy(xnlp)
@@ -195,7 +199,7 @@ function runAladin(case::String, num_partitions::Int, perturbation::Number = 0.1
             end
         end
 
-        savedata[iter,:] = [dist, primviol, dualviol, timeNLP, timeQP, time() - tstart]
+        savedata[iter,:] = [dist, primviol, dualviol, gap, timeNLP, timeQP]
     end
 
     writedlm(getDataFilename("", case, "aladin", num_partitions, perturbation, params.jacobi), savedata)

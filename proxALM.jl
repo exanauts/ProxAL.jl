@@ -13,7 +13,8 @@ function runProxALM(case::String, num_partitions::Int, perturbation::Number = 0.
     #
     monolithic = acopf_model_monolithic(opfdata, network)
     xstar, λstar = acopf_solve_monolithic(monolithic, opfdata, network)
-    @printf("Optimal generation cost = %.2f\n", computePrimalCost(xstar, opfdata))
+    zstar = computePrimalCost(xstar, opfdata)
+    @printf("Optimal generation cost = %.2f\n", zstar)
     
     x = deepcopy(xstar); perturb(x, perturbation)
     λ = deepcopy(λstar); perturb(λ, perturbation)
@@ -114,9 +115,10 @@ function runProxALM(case::String, num_partitions::Int, perturbation::Number = 0.
         #
         dist = computeDistance(x, xstar; lnorm = Inf)
         gencost = computePrimalCost(x, opfdata)
+        gap = (gencost - zstar)/zstar
 
         if verbose_level > 1
-            updatePlot_iterative(plt, iter, dist, primviol, dualviol)#, xavg_primviol, xavg_dualviol)
+            updatePlot_iterative(plt, iter, dist, primviol, dualviol, gap)
         end
 
         #
@@ -130,7 +132,7 @@ function runProxALM(case::String, num_partitions::Int, perturbation::Number = 0.
             break
         end
 
-        savedata[iter,:] = [dist, primviol, dualviol, timeNLP, 0, time() - tstart]
+        savedata[iter,:] = [dist, primviol, dualviol, gap, timeNLP, time() - tstart]
     end
 
     writedlm(getDataFilename("", case, "proxALM", num_partitions, perturbation, params.jacobi), savedata)
