@@ -7,33 +7,6 @@ using Printf
 include("mpacopf_data.jl")
 include("mpacopf_model.jl")
 
-function init_x(m, circuit, demand; opt::Option=Option())
-    num_buses = length(circuit.bus)
-    num_gens = length(circuit.gen)
-    T = size(demand.pd,2)
-
-    Vm = zeros(T, num_buses)
-
-    for b=1:num_buses
-        Vm[:,b] .= 0.5*(circuit.bus[b].Vmax + circuit.bus[b].Vmin)
-    end
-    Va = circuit.bus[circuit.busref].Va * ones(T, num_buses)
-
-    setvalue(m[:Vm], Vm)
-    setvalue(m[:Va], Va)
-
-    Pg = zeros(T, num_gens)
-    Qg = zeros(T, num_gens)
-
-    for g=1:num_gens
-        Pg[:,g] .= 0.5*(circuit.gen[g].Pmax + circuit.gen[g].Pmin)
-        Qg[:,g] .= 0.5*(circuit.gen[g].Qmax + circuit.gen[g].Qmin)
-    end
-
-    setvalue(m[:Pg], Pg)
-    setvalue(m[:Qg], Qg)
-end
-
 function usage()
     println("Usage: julia mpc.jl case scen T H LS RS warm opt [profname]")
     println(" where")
