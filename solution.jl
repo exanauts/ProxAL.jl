@@ -108,6 +108,17 @@ function computeDualViolation(x::PrimalSolution, xprev::PrimalSolution, nlpmodel
         #
         inner = internalmodel(nlpmodel[p]).inner
         kkt = grad_Lagrangian(nlpmodel[p], inner.x, inner.mult_g)
+        for j = 1:length(kkt)
+            if (abs(nlpmodel[p].colLower[j] - nlpmodel[p].colUpper[j]) <= params.zero)
+                kkt[j] = 0.0 # ignore
+            elseif abs(inner.x[j] - nlpmodel[p].colLower[j]) <= params.zero
+                (kkt[j] < 0) && (kkt[j] = 0.0)
+            elseif abs(inner.x[j] - nlpmodel[p].colUpper[j]) <= params.zero
+                (kkt[j] > 0) && (kkt[j] = 0.0)
+            else
+                (kkt[j] != 0.0) && (kkt[j] = 0.0)
+            end
+        end
 
         #
         # Now adjust it so that the final quantity represents the error in the KKT conditions

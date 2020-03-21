@@ -133,10 +133,10 @@ function grad_Lagrangian(m::JuMP.Model, x::Vector, mult_g::Vector)
     Kj = [sum(Kj_tmp[Vj[e]]) for e=1:length(Ij)]
 
     # Get the KKT expression
-    return grad .+ (transpose(sparse(Ij, Jj, Kj))*mult_g)
+    return grad .+ (transpose(sparse(Ij, Jj, Kj, nconstr, nvar))*mult_g)
 end
 
-function computePrimalDualError_manual(opfdata::OPFData, network::OPFNetwork, nlpmodel::Vector{JuMP.Model}, primal::PrimalSolution;
+function computePrimalDualError_manual(opfdata, network, nlpmodel, primal;
     lnorm = 1, compute_dual_error = true)
     Pg, Qg, Vm, Va = constructPrimalSolution(opfdata, network, primal)
     x = [Pg; Qg; Vm; Va]
