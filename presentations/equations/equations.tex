@@ -1,0 +1,101 @@
+% This text is proprietary.
+% It's a part of presentation made by myself.
+% It may not used commercial.
+% The noncommercial use such as private and study is free
+% Sep. 2005 
+% Author: Sascha Frank 
+% University Freiburg 
+% www.informatik.uni-freiburg.de/~frank/
+
+\documentclass{beamer}
+%\usepackage[usenames]{color} %used for font color
+\renewcommand{\familydefault}{\sfdefault}
+\usepackage{xcolor,transparent,tikz}
+\usepackage{amsthm,amsfonts,mathtools,amssymb,amsmath,bm} %maths
+\usepackage[utf8]{inputenc} %useful to type directly diacritic characters
+\definecolor{dr}{RGB}{181,23,0}
+\definecolor{db}{RGB}{0,31,164}
+% commands
+\newcommand{\unc}{\color{dr}}
+\newcommand{\secstage}{\color{db}}
+\newcommand{\rxi}{{\unc \bm{\xi}}}
+\newcommand{\rxihat}[1]{{\unc \hat{\bm{\xi}}_{#1}}}
+\newcommand{\by}{{\secstage y}}
+
+\newcommand{\y}{{\color{db}\bm{y}}}
+\newcommand{\x}{{\color{black}\bm{w}}}
+\newcommand{\X}{W}
+\newcommand{\Y}{K}
+\newcommand{\expectationQ}[1]{%
+    \begingroup
+    \colorlet{savedleftcolor}{.}
+    \unc\mathbb{E}_\mathbb{Q}\left[\color{savedleftcolor}#1\unc\right]
+    \endgroup
+}
+\newcommand{\expectation}[1]{%
+    \begingroup
+    \colorlet{savedleftcolor}{.}
+    \unc\mathbb{E}_\mathbb{P}\left[\color{savedleftcolor}#1\unc\right]
+    \endgroup
+}
+\newcommand{\expectationNominal}[1]{%
+    \begingroup
+    \colorlet{savedleftcolor}{.}
+    \unc\mathbb{E}_{\hat{\mathbb{P}}_N}\left[\color{savedleftcolor}#1\unc\right]
+    \endgroup
+}
+\newcommand{\loss}[1]{%
+    \begingroup
+    \colorlet{savedleftcolor}{.}
+    \secstage\ell\left(\color{savedleftcolor}#1\secstage\right)
+    \endgroup
+}
+\newcommand{\myphi}[1]{%
+    \begingroup
+    \colorlet{savedleftcolor}{.}
+    \secstage\phi\left(\color{savedleftcolor}#1\secstage\right)
+    \endgroup
+}
+
+\begin{document}
+\title{Simple Beamer Class}   
+\author{Sascha Frank} 
+\date{\today} 
+
+\frame{\titlepage} 
+
+
+\section{Optimization under uncertainty} 
+\frame{\frametitle{Optimization under uncertainty} 
+\begin{equation*}
+\begin{array}{r@{\;\;}l@{\;}l}
+\mathop{\text{minimize}} \;\; & {\color{db} f_1(x_1)} &+ {\color{dr} f_2(x_2)} \\
+\text{subject to} \;\; & \color{db} h_1(x_1) \leq 0,  &\phantom{+} \color{dr} h_2(x_2) \;\leq 0 \\
+& \color{db} {A}_1 x_1 &+ \color{dr} {A}_2 x_2 \color{black} = 0
+\end{array}
+\end{equation*}
+
+\begin{equation*}
+\color{db} x_1 = P_g, Q_g \text{ of \tikz\draw[fill] (0,0) circle (0.75ex); and } V, \theta \text{ of \tikz\draw[fill] (0,0) circle (0.75ex); + \tikz\draw[dashed] (0,0) circle (0.75ex); }
+\end{equation*}
+
+\begin{equation*}
+\color{dr} x_2 = P_g, Q_g \text{ of \tikz\draw[fill] (0,0) circle (0.75ex); and } V, \theta \text{ of \tikz\draw[fill] (0,0) circle (0.75ex); + \tikz\draw[dashed] (0,0) circle (0.75ex); }
+\end{equation*}
+}
+
+\frame{
+\begin{equation*}
+\color{db} t = 1
+\end{equation*}	
+
+\begin{equation*}
+\color{dr} t = 2
+\end{equation*}
+
+\begin{equation*}
+\left\lvert {\color{db} P_g} - {\color{dr} P_g} \right\rvert \leq \Delta
+\end{equation*}
+}
+\end{document}
+
