@@ -153,7 +153,8 @@ Using the triangle inequality and combining with~\eqref{eq:temp1}, we have:
 \begin{equation*}
 \norm{\Delta^k} \leq S\norm{A_N^\top \Delta \lambda^k} \leq S\cdot\left(\norm{1^\text{st} \text{ term}} + \norm{2^\text{nd} \text{ term}} + \norm{3^\text{rd} \text{ term}}\right)
 \end{equation*}
-Now, we analyze each of the three terms using Assumption~\eqref{assume:lipschitz}.
+
+Now, we analyze each of the three terms using Assumptions~\eqref{assume:lipschitz} and~\eqref{assume:bounded}.
 \begin{equation*}
 \norm{1^\text{st} \text{ term}} \leq L \norm{\Delta x_N^k}
 \end{equation*}
@@ -161,9 +162,28 @@ Now, we analyze each of the three terms using Assumption~\eqref{assume:lipschitz
 2^\text{nd} \text{ term} &= \sum_{l = 1}^{c_N} \big[\mu_{Nl}^k\nabla h_{Nl}(x_N^k) - \mu_{Nl}^{k-1}\nabla h_{Nl}(x_N^{k-1}) \big] \\
 \implies  \norm{2^\text{nd} \text{ term}} &\leq \sum_{l = 1}^{c_N} \norm{\mu_{Nl}^k\nabla h_{Nl}(x_N^k) - \mu_{Nl}^{k-1}\nabla h_{Nl}(x_N^{k-1})} \\
 &= \sum_{l = 1}^{c_N} \norm{\mu_{Nl}^k\nabla h_{Nl}(x_N^k) - \mu_{Nl}^k\nabla h_{Nl}(x_N^{k-1}) - \mu_{Nl}^{k-1}\nabla h_{Nl}(x_N^{k-1}) + \mu_{Nl}^{k}\nabla h_{Nl}(x_N^{k-1})} \\
-&\leq \sum_{l = 1}^{c_N} \left[\norm{\mu_{Nl}^k\nabla h_{Nl}(x_N^k) - \mu_{Nl}^k\nabla h_{Nl}(x_N^{k-1})} + \norm{\mu_{Nl}^{k-1}\nabla h_{Nl}(x_N^{k-1}) + \mu_{Nl}^{k}\nabla h_{Nl}(x_N^{k-1})}\right] \\
-&= \sum_{l = 1}^{c_N} \left[\norm{\mu_{Nl}^k} \norm{\nabla h_{Nl}(x_N^k) - \nabla h_{Nl}(x_N^{k-1})} + \norm{\nabla h_{Nl}(x_N^{k-1})} \norm{\mu_{Nl}^{k} - \mu_{Nl}^{k-1}}\right] \\
+%&\leq \sum_{l = 1}^{c_N} \left[\norm{\mu_{Nl}^k\nabla h_{Nl}(x_N^k) - \mu_{Nl}^k\nabla h_{Nl}(x_N^{k-1})} + \norm{\mu_{Nl}^{k-1}\nabla h_{Nl}(x_N^{k-1}) + \mu_{Nl}^{k}\nabla h_{Nl}(x_N^{k-1})}\right] \\
+&\leq \sum_{l = 1}^{c_N} \left[\norm{\mu_{Nl}^k} \norm{\nabla h_{Nl}(x_N^k) - \nabla h_{Nl}(x_N^{k-1})} + \norm{\nabla h_{Nl}(x_N^{k-1})} \underset{\coloneqq\Delta \mu_{Nl}^k}{\underbrace{\norm{\mu_{Nl}^{k} - \mu_{Nl}^{k-1}}}}\right] \\
+%&\leq \sum_{l = 1}^{c_N} \left[L \norm{\mu_{Nl}^k} \norm{\Delta x_N^k} + B\norm{\Delta \mu_{Nl}^{k}}\right] \\
+&\leq L \norm{\mu_{N}^k}_1 \norm{\Delta x_N^k} + B\norm{\Delta \mu_{N}^{k}}_1
 \end{align*}
+\begin{equation*}
+\norm{3^\text{rd} \text{ term}} \leq \rho \sum_{j = 1}^{N-1} \norm{A_N^\top A_j} \left(\norm{\Delta x_j^k} + \norm{\Delta x_j^{k - 1}} \right) + w_N\left(\norm{\Delta x_N^k} + \norm{\Delta x_N^{k-1}}\right)
+\end{equation*}
+
+{\color{magenta}At this point, I realized that I made a mistake in my derivation. In short, I am not able to bound the norm of the Lagrange multipliers $\norm{\mu_{N}^k}_1$ which is needed later on in the proof. The only way out is to make another assumption, which makes the $2^\text{nd}$ term disappear.
+\begin{enumerate}\setcounter{enumi}{6}
+    \item\label{assume:unconstrained} Assume that $h_N \equiv 0$.
+\end{enumerate}
+In other words, this assumption says that there exists a block of variables, $x_N$ in this case, which are essentially unconstrained except for the coupling constraints.
+This significantly weakens the proof, and makes it quite similar to existing analyses of ADMM for non-convex problems.
+Note that if the assumption is not already satisfied, then it can be ensured by introducing additional slack variables $z$ and modifying the constraints $\sum_{i = 1}^N A_i x_i = b - z$ and the objective $\sum_{i = 1}^N f_i(x_i) + M \norm{z}^2$.
+These modifications will ensure that Assumption~\eqref{assume:coupling} continues to be satisfied.
+However, I don't know how to calculate the penalty parameter $M$ that ensures equivalence with the original problem.
+}
+
+
+
 
 \subsection{Bounded Lyapunov sequence that decreases by $\norm{\Delta x^k}$ in each step}\label{sec:proof:lyapunov}
 \end{document}
