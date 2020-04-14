@@ -70,15 +70,50 @@ struct OPFData
     FromLines::Array         #From lines for each bus (Array of Array)
     ToLines::Array           #To lines for each bus (Array of Array)
     BusGenerators::Array     #list of generators for each bus (Array of Array)
+    Pd::Array                #2d array of active power demands over a time horizon
+    Qd::Array                #2d array of reactive power demands
 end
 
 
-function opf_loaddata(case_name, lineOff=Line())
+struct RawData
+    bus_arr
+    branch_arr
+    gen_arr
+    costgen_arr
+    pd_arr
+    qd_arr
+    ctgs_arr
+end
+
+function RawData(case_name, scen_file::String="")
+    bus_arr = readdlm(case_name * ".bus")
+    branch_arr = readdlm(case_name * ".branch")
+    gen_arr = readdlm(case_name * ".gen")
+    costgen_arr = readdlm(case_name * ".gencost")
+    pd_arr = Array{Float64, 2}(undef, 0, 0)
+    qd_arr = Array{Float64, 2}(undef, 0, 0)
+    ctgs_arr = Array{Int64, 1}(undef, 0)
+    if isfile(scen_file * ".Pd")
+        pd_arr = readdlm(scen_file * ".Pd")
+    end
+    if isfile(scen_file * ".Qd")
+        qd_arr = readdlm(scen_file * ".Qd")
+    end
+    if isfile(scen_file * ".Ctgs")
+        ctgs_arr = readdlm(scen_file * ".Ctgs", Int)
+    end
+    return RawData(bus_arr, branch_arr, gen_arr, costgen_arr, pd_arr, qd_arr, ctgs_arr)
+end
+
+function ctgs_loaddata(raw::RawData, n)
+    return raw.ctgs_arr[1:n]
+end
+
+function opf_loaddata(raw::RawData; time_horizon::Int=0, load_scale::Float64=1.0, ramp_scale::Float64=0.0, lineOff=Line())
     #
     # load buses
     #
-    # bus_arr = readdlm("data/" * case_name * ".bus")
-    bus_arr = readdlm(case_name * ".bus")
+    bus_arr = raw.bus_arr
     num_buses = size(bus_arr,1)
     buses = Array{Bus}(undef, num_buses)
     bus_ref=-1
@@ -100,8 +135,7 @@ function opf_loaddata(case_name, lineOff=Line())
     #
     # load branches/lines
     #
-    # branch_arr = readdlm("data/" * case_name * ".branch")
-    branch_arr = readdlm(case_name * ".branch")
+    branch_arr = raw.branch_arr
     num_lines = size(branch_arr,1)
     lines_on = findall((branch_arr[:,11].>0) .& ((branch_arr[:,1].!=lineOff.from) .| (branch_arr[:,2].!=lineOff.to)) )
     num_on   = length(lines_on)
@@ -132,10 +166,8 @@ function opf_loaddata(case_name, lineOff=Line())
     #
     # load generators
     #
-    # gen_arr = readdlm("data/" * case_name * ".gen")
-    gen_arr = readdlm(case_name * ".gen")
-    # costgen_arr = readdlm("data/" * case_name * ".gencost")
-    costgen_arr = readdlm(case_name * ".gencost")
+    gen_arr = raw.gen_arr
+    costgen_arr = raw.costgen_arr
     num_gens = size(gen_arr,1)
 
     baseMVA=100
@@ -171,6 +203,7 @@ function opf_loaddata(case_name, lineOff=Line())
         generators[i].Qc1max   = gen_arr[git,14]
         generators[i].Qc2min   = gen_arr[git,15]
         generators[i].Qc2max   = gen_arr[git,16]
+        generators[i].ramp_agc = gen_arr[git,9] * ramp_scale  / baseMVA
         generators[i].gentype  = costgen_arr[git,1]
         generators[i].startup  = costgen_arr[git,2]
         generators[i].shutdown = costgen_arr[git,3]
@@ -197,9 +230,15 @@ function opf_loaddata(case_name, lineOff=Line())
     # generators at each bus
     BusGeners = mapGenersToBuses(buses, generators, busIdx)
 
-    #println(generators)
-    #println(bus_ref)
-    return OPFData(buses, lines, generators, bus_ref, baseMVA, busIdx, FromLines, ToLines, BusGeners)
+    # demands for multiperiod OPF
+    Pd = raw.pd_arr
+    Qd = raw.qd_arr
+    if time_horizon > 0
+        Pd = Pd[:,1:time_horizon] .* load_scale
+        Qd = Qd[:,1:time_horizon] .* load_scale
+    end
+
+    return OPFData(buses, lines, generators, bus_ref, baseMVA, busIdx, FromLines, ToLines, BusGeners, Pd, Qd)
 end
 
 function  computeAdmitances(lines, buses, baseMVA; lossless::Bool=false, fixedtaps::Bool=false, zeroshunts::Bool=false)

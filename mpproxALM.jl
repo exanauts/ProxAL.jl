@@ -2,15 +2,13 @@
 # proximal ALM implementation
 #
 
-function runProxALM_mp(circuit, demand, ramp_scale, perturbation::Number = 0.1, opt::Option=Option())
-    T = size(demand.pd, 2)
-
+function runProxALM_mp(opfdata::OPFData, perturbation::Number = 0.1)
     #
     # start from perturbation of optimal solution
     #
-    monolithic = get_mpmodel(circuit, demand; opt = opt)
-    xstar, λstar = solve_mpmodel(monolithic, circuit, demand)
-    zstar = computePrimalCost(xstar, circuit)
+    monolithic = get_mpmodel(opfdata)
+    xstar, λstar = solve_mpmodel(monolithic, opfdata)
+    zstar = computePrimalCost(xstar, opfdata)
     @printf("Optimal generation cost = %.2f\n", zstar)
 
     x = deepcopy(xstar); perturb(x, perturbation)
@@ -34,6 +32,7 @@ function runProxALM_mp(circuit, demand, ramp_scale, perturbation::Number = 0.1, 
     #
     # Initialize algorithmic parameters
     #
+    T = size(opfdata.Pd, 2)
     maxρ = Float64(T > 1)*maximum(abs.(λstar.λ))
     params = initializeParams(maxρ; aladin = false, jacobi = true)
     params.iterlim = 10
@@ -58,9 +57,9 @@ function runProxALM_mp(circuit, demand, ramp_scale, perturbation::Number = 0.1, 
         #
         nlpmodel = Vector{JuMP.Model}(undef, T)
         for t = 1:T
-            nlpmodel[t] = get_mpmodel(circuit, demand, t; opt = opt, params = params, primal = x, dual = λ)
+            nlpmodel[t] = get_mpmodel(opfdata, t; params = params, primal = x, dual = λ)
             t0 = time()
-            nlpmodel[t], status = solve_mpmodel(nlpmodel[t], circuit, t; initial_x = x, initial_λ = λ, params = params)
+            nlpmodel[t], status = solve_mpmodel(nlpmodel[t], opfdata, t; initial_x = x, initial_λ = λ, params = params)
             t1 = time(); timeNLP += t1 - t0
             if status != :Optimal && status != :UserLimit
                 error("something went wrong in the x-update of proximal ALM with status ", status)
@@ -87,24 +86,24 @@ function runProxALM_mp(circuit, demand, ramp_scale, perturbation::Number = 0.1, 
         #
         # update the λ
         #
-        updateDualSolution(λ, x, circuit; params = params)
+        updateDualSolution(λ, x, opfdata; params = params)
 
 
         #
         # Compute the primal error
         #
-        primviol = computePrimalViolation(x, circuit, T; lnorm = Inf)
+        primviol = computePrimalViolation(x, opfdata; lnorm = Inf)
 
         #
         # Compute the KKT error --> has meaningful value
         #                           only if both x and λ have been updated
         #
-        dualviol = computeDualViolation(x, xprev, λ, λprev, nlpmodel, circuit; lnorm = Inf, params = params)
+        dualviol = computeDualViolation(x, xprev, λ, λprev, nlpmodel, opfdata; lnorm = Inf, params = params)
 
 
 
         dist = computeDistance(x, xstar; lnorm = Inf)
-        gencost = computePrimalCost(x, circuit)
+        gencost = computePrimalCost(x, opfdata)
         gap = (gencost - zstar)/zstar
 
         if verbose_level > 1
@@ -139,10 +138,10 @@ function updatePrimalSolution(x::mpPrimalSolution, nlpmodel::Vector{JuMP.Model},
 end
 
 
-function updateDualSolution(dual::mpDualSolution, x::mpPrimalSolution, circuit::Circuit; params::AlgParams)
+function updateDualSolution(dual::mpDualSolution, x::mpPrimalSolution, opfdata::OPFData; params::AlgParams)
     for t=2:size(dual.λ, 1)
         for g=1:size(dual.λ, 2)
-            dual.λ[t,g] += params.θ*params.ρ*(+x.PG[t-1,g] - x.PG[t,g] + x.SL[t,g] - circuit.gen[g].ramp_agc)
+            dual.λ[t,g] += params.θ*params.ρ*(+x.PG[t-1,g] - x.PG[t,g] + x.SL[t,g] - opfdata.generators[g].ramp_agc)
         end
     end
 end

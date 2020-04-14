@@ -14,32 +14,35 @@ mutable struct mpPrimalSolution
     SL::Array{Float64,2} #[t][g] := Slack for Pg[g,t-1] - Pg[g,t] <= r
 end
 
-function initializeDualSolution(circuit::Circuit, T::Int)
-    λ = zeros(T, length(circuit.gen))
+function initializeDualSolution(opfdata::OPFData)
+    λ = zeros(size(opfdata.Pd, 2), length(opfdata.generators))
 
     return mpDualSolution(λ)
 end
 
-function initializePrimalSolution(circuit::Circuit, T::Int)
-    num_buses = length(circuit.bus)
-    num_gens = length(circuit.gen)
+function initializePrimalSolution(opfdata::OPFData)
+    T = size(opfdata.Pd, 2)
+    bus = opfdata.buses
+    gen = opfdata.generators
+    num_buses = length(bus)
+    num_gens = length(gen)
 
     Vm = zeros(T, num_buses)
     for b=1:num_buses
-        Vm[:,b] .= 0.5*(circuit.bus[b].Vmax + circuit.bus[b].Vmin)
+        Vm[:,b] .= 0.5*(bus[b].Vmax + bus[b].Vmin)
     end
-    Va = circuit.bus[circuit.busref].Va * ones(T, num_buses)
+    Va = bus[opfdata.bus_ref].Va * ones(T, num_buses)
 
     Pg = zeros(T, num_gens)
     Qg = zeros(T, num_gens)
     for g=1:num_gens
-        Pg[:,g] .= 0.5*(circuit.gen[g].Pmax + circuit.gen[g].Pmin)
-        Qg[:,g] .= 0.5*(circuit.gen[g].Qmax + circuit.gen[g].Qmin)
+        Pg[:,g] .= 0.5*(gen[g].Pmax + gen[g].Pmin)
+        Qg[:,g] .= 0.5*(gen[g].Qmax + gen[g].Qmin)
     end
 
     Sl = zeros(T, num_gens)
     for g=1:num_gens
-        Sl[2:T,g] .= circuit.gen[g].ramp_agc
+        Sl[2:T,g] .= gen[g].ramp_agc
     end
 
     return mpPrimalSolution(Pg, Qg, Vm, Va, Sl)
@@ -71,7 +74,8 @@ function computeDistance(x1::mpDualSolution, x2::mpDualSolution; lnorm = 1)
     return (isempty(xd) ? 0.0 : norm(xd, lnorm))
 end
 
-function computeDualViolation(x::mpPrimalSolution, xprev::mpPrimalSolution, λ::mpDualSolution, λprev::mpDualSolution, nlpmodel::Vector{JuMP.Model}, circuit::Circuit; lnorm = 1, params::AlgParams)
+function computeDualViolation(x::mpPrimalSolution, xprev::mpPrimalSolution, λ::mpDualSolution, λprev::mpDualSolution, nlpmodel::Vector{JuMP.Model}, opfdata::OPFData; lnorm = 1, params::AlgParams)
+    gen = opfdata.generators
     dualviol = []
     for t = 1:length(nlpmodel)
         #
@@ -99,7 +103,7 @@ function computeDualViolation(x::mpPrimalSolution, xprev::mpPrimalSolution, λ::
 
         else
             # The Aug Lag part in proximal ALM
-            for g=1:length(circuit.gen)
+            for g=1:length(gen)
                 idx_pg = linearindex(nlpmodel[t][:Pg][g])
                 idx_sl = linearindex(nlpmodel[t][:Sl][g])
                 if t > 1
@@ -107,7 +111,7 @@ function computeDualViolation(x::mpPrimalSolution, xprev::mpPrimalSolution, λ::
                     kkt[idx_sl] += +λ.λ[t,g]
                     temp = -λprev.λ[t,g] - params.ρ*(
                                     (params.jacobi ? xprev.PG[t-1,g] : x.PG[t-1,g]) -
-                                    x.PG[t,g] + x.SL[t,g] - circuit.gen[g].ramp_agc
+                                    x.PG[t,g] + x.SL[t,g] - gen[g].ramp_agc
                                 )
                     kkt[idx_pg] -= temp
                     kkt[idx_sl] += temp
@@ -116,19 +120,19 @@ function computeDualViolation(x::mpPrimalSolution, xprev::mpPrimalSolution, λ::
                     kkt[idx_pg] += +λ.λ[t+1,g]
                     kkt[idx_pg] -= +λprev.λ[t+1,g] + params.ρ*(
                                     x.PG[t,g] - xprev.PG[t+1,g] + xprev.SL[t+1,g] -
-                                    circuit.gen[g].ramp_agc
+                                    gen[g].ramp_agc
                                 )
                 end
             end
         end
         # The proximal part in both ALADIN and proximal ALM
-        for g=1:length(circuit.gen)
+        for g=1:length(gen)
             pg_idx = linearindex(nlpmodel[t][:Pg][g])
             qg_idx = linearindex(nlpmodel[t][:Qg][g])
             kkt[pg_idx] -= params.τ*(x.PG[t,g] - xprev.PG[t,g])
             kkt[qg_idx] -= params.τ*(x.QG[t,g] - xprev.QG[t,g])
         end
-        for b=1:length(circuit.bus)
+        for b=1:length(opfdata.buses)
             vm_idx = linearindex(nlpmodel[t][:Vm][b])
             va_idx = linearindex(nlpmodel[t][:Va][b])
             kkt[vm_idx] -= params.τ*(x.VM[t,b] - xprev.VM[t,b])
@@ -155,8 +159,9 @@ function computeDualViolation(x::mpPrimalSolution, xprev::mpPrimalSolution, λ::
     return (isempty(dualviol) ? 0.0 : norm(dualviol, lnorm))
 end
 
-function computePrimalViolation(primal::mpPrimalSolution, circuit::Circuit, T::Int; lnorm = 1)
-    gen = circuit.gen
+function computePrimalViolation(primal::mpPrimalSolution, opfdata::OPFData; lnorm = 1)
+    T = size(opfdata.Pd, 2)
+    gen = opfdata.generators
     num_gens = length(gen)
 
     #
@@ -169,16 +174,16 @@ function computePrimalViolation(primal::mpPrimalSolution, circuit::Circuit, T::I
     return (isempty(err) ? 0.0 : norm(err, lnorm))
 end
 
-function computePrimalCost(primal::mpPrimalSolution, circuit::Circuit)
-    gen = circuit.gen
-    baseMVA = circuit.baseMVA
+function computePrimalCost(primal::mpPrimalSolution, opfdata::OPFData)
+    gen = opfdata.generators
+    baseMVA = opfdata.baseMVA
     gencost = 0.0
     for p in 1:size(primal.PG, 1)
         for g in 1:size(primal.PG, 2)
             Pg = primal.PG[p,g]
-            gencost += gen[g].coeff2*(baseMVA*Pg)^2 +
-                       gen[g].coeff1*(baseMVA*Pg)   +
-                       gen[g].coeff0
+            gencost += gen[g].coeff[gen[g].n-2]*(baseMVA*Pg)^2 +
+                       gen[g].coeff[gen[g].n-1]*(baseMVA*Pg)   +
+                       gen[g].coeff[gen[g].n  ]
         end
     end
 
