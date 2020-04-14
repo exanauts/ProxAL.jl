@@ -11,7 +11,8 @@ mutable struct Triplet
 end
 
 function runAladin(case::String, num_partitions::Int, perturbation::Number = 0.1)
-    opfdata = opf_loaddata(case)
+    rawdata = RawData(case)
+    opfdata = opf_loaddata(rawdata)
     num_partitions = max(min(length(opfdata.buses), num_partitions), 1)
     network = buildNetworkPartition(opfdata, num_partitions)
 
