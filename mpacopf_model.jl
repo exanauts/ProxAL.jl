@@ -1,7 +1,7 @@
 using JuMP
 using Ipopt
 
-function init_x(m, opfdata)
+function init_x(m::JuMP.Model, opfdata::OPFData)
     T = size(opfdata.Pd, 2)
     bus = opfdata.buses
     gen = opfdata.generators
@@ -32,7 +32,7 @@ function init_x(m, opfdata)
     setvalue(m[:Sl], Sl)
 end
 
-function get_mpmodel(opfdata; has_ramping::Bool = true)
+function get_mpmodel(opfdata::OPFData; has_ramping::Bool = true)
 
     m = Model()
 
@@ -167,7 +167,7 @@ function get_mpmodel(opfdata; has_ramping::Bool = true)
     return m
 end
 
-function solve_mpmodel(m, opfdata)
+function solve_mpmodel(m::JuMP.Model, opfdata::OPFData)
     T = size(opfdata.Pd, 2)
     init_x(m, opfdata)
     setsolver(m, IpoptSolver(print_level=1))
@@ -209,7 +209,7 @@ function solve_mpmodel(m, opfdata)
     return primal, dual
 end
 
-function solve_mpmodel(m, opfdata, t::Int;
+function solve_mpmodel(m::JuMP.Model, opfdata::OPFData, t::Int;
         initial_x::mpPrimalSolution = nothing, initial_λ::mpDualSolution = nothing, params::AlgParams)
     Pg = m[:Pg]
     Qg = m[:Qg]
@@ -256,7 +256,7 @@ function solve_mpmodel(m, opfdata, t::Int;
     return m, status
 end
 
-function get_mpmodel(opfdata, t::Int; params::AlgParams, dual::mpDualSolution, primal::mpPrimalSolution)
+function get_mpmodel(opfdata::OPFData, t::Int; params::AlgParams, dual::mpDualSolution, primal::mpPrimalSolution)
 
     m = Model(solver=IpoptSolver(print_level=1))
 
@@ -387,7 +387,7 @@ function get_mpmodel(opfdata, t::Int; params::AlgParams, dual::mpDualSolution, p
     return m
 end
 
-function penalty_expression(m, opfdata, t::Int; params::AlgParams, dual::mpDualSolution, primal::mpPrimalSolution)
+function penalty_expression(m::JuMP.Model, opfdata::OPFData, t::Int; params::AlgParams, dual::mpDualSolution, primal::mpPrimalSolution)
     Pg = m[:Pg]
     Qg = m[:Qg]
     Vm = m[:Vm]
