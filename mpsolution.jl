@@ -3,25 +3,26 @@
 #
 
 mutable struct mpDualSolution
-    λ::Array{Float64,2} #[t][g] := λ for the ramping constraint Pg[g,t-1] - Pg[g,t] + Sl[g,t] = r
+    λ::Array{Float64,2} #[t][g] := [multiperiod] λ for the ramping constraint Pg[g,t-1] - Pg[g,t] + Sl[g,t] = ramp_agc
+                        #       := [contingency] λ for the linking constraint Pg[g,t] = Pg[g,1] + Sl[g,t]
 end
 
 mutable struct mpPrimalSolution
-    PG::Array{Float64,2} #[t][g] := Pg of gen g in time period t
-    QG::Array{Float64,2} #[t][g] := Qg of gen g in time period t
-    VM::Array{Float64,2} #[t][b] := Vm of bus b in time period t
-    VA::Array{Float64,2} #[t][b] := Va of bus b in time period t
-    SL::Array{Float64,2} #[t][g] := Slack for Pg[g,t-1] - Pg[g,t] <= r
+    PG::Array{Float64,2} #[t][g] := Pg of gen g in scenario/time period t
+    QG::Array{Float64,2} #[t][g] := Qg of gen g in scenario/time period t
+    VM::Array{Float64,2} #[t][b] := Vm of bus b in scenario/time period t
+    VA::Array{Float64,2} #[t][b] := Va of bus b in scenario/time period t
+    SL::Array{Float64,2} #[t][g] := [multiperiod] Slack for Pg[g,t-1] - Pg[g,t] <= r
+                         #       := [contingency] Slack for Pg[g,1] - Pg[g,t] <= r
 end
 
-function initializeDualSolution(opfdata::OPFData)
-    λ = zeros(size(opfdata.Pd, 2), length(opfdata.generators))
+function initializeDualSolution(opfdata::OPFData, T::Int; sc::Bool)
+    λ = zeros(T, length(opfdata.generators))
 
     return mpDualSolution(λ)
 end
 
-function initializePrimalSolution(opfdata::OPFData)
-    T = size(opfdata.Pd, 2)
+function initializePrimalSolution(opfdata::OPFData, T::Int; sc::Bool)
     bus = opfdata.buses
     gen = opfdata.generators
     num_buses = length(bus)
@@ -42,7 +43,7 @@ function initializePrimalSolution(opfdata::OPFData)
 
     Sl = zeros(T, num_gens)
     for g=1:num_gens
-        Sl[2:T,g] .= gen[g].ramp_agc
+        Sl[2:T,g] .= (sc ? gen[g].scen_agc : gen[g].ramp_agc)
     end
 
     return mpPrimalSolution(Pg, Qg, Vm, Va, Sl)
@@ -66,7 +67,7 @@ function computeDistance(x1::mpPrimalSolution, x2::mpPrimalSolution; lnorm = 1)
            x1.QG[t,:] - x2.QG[t,:];
            x1.VM[t,:] - x2.VM[t,:];
            x1.VA[t,:] - x2.VA[t,:]] for t=1:size(x1.PG, 1)]
-    return (isempty(xd) ? 0.0 : norm(xd, lnorm))
+    return (isempty(xd) ? 0.0 : norm(vcat(xd...), lnorm))
 end
 
 function computeDistance(x1::mpDualSolution, x2::mpDualSolution; lnorm = 1)
@@ -74,7 +75,7 @@ function computeDistance(x1::mpDualSolution, x2::mpDualSolution; lnorm = 1)
     return (isempty(xd) ? 0.0 : norm(xd, lnorm))
 end
 
-function computeDualViolation(x::mpPrimalSolution, xprev::mpPrimalSolution, λ::mpDualSolution, λprev::mpDualSolution, nlpmodel::Vector{JuMP.Model}, opfdata::OPFData; lnorm = 1, params::AlgParams)
+function computeDualViolation(x::mpPrimalSolution, xprev::mpPrimalSolution, λ::mpDualSolution, λprev::mpDualSolution, nlpmodel::Vector{JuMP.Model}, opfdata::OPFData; sc::Bool, lnorm = 1, params::AlgParams)
     gen = opfdata.generators
     dualviol = []
     for t = 1:length(nlpmodel)
@@ -106,22 +107,46 @@ function computeDualViolation(x::mpPrimalSolution, xprev::mpPrimalSolution, λ::
             for g=1:length(gen)
                 idx_pg = linearindex(nlpmodel[t][:Pg][g])
                 idx_sl = linearindex(nlpmodel[t][:Sl][g])
-                if t > 1
-                    kkt[idx_pg] += -λ.λ[t,g]
-                    kkt[idx_sl] += +λ.λ[t,g]
-                    temp = -λprev.λ[t,g] - params.ρ*(
-                                    (params.jacobi ? xprev.PG[t-1,g] : x.PG[t-1,g]) -
-                                    x.PG[t,g] + x.SL[t,g] - gen[g].ramp_agc
-                                )
-                    kkt[idx_pg] -= temp
-                    kkt[idx_sl] += temp
-                end
-                if t < length(nlpmodel)
-                    kkt[idx_pg] += +λ.λ[t+1,g]
-                    kkt[idx_pg] -= +λprev.λ[t+1,g] + params.ρ*(
-                                    x.PG[t,g] - xprev.PG[t+1,g] + xprev.SL[t+1,g] -
-                                    gen[g].ramp_agc
-                                )
+                # contingency
+                if sc
+                    if t > 1
+                        kkt[idx_pg] += -λ.λ[t,g]
+                        kkt[idx_sl] += +λ.λ[t,g]
+                        temp = -λprev.λ[t,g] - params.ρ*(
+                                        (params.jacobi ? xprev.PG[1,g] : x.PG[1,g]) -
+                                        x.PG[t,g] + x.SL[t,g] - gen[g].scen_agc
+                                    )
+                        kkt[idx_pg] -= temp
+                        kkt[idx_sl] += temp
+                    else
+                        for s=2:size(λ.λ, 1)
+                            kkt[idx_pg] += +λ.λ[s,g]
+                            kkt[idx_pg] -= +λprev.λ[s,g] + params.ρ*(
+                                            x.PG[1,g] - xprev.PG[s,g] + xprev.SL[s,g] -
+                                            gen[g].scen_agc
+                                        )
+                        end
+                    end
+
+                # multiperiod
+                else
+                    if t > 1
+                        kkt[idx_pg] += -λ.λ[t,g]
+                        kkt[idx_sl] += +λ.λ[t,g]
+                        temp = -λprev.λ[t,g] - params.ρ*(
+                                        (params.jacobi ? xprev.PG[t-1,g] : x.PG[t-1,g]) -
+                                        x.PG[t,g] + x.SL[t,g] - gen[g].ramp_agc
+                                    )
+                        kkt[idx_pg] -= temp
+                        kkt[idx_sl] += temp
+                    end
+                    if t < length(nlpmodel)
+                        kkt[idx_pg] += +λ.λ[t+1,g]
+                        kkt[idx_pg] -= +λprev.λ[t+1,g] + params.ρ*(
+                                        x.PG[t,g] - xprev.PG[t+1,g] + xprev.SL[t+1,g] -
+                                        gen[g].ramp_agc
+                                    )
+                    end
                 end
             end
         end
@@ -131,6 +156,10 @@ function computeDualViolation(x::mpPrimalSolution, xprev::mpPrimalSolution, λ::
             qg_idx = linearindex(nlpmodel[t][:Qg][g])
             kkt[pg_idx] -= params.τ*(x.PG[t,g] - xprev.PG[t,g])
             kkt[qg_idx] -= params.τ*(x.QG[t,g] - xprev.QG[t,g])
+            if sc && t > 1
+                sl_idx = linearindex(nlpmodel[t][:Sl][g])
+                kkt[sl_idx] -= params.τ*(x.SL[t,g] - xprev.SL[t,g])
+            end
         end
         for b=1:length(opfdata.buses)
             vm_idx = linearindex(nlpmodel[t][:Vm][b])
@@ -159,26 +188,32 @@ function computeDualViolation(x::mpPrimalSolution, xprev::mpPrimalSolution, λ::
     return (isempty(dualviol) ? 0.0 : norm(dualviol, lnorm))
 end
 
-function computePrimalViolation(primal::mpPrimalSolution, opfdata::OPFData; lnorm = 1)
-    T = size(opfdata.Pd, 2)
+function computePrimalViolation(primal::mpPrimalSolution, opfdata::OPFData; sc::Bool, lnorm = 1)
+    T = size(primal.PG, 1)
     gen = opfdata.generators
     num_gens = length(gen)
 
     #
     # primal violation
     #
-    errp = [max(+primal.PG[t,g] - primal.PG[t+1,g] - gen[g].ramp_agc, 0) for t=1:T-1 for g=1:num_gens]
-    errn = [max(-primal.PG[t,g] + primal.PG[t+1,g] - gen[g].ramp_agc, 0) for t=1:T-1 for g=1:num_gens]
+    if sc
+        errp = [max(+primal.PG[1,g] - primal.PG[t,g] - gen[g].scen_agc, 0) for t=2:T for g=1:num_gens]
+        errn = [max(-primal.PG[1,g] + primal.PG[t,g] - gen[g].scen_agc, 0) for t=2:T for g=1:num_gens]
+    else
+        errp = [max(+primal.PG[t-1,g] - primal.PG[t,g] - gen[g].ramp_agc, 0) for t=2:T for g=1:num_gens]
+        errn = [max(-primal.PG[t-1,g] + primal.PG[t,g] - gen[g].ramp_agc, 0) for t=2:T for g=1:num_gens]
+    end
     err  = [errp; errn]
 
     return (isempty(err) ? 0.0 : norm(err, lnorm))
 end
 
-function computePrimalCost(primal::mpPrimalSolution, opfdata::OPFData)
+function computePrimalCost(primal::mpPrimalSolution, opfdata::OPFData; sc::Bool)
     gen = opfdata.generators
     baseMVA = opfdata.baseMVA
     gencost = 0.0
-    for p in 1:size(primal.PG, 1)
+    arr = sc ? [1] : (1:size(opfdata.Pd, 2))
+    for p in arr
         for g in 1:size(primal.PG, 2)
             Pg = primal.PG[p,g]
             gencost += gen[g].coeff[gen[g].n-2]*(baseMVA*Pg)^2 +
