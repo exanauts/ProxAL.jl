@@ -6,7 +6,7 @@ using Plots, Measures, DelimitedFiles
 include("params.jl")
 include("opfdata.jl")
 include("mpsolution.jl")
-include("mpacopf_model.jl")
+include("scacopf_model.jl")
 include("mpproxALM.jl")
 include("analysis.jl")
 include("kkt_manual.jl")
