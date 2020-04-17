@@ -74,7 +74,7 @@ Choose values for the following parameters.
 
 The algorithm works as follows. Set $k = 0$.
 \begin{enumerate}
-    \item For $i = 1, \ldots, N$: compute a local solution $x_i^k$ of the following problem.
+    \item For $i = 1, \ldots, N$: compute a local solution $x_i^k$ of the following problem; warm start with $x_i^{k-1}$.
     \begin{equation}\label{eq:primalstep}
     \begin{array}{r@{\;\;}l}
     \displaystyle\mathop{\text{minimize}}_{x_i} & \displaystyle f_i(x_i) + (\lambda^{k-1})^\top \left[ A_ix_i + \sum_{j \neq i}^N A_j x_j^{k-1} - b\right] + \frac{\rho}{2} \norm{A_ix_i + \sum_{j \neq i}^N A_j x_j^{k-1} - b}^2  \\
