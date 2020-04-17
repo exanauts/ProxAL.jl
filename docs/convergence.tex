@@ -205,9 +205,9 @@ L(x, \lambda)
 \sum_{i = 1}^N f_i(x_i) + \lambda^\top \left[ \sum_{i = 1}^N A_ix_i - b\right] + \frac{\rho}{2} \norm{\sum_{i=1}^N A_ix_i - b}^2
 \end{equation}
 
-Similar to existing ADMM analyses, we now define the following Lyapunov sequence:
+{\color{magenta} Similar to existing ADMM analyses}, we now define the following Lyapunov sequence:
 \begin{equation}\label{eq:lyapunov_sequence_definition}
-\mathcal{L}^k \coloneqq L(x^k, \lambda^k) + \frac{w_N}{4} \norm{\Delta x_N^k}^2 
+\mathcal{L}^k \coloneqq L(x^k, \lambda^k) + \sum_{i=1}^N \frac{w_i}{4} \norm{\Delta x_i^k}^2 
 \end{equation}
 In subsection~\ref{sec:lyapunov_monotone}, we shall prove that this sequence decreases monotonically at least by some positive factor proportional to $\norm{\Delta x^k}$.
 In subsection~\ref{sec:lyapunov_bounded}, we shall prove that the sequence is bounded from below.
@@ -224,12 +224,46 @@ L(x^k, \lambda^k) - L(x^{k-1}, \lambda^{k-1})
 
 The dual update step~\eqref{eq:dualstep} and inequality~\eqref{eq:delta_lambda} implies that:
 \begin{align*}
-\norm{1^\text{st} \text{ term}} &= \frac{1}{\rho}\norm{\Delta \lambda^k}^2 \\
-&\leq (N+1)S^2 \left[L^2 \norm{\Delta x_N^k}^2 + \rho^2 \sum_{j = 1}^{N-1} \norm{A_N^\top A_j}^2 \left(\norm{\Delta x_j^k} + \norm{\Delta x_j^{k - 1}} \right)^2 + w_N^2\left(\norm{\Delta x_N^k} + \norm{\Delta x_N^{k-1}}\right)^2 \right] \\
-&\leq (N+1)S^2 \left[\rho^2 \sum_{j = 1}^{N-1} \norm{A_N^\top A_j}^2 \left(\norm{\Delta x_j^k} + \norm{\Delta x_j^{k - 1}} \right)^2 + (L^2 + w_N^2)\left(\norm{\Delta x_N^k} + \norm{\Delta x_N^{k-1}}\right)^2 \right]
+1^\text{st} \text{ term} &= \frac{1}{\rho}\norm{\Delta \lambda^k}^2 \\
+&\leq \frac{(N+1)S^2}{\rho} \left[L^2 \norm{\Delta x_N^k}^2 + \rho^2 \sum_{j = 1}^{N-1} \norm{A_N^\top A_j}^2 \left(\norm{\Delta x_j^k} + \norm{\Delta x_j^{k - 1}} \right)^2 + w_N^2\left(\norm{\Delta x_N^k} + \norm{\Delta x_N^{k-1}}\right)^2 \right] \\
+&\leq \frac{(N+1)S^2}{\rho} \left[\rho^2 \sum_{j = 1}^{N-1} \norm{A_N^\top A_j}^2 \left(\norm{\Delta x_j^k} + \norm{\Delta x_j^{k - 1}} \right)^2 + (L^2 + w_N^2)\left(\norm{\Delta x_N^k} + \norm{\Delta x_N^{k-1}}\right)^2 \right] \\
+&\leq \frac{2(N+1)S^2}{\rho} \left[\rho^2 \sum_{j = 1}^{N-1} \norm{A_N^\top A_j}^2 \left(\norm{\Delta x_j^k}^2 + \norm{\Delta x_j^{k - 1}}^2 \right) + (L^2 + w_N^2)\left(\norm{\Delta x_N^k}^2 + \norm{\Delta x_N^{k-1}}^2\right) \right] \\
+&= \sum_{i=1}^N \alpha_i \left(\norm{\Delta x_i^k}^2 + \norm{\Delta x_i^{k - 1}}^2 \right) \text{ for appropriate constants } \alpha_i > 0
 \end{align*}
-where the first inequality was obtained by using $(a_1 + \ldots + a_N)^2 \leq N (a_1^2 + \ldots a_N^2)$ and the second inequality was obtained by using $L^2 \norm{\Delta x_N^k}^2 \leq L^2 \left(\norm{\Delta x_N^k} + \norm{\Delta x_N^{k-1}}\right)^2$.
+where the first and third inequalities were obtained by using $(a_1 + \ldots + a_N)^2 \leq N (a_1^2 + \ldots a_N^2)$ and the second inequality was obtained by using $L^2 \norm{\Delta x_N^k}^2 \leq L^2 \left(\norm{\Delta x_N^k} + \norm{\Delta x_N^{k-1}}\right)^2$.
+
+\begin{align*}
+2^\text{nd} \text{ term} &= \qquad\left[L(x_1^k, \ldots, x_{N-1}^k, x_N^k, \lambda^{k-1}) - L(x_1^k, \ldots, x_{N-1}^k, x_N^{k-1}, \lambda^{k-1}) \right] \\
+&\;\qquad +\left[L(x_1^k, \ldots, x_{N-1}^k, x_N^{k-1}, \lambda^{k-1}) - L(x_1^k, \ldots, x_{N-1}^{k-1}, x_N^{k-1}, \lambda^{k-1})\right] \\
+&\;+\ldots + \left[L(x_1^k, x_2^{k-1},\ldots, x_N^{k-1} \lambda^{k-1}) - L(x_1^{k-1}, x_2^{k-1}, \ldots, x_N^{k-1}, \lambda^{k-1})\right] \\
+&= \sum_{i=1}^N \left[L(x_{<i}^k, x_i^k, x_{>i}^{k-1}, \lambda^{k-1}) - L(x_{<i}^k, x_i^{k-1}, x_{>i}^{k-1}, \lambda^{k-1})\right] \\
+&= \sum_{i=1}^N
+\left[
+L(x_{<i}^{k-1}, x_i^k, x_{>i}^{k-1}, \lambda^{k-1}) - L(x_{<i}^{k-1}, x_i^{k-1}, x_{>i}^{k-1}, \lambda^{k-1})
++\rho \sum_{j=1}^{i-1} (A_i \Delta x_i^k)^\top (A_j \Delta x_j^k)
+\right] \\
+&\leq -\sum_{i=1}^N \frac{w_i}{2} \norm{\Delta x_i^k}^2  + \sum_{i=1}^N \sum_{j=1}^{i-1} \rho (A_i \Delta x_i^k)^\top (A_j \Delta x_j^k) \\
+&= -\sum_{i=1}^N \frac{w_i}{2} \norm{\Delta x_i^k}^2  + \sum_{i=1}^{N-1} \sum_{j=1}^{i-1} \rho (A_i \Delta x_i^k)^\top (A_j \Delta x_j^k) + \sum_{j=1}^{N-1} \rho (A_N \Delta x_N^k)^\top (A_j \Delta x_j^k) \\
+&\leq -\sum_{i=1}^N \frac{w_i}{2} \norm{\Delta x_i^k}^2  + \sum_{i=1}^{N-1} \sum_{j=1}^{i-1} \frac{\rho}{2} \left(\norm{A_i \Delta x_i^k}^2 + \norm{A_j \Delta x_j^k}^2 \right)  + \sum_{j=1}^{N-1} \frac12 \left(\norm{A_N \Delta x_N^k}^2 + \rho^2 \norm{A_j \Delta x_j^k}^2\right) \\
+&= -\sum_{i=1}^N \frac{w_i}{2} \norm{\Delta x_i^k}^2 + \sum_{i=1}^{N-1} \underset{\coloneqq \gamma_i > 0}{\underbrace{\frac12 (\rho + N-2)\rho\norm{A_i}^2}} \norm{\Delta x_i^k}^2 + \underset{\coloneqq \gamma_N > 0}{\underbrace{\frac12(N-1) \norm{A_N}^2}} \norm{\Delta x_N^k}^2 \\
+&\leq -\sum_{i=1}^N \frac{w_i}{2} \norm{\Delta x_i^k}^2 + \sum_{i=1}^{N} \gamma_i \left(\norm{\Delta x_i^k}^2 + \norm{\Delta x_i^{k-1}}^2\right) 
+\end{align*}
+where the first inequality is obtained by exploiting the fact that $x_i^k$ is feasible and optimal in subproblem~\eqref{eq:primalstep} and $x_i^{k-1}$ is feasible and suboptimal in that problem.
+The second inequality is obtained by using $a_1 a_2 \leq \frac12 (a_1^2 + a_2^2)$ and $\rho \cdot a_1 a_2 \leq \rho \cdot \frac12 ((1/\rho)a_1^2 + \rho a_2^2)$.
+The third inequality is trivially true.
+
+
+Combining the previous two bounds on the 1st and 2nd terms, we have:
+\begin{align*}
+\mathcal{L}^k - \mathcal{L}^{k-1} &= \left[ L(x^k, \lambda^k) - L(x^{k-1}, \lambda^{k-1}) \right] + \sum_{i=1}^N \frac{w_i}{4} \left[\norm{\Delta x_i^k}^2 - \norm{\Delta x_i^{k-1}}^2 \right] \\
+&\leq -\sum_{i=1}^N \underset{\coloneqq \eta_i}{\underbrace{\left(\frac{w_i}{4} - \alpha_i - \gamma_i\right)}}\left(\norm{\Delta x_i^k}^2 + \norm{\Delta x_i^{k-1}}^2\right) 
+\end{align*}
+Now, observe that for $i =1, \ldots, N-1$, both $\alpha_i$ and $\gamma_i$ are independent of $w_i$. Therefore, we can ensure that $\eta_i > 0$ by setting a very large value for $w_i$ for $i = 1, \ldots, N-1$.
+However, $\alpha_N = 2(N+1)S^2(L^2 + w_N^2)\cdot \rho^{-1}$ depends on $w_N$. However, we can ensure $\alpha_N \to 0$ if we make $\rho$ sufficiently large. 
+Since $\gamma_N$ is independent of both $w_N$ and $\rho$, in this case also we can ensure that $\eta_N > 0$.
+In short, we have shown that $\{\mathcal{L}^k\}$ decreases by at least $-\sum_{i=1}^N \eta_i \left(\norm{\Delta x_i^k}^2 + \norm{\Delta x_i^{k-1}}^2\right)$ in each step, where $\eta_i > 0$ for all $i = 1, \ldots, N$.
 
 \subsubsection{Boundedness}\label{sec:lyapunov_bounded}
+We now show that $\left\{\mathcal{L}^k\right\}$ is bounded below.
 
 \end{document}
