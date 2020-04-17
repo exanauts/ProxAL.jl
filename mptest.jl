@@ -27,6 +27,6 @@ for ramp_scale in [0.001, 0.002, 0.005]
     =#
 
 	@printf("starting Jacobi proximal ALM with ramp_scale = %.3f...\n", ramp_scale)
-	x, λ, savedata = runProxALM_mp(opfdata, perturbation)
+    x, λ, savedata = runProxALM_mp(opfdata, rawdata, perturbation; sc = true)
     writedlm(getDataFilename("", case, "mpproxALM", T, perturbation, true, ramp_scale), savedata)
 end

@@ -181,7 +181,7 @@ function solve_mpmodel(m::JuMP.Model, opfdata::OPFData)
     #
     # Optimal primal solution
     #
-    primal = initializePrimalSolution(opfdata)
+    primal = initializePrimalSolution(opfdata, T; sc = false)
     for t=1:T
         for g=1:length(opfdata.generators)
             primal.PG[t,g] = getvalue(m[:Pg][t,g])
@@ -198,7 +198,7 @@ function solve_mpmodel(m::JuMP.Model, opfdata::OPFData)
     #
     # Optimal dual solution
     #
-    dual = initializeDualSolution(opfdata)
+    dual = initializeDualSolution(opfdata, T; sc = false)
     for t=2:T
         for g=1:length(opfdata.generators)
             dual.λ[t,g] = internalmodel(m).inner.mult_g[linearindex(m[:ramping][t,g])]
@@ -227,7 +227,7 @@ function solve_mpmodel(m::JuMP.Model, opfdata::OPFData, t::Int;
             setvalue(Pg[g], 0.5*(gen[g].Pmax + gen[g].Pmin))
             setvalue(Qg[g], 0.5*(gen[g].Qmax + gen[g].Qmin))
         end
-        for b=1:length(length(bus))
+        for b=1:length(bus)
             setvalue(Vm[b], 0.5*(bus[b].Vmax + bus[b].Vmin))
             setvalue(Va[b], bus[opfdata.bus_ref].Va)
         end

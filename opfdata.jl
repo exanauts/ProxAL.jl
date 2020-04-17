@@ -52,6 +52,7 @@ mutable struct Gener
     Qc2min::Float64
     Qc2max::Float64
     ramp_agc::Float64
+    scen_agc::Float64 #ramping factor under contingency
     # .gencost fields
     gentype::Int
     startup::Float64
@@ -141,10 +142,10 @@ function opf_loaddata(raw::RawData; time_horizon::Int=0, load_scale::Float64=1.0
     num_on   = length(lines_on)
 
     if lineOff.from>0 && lineOff.to>0 
-        println("opf_loaddata: was asked to remove line from,to=", lineOff.from, ",", lineOff.to)
+        # println("opf_loaddata: was asked to remove line from,to=", lineOff.from, ",", lineOff.to)
     end
     if length(findall(branch_arr[:,11].==0))>0
-        println("opf_loaddata: ", num_lines-length(findall(branch_arr[:,11].>0)), " lines are off and will be discarded (out of ", num_lines, ")")
+        # println("opf_loaddata: ", num_lines-length(findall(branch_arr[:,11].>0)), " lines are off and will be discarded (out of ", num_lines, ")")
     end
 
 
@@ -184,7 +185,7 @@ function opf_loaddata(raw::RawData; time_horizon::Int=0, load_scale::Float64=1.0
     for git in gens_on
         i += 1
 
-        generators[i] = Gener(0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, Array{Int}(undef, 0)) #gen_arr[i,1:end]...)
+        generators[i] = Gener(0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, Array{Int}(undef, 0)) #gen_arr[i,1:end]...)
 
         generators[i].bus      = gen_arr[git,1]
         generators[i].Pg       = gen_arr[git,2] / baseMVA
@@ -204,6 +205,7 @@ function opf_loaddata(raw::RawData; time_horizon::Int=0, load_scale::Float64=1.0
         generators[i].Qc2min   = gen_arr[git,15]
         generators[i].Qc2max   = gen_arr[git,16]
         generators[i].ramp_agc = gen_arr[git,9] * ramp_scale  / baseMVA
+        generators[i].scen_agc = gen_arr[git,9] * 0.1  / baseMVA
         generators[i].gentype  = costgen_arr[git,1]
         generators[i].startup  = costgen_arr[git,2]
         generators[i].shutdown = costgen_arr[git,3]

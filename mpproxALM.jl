@@ -2,13 +2,16 @@
 # proximal ALM implementation
 #
 
-function runProxALM_mp(opfdata::OPFData, perturbation::Number = 0.1)
+function runProxALM_mp(opfdata::OPFData, rawdata::RawData, perturbation::Number = 0.1; sc::Bool)
+    T = sc ? (length(rawdata.ctgs_arr) + 1) : size(opfdata.Pd, 2)
+
+
     #
     # start from perturbation of optimal solution
     #
-    monolithic = get_mpmodel(opfdata)
-    xstar, λstar = solve_mpmodel(monolithic, opfdata)
-    zstar = computePrimalCost(xstar, opfdata)
+    monolithic = scopf_model(opfdata, rawdata; sc = sc)
+    xstar, λstar = solve_scmodel(monolithic, opfdata, rawdata; sc = sc)
+    zstar = computePrimalCost(xstar, opfdata; sc = sc)
     @printf("Optimal generation cost = %.2f\n", zstar)
 
     x = deepcopy(xstar); perturb(x, perturbation)
@@ -17,8 +20,8 @@ function runProxALM_mp(opfdata::OPFData, perturbation::Number = 0.1)
     #
     # Start from scratch
     #
-    #x = initializePrimalSolution(circuit, T)
-    #λ = initializeDualSolution(circuit, T)
+    #x = initializePrimalSolution(opfdata, T; sc = sc)
+    #λ = initializeDualSolution(opfdata, T; sc = sc)
 
 
     verbose_level = 0
@@ -32,7 +35,6 @@ function runProxALM_mp(opfdata::OPFData, perturbation::Number = 0.1)
     #
     # Initialize algorithmic parameters
     #
-    T = size(opfdata.Pd, 2)
     maxρ = Float64(T > 1)*maximum(abs.(λstar.λ))
     params = initializeParams(maxρ; aladin = false, jacobi = true)
     params.iterlim = 10
@@ -57,9 +59,9 @@ function runProxALM_mp(opfdata::OPFData, perturbation::Number = 0.1)
         #
         nlpmodel = Vector{JuMP.Model}(undef, T)
         for t = 1:T
-            nlpmodel[t] = get_mpmodel(opfdata, t; params = params, primal = x, dual = λ)
+            nlpmodel[t] = scopf_model(opfdata, rawdata, t; sc = sc, params = params, primal = x, dual = λ)
             t0 = time()
-            nlpmodel[t], status = solve_mpmodel(nlpmodel[t], opfdata, t; initial_x = x, initial_λ = λ, params = params)
+            nlpmodel[t], status = solve_scmodel(nlpmodel[t], opfdata, t; sc = sc, initial_x = x, initial_λ = λ, params = params)
             t1 = time(); timeNLP += t1 - t0
             if status != :Optimal && status != :UserLimit
                 error("something went wrong in the x-update of proximal ALM with status ", status)
@@ -86,25 +88,25 @@ function runProxALM_mp(opfdata::OPFData, perturbation::Number = 0.1)
         #
         # update the λ
         #
-        updateDualSolution(λ, x, opfdata; params = params)
+        updateDualSolution(λ, x, opfdata; sc = sc, params = params)
 
 
         #
         # Compute the primal error
         #
-        primviol = computePrimalViolation(x, opfdata; lnorm = Inf)
+        primviol = computePrimalViolation(x, opfdata; sc = sc, lnorm = Inf)
 
         #
         # Compute the KKT error --> has meaningful value
         #                           only if both x and λ have been updated
         #
-        dualviol = computeDualViolation(x, xprev, λ, λprev, nlpmodel, opfdata; lnorm = Inf, params = params)
+        dualviol = computeDualViolation(x, xprev, λ, λprev, nlpmodel, opfdata; sc = sc, lnorm = Inf, params = params)
 
 
 
         dist = computeDistance(x, xstar; lnorm = Inf)
-        gencost = computePrimalCost(x, opfdata)
-        gap = (gencost - zstar)/zstar
+        gencost = computePrimalCost(x, opfdata; sc = sc)
+        gap = abs((gencost - zstar)/zstar)
 
         if verbose_level > 1
             updatePlot_iterative(plt, iter, dist, primviol, dualviol, gap)
@@ -138,10 +140,14 @@ function updatePrimalSolution(x::mpPrimalSolution, nlpmodel::Vector{JuMP.Model},
 end
 
 
-function updateDualSolution(dual::mpDualSolution, x::mpPrimalSolution, opfdata::OPFData; params::AlgParams)
+function updateDualSolution(dual::mpDualSolution, x::mpPrimalSolution, opfdata::OPFData; sc::Bool, params::AlgParams)
     for t=2:size(dual.λ, 1)
         for g=1:size(dual.λ, 2)
-            dual.λ[t,g] += params.θ*params.ρ*(+x.PG[t-1,g] - x.PG[t,g] + x.SL[t,g] - opfdata.generators[g].ramp_agc)
+            if sc
+                dual.λ[t,g] += params.θ*params.ρ*(+x.PG[1,g] - x.PG[t,g] + x.SL[t,g] - opfdata.generators[g].scen_agc)
+            else
+                dual.λ[t,g] += params.θ*params.ρ*(+x.PG[t-1,g] - x.PG[t,g] + x.SL[t,g] - opfdata.generators[g].ramp_agc)
+            end
         end
     end
 end
