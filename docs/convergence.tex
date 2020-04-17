@@ -265,5 +265,25 @@ In short, we have shown that $\{\mathcal{L}^k\}$ decreases by at least $-\sum_{i
 
 \subsubsection{Boundedness}\label{sec:lyapunov_bounded}
 We now show that $\left\{\mathcal{L}^k\right\}$ is bounded below.
+For this, $\rho$ should be chosen large enough that the quadratic penalty function associated with the coupling constraints in~\eqref{eq:nlp} is bounded from below.
+\begin{enumerate}\setcounter{enumi}{6}
+    \item\label{assume:penalty} Assume $\rho$ is chosen such that the following problem is bounded. Denote its optimal value by $L^\star > -\infty$.
+    \[
+    \begin{array}{r@{\;\;}l}
+    \displaystyle\mathop{\text{minimize}}_{x_1, \ldots, x_N} & \displaystyle \sum_{i = 1}^N f_i(x_i) + \frac{\rho}{2} \norm{\sum_{i=1}^N A_ix_i - b}^2  \\
+    \text{subject to} & \displaystyle  h_i(x_i) = 0, \;\;\; i \in [N].
+    \end{array}
+    \]
+\end{enumerate}
+
+Now, observe that since $\{\mathcal{L}^k\}$ is monotonically decreasing, we have:
+\begin{align*}
+\mathcal{L}^k &\geq \frac{1}{k}\sum_{j=1}^{k} \mathcal{L}^j \\
+&\geq \frac{1}{k}\sum_{j=1}^k L(x^j, \lambda^j) \\
+&\geq \frac{1}{k}\sum_{j=1}^k \left[L^\star + (\lambda^j)^\top \left(\sum_{i=1}^N A_i x_i^j - b\right) \right] \\
+&\geq L^\star + \frac{1}{k\rho}\sum_{j=1}^k \left[(\lambda^j)^\top \left(\lambda^j - \lambda^{j-1}\right)\right] \quad \text{from~\eqref{eq:dualstep}}\\
+&\geq L^\star + \frac{1}{2k\rho}\sum_{j=1}^k \left[\norm{\lambda^j}^2  - \norm{\lambda^{j-1}}^2\right] \\
+&\geq L^\star - \frac{1}{2k\rho}\norm{\lambda^{0}}^2.
+\end{align*}
 
 \end{document}
