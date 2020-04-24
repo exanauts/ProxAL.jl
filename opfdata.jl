@@ -76,7 +76,7 @@ struct OPFData
 end
 
 
-struct RawData
+mutable struct RawData
     bus_arr
     branch_arr
     gen_arr
