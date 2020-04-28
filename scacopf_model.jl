@@ -23,12 +23,6 @@ function init_x(opfmodel::JuMP.Model, opfdata::OPFData, T::Int; sc::Bool)
     end
     setvalue(opfmodel[:Pg], Pg)
     setvalue(opfmodel[:Qg], Qg)
-
-    Sl = zeros(T, ngen)
-    for g=1:ngen
-        Sl[2:T,g] .= (sc ? generators[g].scen_agc : generators[g].ramp_agc)
-    end
-    setvalue(opfmodel[:Sl], Sl)
 end
 
 function scopf_model(opfdata::OPFData, rawdata::RawData; sc::Bool)
@@ -61,9 +55,6 @@ function scopf_model(opfdata::OPFData, rawdata::RawData; sc::Bool)
     @variable(opfmodel, buses[i].Vmin <= Vm[1:T,i=1:nbus] <= buses[i].Vmax)
     @variable(opfmodel, Va[1:T,1:nbus])
 
-    # slack variable for ramping constraints
-    @variable(opfmodel, 0 <= Sl[t=1:T,g=1:ngen] <= 2Float64(t > 1)*(sc ? generators[g].scen_agc : generators[g].ramp_agc))
-
     # reference bus voltage angle
     for t in 1:T
         setlowerbound(Va[t,opfdata.bus_ref], buses[opfdata.bus_ref].Va)
@@ -74,7 +65,8 @@ function scopf_model(opfdata::OPFData, rawdata::RawData; sc::Bool)
     # security-constrained opf
     if sc
         # Coupling constraints: power generation@(contingency - base case) <= bounded by ramp factor
-        @constraint(opfmodel, ramping[t=2:T,g=1:ngen], Pg[1,g] - Pg[t,g] + Sl[t,g] == generators[g].scen_agc)
+        @constraint(opfmodel, ramping_p[t=2:T,g=1:ngen],  Pg[1,g] - Pg[t,g] <= generators[g].scen_agc)
+        @constraint(opfmodel, ramping_n[t=2:T,g=1:ngen], -Pg[1,g] + Pg[t,g] <= generators[g].scen_agc)
 
         # Minimize only base case cost
         @NLobjective(opfmodel, Min,
@@ -86,7 +78,8 @@ function scopf_model(opfdata::OPFData, rawdata::RawData; sc::Bool)
     # multi-period opf
     else
         # Ramping up/down constraints
-        @constraint(opfmodel, ramping[t=2:T,g=1:ngen], Pg[t-1,g] - Pg[t,g] + Sl[t,g] == generators[g].ramp_agc)
+        @constraint(opfmodel, ramping_p[t=2:T,g=1:ngen],  Pg[t-1,g] - Pg[t,g] <= generators[g].ramp_agc)
+        @constraint(opfmodel, ramping_n[t=2:T,g=1:ngen], -Pg[t-1,g] + Pg[t,g] <= generators[g].ramp_agc)
 
         # Minimize cost over the entire horizon
         @NLobjective(opfmodel, Min,
@@ -215,7 +208,15 @@ function solve_scmodel(opfmodel::JuMP.Model, opfdata::OPFData, rawdata::RawData;
         for g=1:ngen
             primal.PG[t,g] = getvalue(opfmodel[:Pg][t,g])
             primal.QG[t,g] = getvalue(opfmodel[:Qg][t,g])
-            primal.SL[t,g] = getvalue(opfmodel[:Sl][t,g])
+            if t > 1
+                if sc
+                    rhs = opfdata.generators[g].scen_agc
+                    primal.SL[t,g] = min(2rhs, max(0, rhs - primal.PG[1,g]   + primal.PG[t,g]))
+                else
+                    rhs = opfdata.generators[g].ramp_agc
+                    primal.SL[t,g] = min(2rhs, max(0, rhs - primal.PG[t-1,g] + primal.PG[t,g]))
+                end
+            end
         end
         for b=1:nbus
             primal.VM[t,b] = getvalue(opfmodel[:Vm][t,b])
@@ -230,7 +231,8 @@ function solve_scmodel(opfmodel::JuMP.Model, opfdata::OPFData, rawdata::RawData;
     dual = initializeDualSolution(opfdata, T; sc = sc)
     for t=2:T
         for g=1:ngen
-            dual.λ[t,g] = internalmodel(opfmodel).inner.mult_g[linearindex(opfmodel[:ramping][t,g])]
+            dual.λp[t,g] = abs(internalmodel(opfmodel).inner.mult_g[linearindex(opfmodel[:ramping_p][t,g])])
+            dual.λn[t,g] = abs(internalmodel(opfmodel).inner.mult_g[linearindex(opfmodel[:ramping_n][t,g])])
         end
     end
 
@@ -386,24 +388,28 @@ function penalty_expression(opfmodel::JuMP.Model, opfdata::OPFData, t::Int; sc::
             # security-constrained opf
             if sc
                 if t > 1
-                    penalty += dual.λ[t,g]*(+primal.PG[1,g] - Pg[g] + Sl[g] - gen[g].scen_agc)
-                    penalty += 0.5params.ρ*(+primal.PG[1,g] - Pg[g] + Sl[g] - gen[g].scen_agc)^2
+                    penalty +=     dual.λp[t,g]*(+primal.PG[1,g] - Pg[g] - gen[g].scen_agc)
+                    penalty +=     dual.λn[t,g]*(-primal.PG[1,g] + Pg[g] - gen[g].scen_agc)
+                    penalty += 0.5params.ρ[t,g]*(+primal.PG[1,g] - Pg[g] + Sl[g] - gen[g].scen_agc)^2
                 else
-                    for s=2:size(dual.λ, 1)
-                        penalty += dual.λ[s,g]*(+Pg[g] - primal.PG[s,g] + primal.SL[s,g] - gen[g].scen_agc)
-                        penalty += 0.5params.ρ*(+Pg[g] - primal.PG[s,g] + primal.SL[s,g] - gen[g].scen_agc)^2
+                    for s=2:size(dual.λp, 1)
+                        penalty +=     dual.λp[s,g]*(+Pg[g] - primal.PG[s,g] - gen[g].scen_agc)
+                        penalty +=     dual.λn[s,g]*(-Pg[g] + primal.PG[s,g] - gen[g].scen_agc)
+                        penalty += 0.5params.ρ[t,g]*(+Pg[g] - primal.PG[s,g] + primal.SL[s,g] - gen[g].scen_agc)^2
                     end
                 end
 
             # multi-period opf
             else
                 if t > 1
-                    penalty += dual.λ[t,g]*(+primal.PG[t-1,g] - Pg[g] + Sl[g] - gen[g].ramp_agc)
-                    penalty += 0.5params.ρ*(+primal.PG[t-1,g] - Pg[g] + Sl[g] - gen[g].ramp_agc)^2
+                    penalty +=     dual.λp[t,g]*(+primal.PG[t-1,g] - Pg[g] - gen[g].ramp_agc)
+                    penalty +=     dual.λn[t,g]*(-primal.PG[t-1,g] + Pg[g] - gen[g].ramp_agc)
+                    penalty += 0.5params.ρ[t,g]*(+primal.PG[t-1,g] - Pg[g] + Sl[g] - gen[g].ramp_agc)^2
                 end
                 if t < size(opfdata.Pd, 2)
-                    penalty += dual.λ[t+1,g]*(+Pg[g] - primal.PG[t+1,g] + primal.SL[t+1,g] - gen[g].ramp_agc)
-                    penalty +=   0.5params.ρ*(+Pg[g] - primal.PG[t+1,g] + primal.SL[t+1,g] - gen[g].ramp_agc)^2
+                    penalty +=   dual.λp[t+1,g]*(+Pg[g] - primal.PG[t+1,g] - gen[g].ramp_agc)
+                    penalty +=   dual.λn[t+1,g]*(-Pg[g] + primal.PG[t+1,g] - gen[g].ramp_agc)
+                    penalty += 0.5params.ρ[t,g]*(+Pg[g] - primal.PG[t+1,g] + primal.SL[t+1,g] - gen[g].ramp_agc)^2
                 end
             end
         end
@@ -454,10 +460,9 @@ function solve_scmodel(opfmodel::JuMP.Model, opfdata::OPFData, t::Int;
     #
     if t > 1
         for g=1:length(gen)
-            tp = (initial_λ == nothing) ? 0 : (initial_λ.λ[t,g]/params.ρ)
             xp = (initial_x == nothing) ? 0 : ((sc ? initial_x.PG[1,g] : initial_x.PG[t-1,g]) - initial_x.PG[t,g])
             dp = (sc ? gen[g].scen_agc : gen[g].ramp_agc)
-            setvalue(Sl[g], min(max(0, -xp + dp - tp), 2dp))
+            setvalue(Sl[g], min(max(0, -xp + dp), 2dp))
         end
     end
 
