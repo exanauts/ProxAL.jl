@@ -415,14 +415,6 @@ function penalty_expression(opfmodel::JuMP.Model, opfdata::OPFData, t::Int; sc::
     if !iszero(params.τ)
         for g=1:length(gen)
             penalty += 0.5*params.τ*(Pg[g] - primal.PG[t,g])^2
-            penalty += 0.5*params.τ*(Qg[g] - primal.QG[t,g])^2
-            if sc && t > 1
-                penalty += 0.5*params.τ*(Sl[g] - primal.SL[t,g])^2
-            end
-        end
-        for b=1:length(opfdata.buses)
-            penalty += 0.5*params.τ*(Vm[b] - primal.VM[t,b])^2
-            penalty += 0.5*params.τ*(Va[b] - primal.VA[t,b])^2
         end
     end
 
