@@ -3,8 +3,8 @@
 #
 
 mutable struct mpDualSolution
-    λ::Array{Float64,2} #[t][g] := [multiperiod] λ for the ramping constraint Pg[g,t-1] - Pg[g,t] + Sl[g,t] = ramp_agc
-                        #       := [contingency] λ for the linking constraint Pg[g,t] = Pg[g,1] + Sl[g,t]
+    λp::Array{Float64,2} #[t][g] := λ for the constraint (Pg[g,1] or Pg[g,t-1]) - Pg[g,t] <= r
+    λn::Array{Float64,2} #[t][g] := λ for the constraint (Pg[g,1] or Pg[g,t-1]) - Pg[g,t] >= -r
 end
 
 mutable struct mpPrimalSolution
@@ -12,14 +12,14 @@ mutable struct mpPrimalSolution
     QG::Array{Float64,2} #[t][g] := Qg of gen g in scenario/time period t
     VM::Array{Float64,2} #[t][b] := Vm of bus b in scenario/time period t
     VA::Array{Float64,2} #[t][b] := Va of bus b in scenario/time period t
-    SL::Array{Float64,2} #[t][g] := [multiperiod] Slack for Pg[g,t-1] - Pg[g,t] <= r
-                         #       := [contingency] Slack for Pg[g,1] - Pg[g,t] <= r
+    SL::Array{Float64,2} #[t][g] := Slack for (Pg[g,1] or Pg[g,t-1]) - Pg[g,t] <= r
 end
 
 function initializeDualSolution(opfdata::OPFData, T::Int; sc::Bool)
-    λ = zeros(T, length(opfdata.generators))
+    λp = zeros(T, length(opfdata.generators))
+    λn = zeros(T, length(opfdata.generators))
 
-    return mpDualSolution(λ)
+    return mpDualSolution(λp, λn)
 end
 
 function initializePrimalSolution(opfdata::OPFData, T::Int; sc::Bool)
@@ -58,11 +58,17 @@ function perturb(primal::mpPrimalSolution, factor::Number)
 end
 
 function perturb(dual::mpDualSolution, factor::Number)
-    dual.λ *= (1.0 + factor)
-    dual.λ .= max.(dual.λ, 0)
+    dual.λp *= (1.0 + factor)
+    dual.λn *= (1.0 + factor)
+    dual.λp .= max.(dual.λp, 0)
+    dual.λn .= max.(dual.λn, 0)
 end
 
-function computeDistance(x1::mpPrimalSolution, x2::mpPrimalSolution; lnorm = 1)
+function computeDistance(x1::mpPrimalSolution, x2::mpPrimalSolution; sc::Bool, lnorm = 1)
+    if sc
+        xd = x1.PG[1,:] - x2.PG[1,:]
+        return norm(xd, lnorm)
+    end
     xd = [[x1.PG[t,:] - x2.PG[t,:];
            x1.QG[t,:] - x2.QG[t,:];
            x1.VM[t,:] - x2.VM[t,:];
@@ -71,8 +77,9 @@ function computeDistance(x1::mpPrimalSolution, x2::mpPrimalSolution; lnorm = 1)
 end
 
 function computeDistance(x1::mpDualSolution, x2::mpDualSolution; lnorm = 1)
-    xd = x1.λ - x2.λ
-    return (isempty(xd) ? 0.0 : norm(xd, lnorm))
+    xd = [[x1.λp[t,:] - x2.λp[t,:];
+           x1.λn[t,:] - x2.λn[t,:]] for t=1:size(x1.λ, 1)]
+    return (isempty(xd) ? 0.0 : norm(vcat(xd...), lnorm))
 end
 
 function computeDualViolation(x::mpPrimalSolution, xprev::mpPrimalSolution, λ::mpDualSolution, λprev::mpDualSolution, nlpmodel::Vector{JuMP.Model}, opfdata::OPFData; sc::Bool, lnorm = 1, params::AlgParams)
@@ -110,18 +117,17 @@ function computeDualViolation(x::mpPrimalSolution, xprev::mpPrimalSolution, λ::
                 # contingency
                 if sc
                     if t > 1
-                        kkt[idx_pg] += -λ.λ[t,g]
-                        kkt[idx_sl] += +λ.λ[t,g]
-                        temp = -λprev.λ[t,g] - params.ρ*(
-                                        (params.jacobi ? xprev.PG[1,g] : x.PG[1,g]) -
+                        kkt[idx_pg] += -λ.λp[t,g]+λ.λn[t,g]
+                        temp = - params.ρ[t,g]*(
+                                    (params.jacobi ? xprev.PG[1,g] : x.PG[1,g]) -
                                         x.PG[t,g] + x.SL[t,g] - gen[g].scen_agc
                                     )
-                        kkt[idx_pg] -= temp
+                        kkt[idx_pg] -= -λprev.λp[t,g]+λprev.λn[t,g]+temp
                         kkt[idx_sl] += temp
                     else
-                        for s=2:size(λ.λ, 1)
-                            kkt[idx_pg] += +λ.λ[s,g]
-                            kkt[idx_pg] -= +λprev.λ[s,g] + params.ρ*(
+                        for s=2:size(λ.λp, 1)
+                            kkt[idx_pg] += +λ.λp[s,g]-λ.λn[s,g]
+                            kkt[idx_pg] -= +λprev.λp[s,g]-λprev.λn[s,g] + params.ρ[t,g]*(
                                             x.PG[1,g] - xprev.PG[s,g] + xprev.SL[s,g] -
                                             gen[g].scen_agc
                                         )
@@ -131,18 +137,17 @@ function computeDualViolation(x::mpPrimalSolution, xprev::mpPrimalSolution, λ::
                 # multiperiod
                 else
                     if t > 1
-                        kkt[idx_pg] += -λ.λ[t,g]
-                        kkt[idx_sl] += +λ.λ[t,g]
-                        temp = -λprev.λ[t,g] - params.ρ*(
-                                        (params.jacobi ? xprev.PG[t-1,g] : x.PG[t-1,g]) -
+                        kkt[idx_pg] += -λ.λp[t,g]+λ.λn[t,g]
+                        temp = - params.ρ[t,g]*(
+                                    (params.jacobi ? xprev.PG[t-1,g] : x.PG[t-1,g]) -
                                         x.PG[t,g] + x.SL[t,g] - gen[g].ramp_agc
                                     )
-                        kkt[idx_pg] -= temp
+                        kkt[idx_pg] -= -λprev.λp[t,g]+λprev.λn[t,g]+temp
                         kkt[idx_sl] += temp
                     end
                     if t < length(nlpmodel)
-                        kkt[idx_pg] += +λ.λ[t+1,g]
-                        kkt[idx_pg] -= +λprev.λ[t+1,g] + params.ρ*(
+                        kkt[idx_pg] += +λ.λp[t+1,g]-λ.λn[t+1,g]
+                        kkt[idx_pg] -= +λprev.λ[t+1,g]-λprev.λn[t+1,g] + params.ρ[t,g]*(
                                         x.PG[t,g] - xprev.PG[t+1,g] + xprev.SL[t+1,g] -
                                         gen[g].ramp_agc
                                     )
@@ -173,7 +178,10 @@ function computeDualViolation(x::mpPrimalSolution, xprev::mpPrimalSolution, λ::
         dualviol = [dualviol; kkt]
     end
 
-    return (isempty(dualviol) ? 0.0 : norm(dualviol, lnorm))
+    if isempty(dualviol)
+        return 0.0, 0.0
+    end
+    return norm(dualviol, lnorm), norm(dualviol, 1)/length(dualviol)
 end
 
 function computePrimalViolation(primal::mpPrimalSolution, opfdata::OPFData; sc::Bool, lnorm = 1)
@@ -193,7 +201,10 @@ function computePrimalViolation(primal::mpPrimalSolution, opfdata::OPFData; sc::
     end
     err  = [errp; errn]
 
-    return (isempty(err) ? 0.0 : norm(err, lnorm))
+    if T <= 1 || num_gens < 1
+        return 0.0, 0.0
+    end
+    return norm(err, lnorm), norm(err, 1)/((T-1)*(num_gens))
 end
 
 function computePrimalCost(primal::mpPrimalSolution, opfdata::OPFData; sc::Bool)
