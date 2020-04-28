@@ -153,19 +153,7 @@ function computeDualViolation(x::mpPrimalSolution, xprev::mpPrimalSolution, λ::
         # The proximal part in both ALADIN and proximal ALM
         for g=1:length(gen)
             pg_idx = linearindex(nlpmodel[t][:Pg][g])
-            qg_idx = linearindex(nlpmodel[t][:Qg][g])
             kkt[pg_idx] -= params.τ*(x.PG[t,g] - xprev.PG[t,g])
-            kkt[qg_idx] -= params.τ*(x.QG[t,g] - xprev.QG[t,g])
-            if sc && t > 1
-                sl_idx = linearindex(nlpmodel[t][:Sl][g])
-                kkt[sl_idx] -= params.τ*(x.SL[t,g] - xprev.SL[t,g])
-            end
-        end
-        for b=1:length(opfdata.buses)
-            vm_idx = linearindex(nlpmodel[t][:Vm][b])
-            va_idx = linearindex(nlpmodel[t][:Va][b])
-            kkt[vm_idx] -= params.τ*(x.VM[t,b] - xprev.VM[t,b])
-            kkt[va_idx] -= params.τ*(x.VA[t,b] - xprev.VA[t,b])
         end
 
         #
