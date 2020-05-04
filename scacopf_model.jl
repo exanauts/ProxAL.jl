@@ -1,7 +1,7 @@
 using JuMP
 using Ipopt
 
-function init_x(opfmodel::JuMP.Model, opfdata::OPFData, T::Int; sc::Bool)
+function init_x(opfmodel::JuMP.Model, opfdata::OPFData, T::Int)
     buses = opfdata.buses
     generators = opfdata.generators
     nbus = length(buses)
@@ -25,14 +25,20 @@ function init_x(opfmodel::JuMP.Model, opfdata::OPFData, T::Int; sc::Bool)
     setvalue(opfmodel[:Qg], Qg)
 end
 
-function scopf_model(opfdata::OPFData, rawdata::RawData; sc::Bool)
+function scopf_model(opfdata::OPFData, rawdata::RawData; options::Option = Option())
 
     # number of variable blocks
-    T = size(opfdata.Pd, 2)
+    T = 1
+
+    # multi-period OPF
+    if options.has_ramping
+        T = size(opfdata.Pd, 2)
+    end
+
     lines_off = [Line() for t in 1:T]
 
     # security-constrained OPF: explicitly add the "base case"
-    if sc
+    if options.sc_constr
         T = length(rawdata.ctgs_arr) + 1
         lines_off = [opfdata.lines[l] for l in rawdata.ctgs_arr]
         lines_off = [Line(); lines_off]
@@ -63,7 +69,7 @@ function scopf_model(opfdata::OPFData, rawdata::RawData; sc::Bool)
 
 
     # security-constrained opf
-    if sc
+    if options.sc_constr
         # Coupling constraints: power generation@(contingency - base case) <= bounded by ramp factor
         @constraint(opfmodel, ramping_p[t=2:T,g=1:ngen],  Pg[1,g] - Pg[t,g] <= generators[g].scen_agc)
         @constraint(opfmodel, ramping_n[t=2:T,g=1:ngen], -Pg[1,g] + Pg[t,g] <= generators[g].scen_agc)
@@ -76,7 +82,7 @@ function scopf_model(opfdata::OPFData, rawdata::RawData; sc::Bool)
         )
 
     # multi-period opf
-    else
+    elseif options.has_ramping
         # Ramping up/down constraints
         @constraint(opfmodel, ramping_p[t=2:T,g=1:ngen],  Pg[t-1,g] - Pg[t,g] <= generators[g].ramp_agc)
         @constraint(opfmodel, ramping_n[t=2:T,g=1:ngen], -Pg[t-1,g] + Pg[t,g] <= generators[g].ramp_agc)
@@ -98,7 +104,7 @@ function scopf_model(opfdata::OPFData, rawdata::RawData; sc::Bool)
         opfdata_c = opfdata
 
         # Perturbed network data for contingencies
-        if sc
+        if options.sc_constr
             opfdata_c = opf_loaddata(rawdata; lineOff = lines_off[t])
             Pd = [buses[b].Pd for b in 1:nbus]
             Qd = [buses[b].Qd for b in 1:nbus]
@@ -180,15 +186,15 @@ function scopf_model(opfdata::OPFData, rawdata::RawData; sc::Bool)
     return opfmodel
 end
 
-function solve_scmodel(opfmodel::JuMP.Model, opfdata::OPFData, rawdata::RawData; sc::Bool)
-    T = sc ? (length(rawdata.ctgs_arr) + 1) : size(opfdata.Pd, 2)
+function solve_scmodel(opfmodel::JuMP.Model, opfdata::OPFData, rawdata::RawData; options::Option = Option())
+    T = options.sc_constr ? (length(rawdata.ctgs_arr) + 1) : size(opfdata.Pd, 2)
     nbus = length(opfdata.buses)
     ngen = length(opfdata.generators)
 
     #
     # Warm-start all primal variables
     #
-    init_x(opfmodel, opfdata, T; sc = sc)
+    init_x(opfmodel, opfdata, T)
 
     #
     # solve model
@@ -203,16 +209,16 @@ function solve_scmodel(opfmodel::JuMP.Model, opfdata::OPFData, rawdata::RawData;
     #
     # Optimal primal solution
     #
-    primal = initializePrimalSolution(opfdata, T; sc = sc)
+    primal = initializePrimalSolution(opfdata, T; options = options)
     for t=1:T
         for g=1:ngen
             primal.PG[t,g] = getvalue(opfmodel[:Pg][t,g])
             primal.QG[t,g] = getvalue(opfmodel[:Qg][t,g])
             if t > 1
-                if sc
+                if options.sc_constr
                     rhs = opfdata.generators[g].scen_agc
                     primal.SL[t,g] = min(2rhs, max(0, rhs - primal.PG[1,g]   + primal.PG[t,g]))
-                else
+                elseif options.has_ramping
                     rhs = opfdata.generators[g].ramp_agc
                     primal.SL[t,g] = min(2rhs, max(0, rhs - primal.PG[t-1,g] + primal.PG[t,g]))
                 end
@@ -228,7 +234,7 @@ function solve_scmodel(opfmodel::JuMP.Model, opfdata::OPFData, rawdata::RawData;
     #
     # Optimal dual solution
     #
-    dual = initializeDualSolution(opfdata, T; sc = sc)
+    dual = initializeDualSolution(opfdata, T; options = options)
     for t=2:T
         for g=1:ngen
             dual.λp[t,g] = abs(internalmodel(opfmodel).inner.mult_g[linearindex(opfmodel[:ramping_p][t,g])])
@@ -240,7 +246,11 @@ function solve_scmodel(opfmodel::JuMP.Model, opfdata::OPFData, rawdata::RawData;
     return primal, dual
 end
 
-function scopf_model(opfdata::OPFData, rawdata::RawData, t::Int; sc::Bool, params::AlgParams, dual::mpDualSolution, primal::mpPrimalSolution)
+function scopf_model(opfdata::OPFData, rawdata::RawData, t::Int;
+    options::Option = Option(),
+    params::AlgParams,
+    dual::mpDualSolution,
+    primal::mpPrimalSolution)
 
     # the model
     opfmodel = Model(solver=IpoptSolver(print_level=1))
@@ -259,7 +269,7 @@ function scopf_model(opfdata::OPFData, rawdata::RawData, t::Int; sc::Bool, param
     @variable(opfmodel, Va[1:nbus])
 
     # slack variable for ramping constraints
-    @variable(opfmodel, 0 <= Sl[g=1:ngen] <= 2Float64(t > 1)*(sc ? generators[g].scen_agc : generators[g].ramp_agc))
+    @variable(opfmodel, 0 <= Sl[g=1:ngen] <= 2Float64(t > 1)*(options.sc_constr ? generators[g].scen_agc : generators[g].ramp_agc))
 
     # reference bus voltage angle
     setlowerbound(Va[opfdata.bus_ref], buses[opfdata.bus_ref].Va)
@@ -268,10 +278,10 @@ function scopf_model(opfdata::OPFData, rawdata::RawData, t::Int; sc::Bool, param
     #
     # Penalty terms
     #
-    penalty = penalty_expression(opfmodel, opfdata, t; sc = sc, params = params, dual = dual, primal = primal)
+    penalty = penalty_expression(opfmodel, opfdata, t; options = options, params = params, dual = dual, primal = primal)
 
     # objective function
-    if sc && t > 1
+    if options.sc_constr && t > 1
         @objective(opfmodel, Min, penalty)
     else    
         @objective(opfmodel, Min, penalty +
@@ -287,7 +297,7 @@ function scopf_model(opfdata::OPFData, rawdata::RawData, t::Int; sc::Bool, param
     opfdata_c = opfdata
 
     # Perturbed network data for contingencies
-    if sc
+    if options.sc_constr
         if t > 1
             opfdata_c = opf_loaddata(rawdata; lineOff = opfdata.lines[rawdata.ctgs_arr[t - 1]])
         end
@@ -366,7 +376,11 @@ function scopf_model(opfdata::OPFData, rawdata::RawData, t::Int; sc::Bool, param
     return opfmodel
 end
 
-function penalty_expression(opfmodel::JuMP.Model, opfdata::OPFData, t::Int; sc::Bool, params::AlgParams, dual::mpDualSolution, primal::mpPrimalSolution)
+function penalty_expression(opfmodel::JuMP.Model, opfdata::OPFData, t::Int;
+    options::Option = Option(),
+    params::AlgParams,
+    dual::mpDualSolution,
+    primal::mpPrimalSolution)
     Pg = opfmodel[:Pg]
     Qg = opfmodel[:Qg]
     Vm = opfmodel[:Vm]
@@ -386,7 +400,7 @@ function penalty_expression(opfmodel::JuMP.Model, opfdata::OPFData, t::Int; sc::
     else
         for g=1:length(gen)
             # security-constrained opf
-            if sc
+            if options.sc_constr
                 if t > 1
                     penalty +=     dual.λp[t,g]*(+primal.PG[1,g] - Pg[g] - gen[g].scen_agc)
                     penalty +=     dual.λn[t,g]*(-primal.PG[1,g] + Pg[g] - gen[g].scen_agc)
@@ -400,7 +414,7 @@ function penalty_expression(opfmodel::JuMP.Model, opfdata::OPFData, t::Int; sc::
                 end
 
             # multi-period opf
-            else
+            elseif options.has_ramping
                 if t > 1
                     penalty +=     dual.λp[t,g]*(+primal.PG[t-1,g] - Pg[g] - gen[g].ramp_agc)
                     penalty +=     dual.λn[t,g]*(-primal.PG[t-1,g] + Pg[g] - gen[g].ramp_agc)
@@ -428,7 +442,10 @@ function penalty_expression(opfmodel::JuMP.Model, opfdata::OPFData, t::Int; sc::
 end
 
 function solve_scmodel(opfmodel::JuMP.Model, opfdata::OPFData, t::Int;
-        sc::Bool, initial_x::mpPrimalSolution = nothing, initial_λ::mpDualSolution = nothing, params::AlgParams)
+    options::Option = Option(),
+    initial_x::mpPrimalSolution = nothing,
+    initial_λ::mpDualSolution = nothing,
+    params::AlgParams)
     Pg = opfmodel[:Pg]
     Qg = opfmodel[:Qg]
     Vm = opfmodel[:Vm]
@@ -460,8 +477,8 @@ function solve_scmodel(opfmodel::JuMP.Model, opfdata::OPFData, t::Int;
     #
     if t > 1
         for g=1:length(gen)
-            xp = (initial_x == nothing) ? 0 : ((sc ? initial_x.PG[1,g] : initial_x.PG[t-1,g]) - initial_x.PG[t,g])
-            dp = (sc ? gen[g].scen_agc : gen[g].ramp_agc)
+            xp = (initial_x == nothing) ? 0 : ((options.sc_constr ? initial_x.PG[1,g] : initial_x.PG[t-1,g]) - initial_x.PG[t,g])
+            dp = (options.sc_constr ? gen[g].scen_agc : gen[g].ramp_agc)
             setvalue(Sl[g], min(max(0, -xp + dp), 2dp))
         end
     end

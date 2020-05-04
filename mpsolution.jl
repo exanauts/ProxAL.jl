@@ -15,14 +15,14 @@ mutable struct mpPrimalSolution
     SL::Array{Float64,2} #[t][g] := Slack for (Pg[g,1] or Pg[g,t-1]) - Pg[g,t] <= r
 end
 
-function initializeDualSolution(opfdata::OPFData, T::Int; sc::Bool)
+function initializeDualSolution(opfdata::OPFData, T::Int; options::Option = Option())
     λp = zeros(T, length(opfdata.generators))
     λn = zeros(T, length(opfdata.generators))
 
     return mpDualSolution(λp, λn)
 end
 
-function initializePrimalSolution(opfdata::OPFData, T::Int; sc::Bool)
+function initializePrimalSolution(opfdata::OPFData, T::Int; options::Option = Option())
     bus = opfdata.buses
     gen = opfdata.generators
     num_buses = length(bus)
@@ -43,7 +43,7 @@ function initializePrimalSolution(opfdata::OPFData, T::Int; sc::Bool)
 
     Sl = zeros(T, num_gens)
     for g=1:num_gens
-        Sl[2:T,g] .= (sc ? gen[g].scen_agc : gen[g].ramp_agc)
+        Sl[2:T,g] .= (options.sc_constr ? gen[g].scen_agc : gen[g].ramp_agc)
     end
 
     return mpPrimalSolution(Pg, Qg, Vm, Va, Sl)
@@ -64,8 +64,8 @@ function perturb(dual::mpDualSolution, factor::Number)
     dual.λn .= max.(dual.λn, 0)
 end
 
-function computeDistance(x1::mpPrimalSolution, x2::mpPrimalSolution; sc::Bool, lnorm = 1)
-    if sc
+function computeDistance(x1::mpPrimalSolution, x2::mpPrimalSolution; options::Option = Option(), lnorm = 1)
+    if options.sc_constr
         xd = x1.PG[1,:] - x2.PG[1,:]
         return norm(xd, lnorm)
     end
@@ -82,7 +82,10 @@ function computeDistance(x1::mpDualSolution, x2::mpDualSolution; lnorm = 1)
     return (isempty(xd) ? 0.0 : norm(vcat(xd...), lnorm))
 end
 
-function computeDualViolation(x::mpPrimalSolution, xprev::mpPrimalSolution, λ::mpDualSolution, λprev::mpDualSolution, nlpmodel::Vector{JuMP.Model}, opfdata::OPFData; sc::Bool, lnorm = 1, params::AlgParams)
+function computeDualViolation(x::mpPrimalSolution, xprev::mpPrimalSolution, λ::mpDualSolution, λprev::mpDualSolution, nlpmodel::Vector{JuMP.Model}, opfdata::OPFData;
+    options::Option = Option(),
+    lnorm = 1,
+    params::AlgParams)
     gen = opfdata.generators
     dualviol = []
     for t = 1:length(nlpmodel)
@@ -90,6 +93,7 @@ function computeDualViolation(x::mpPrimalSolution, xprev::mpPrimalSolution, λ::
         # First get ∇_x Lagrangian
         #
         inner = internalmodel(nlpmodel[t]).inner
+        #=
         kkt = grad_Lagrangian(nlpmodel[t], inner.x, inner.mult_g)
         for j = 1:length(kkt)
             if (abs(nlpmodel[t].colLower[j] - nlpmodel[t].colUpper[j]) <= params.zero)
@@ -102,6 +106,8 @@ function computeDualViolation(x::mpPrimalSolution, xprev::mpPrimalSolution, λ::
                 (kkt[j] != 0.0) && (kkt[j] = 0.0)
             end
         end
+        =#
+        kkt = zeros(length(inner.x))
 
         #
         # Now adjust it so that the final quantity represents the error in the KKT conditions
@@ -115,7 +121,7 @@ function computeDualViolation(x::mpPrimalSolution, xprev::mpPrimalSolution, λ::
                 idx_pg = linearindex(nlpmodel[t][:Pg][g])
                 idx_sl = linearindex(nlpmodel[t][:Sl][g])
                 # contingency
-                if sc
+                if options.sc_constr
                     if t > 1
                         kkt[idx_pg] += -λ.λp[t,g]+λ.λn[t,g]
                         temp = - params.ρ[t,g]*(
@@ -135,7 +141,7 @@ function computeDualViolation(x::mpPrimalSolution, xprev::mpPrimalSolution, λ::
                     end
 
                 # multiperiod
-                else
+                elseif options.has_ramping
                     if t > 1
                         kkt[idx_pg] += -λ.λp[t,g]+λ.λn[t,g]
                         temp = - params.ρ[t,g]*(
@@ -184,7 +190,7 @@ function computeDualViolation(x::mpPrimalSolution, xprev::mpPrimalSolution, λ::
     return norm(dualviol, lnorm), norm(dualviol, 1)/length(dualviol)
 end
 
-function computePrimalViolation(primal::mpPrimalSolution, opfdata::OPFData; sc::Bool, lnorm = 1)
+function computePrimalViolation(primal::mpPrimalSolution, opfdata::OPFData; options::Option = Option(), lnorm = 1)
     T = size(primal.PG, 1)
     gen = opfdata.generators
     num_gens = length(gen)
@@ -192,26 +198,26 @@ function computePrimalViolation(primal::mpPrimalSolution, opfdata::OPFData; sc::
     #
     # primal violation
     #
-    if sc
+    if options.sc_constr
         errp = [max(+primal.PG[1,g] - primal.PG[t,g] - gen[g].scen_agc, 0) for t=2:T for g=1:num_gens]
         errn = [max(-primal.PG[1,g] + primal.PG[t,g] - gen[g].scen_agc, 0) for t=2:T for g=1:num_gens]
-    else
+    elseif options.has_ramping
         errp = [max(+primal.PG[t-1,g] - primal.PG[t,g] - gen[g].ramp_agc, 0) for t=2:T for g=1:num_gens]
         errn = [max(-primal.PG[t-1,g] + primal.PG[t,g] - gen[g].ramp_agc, 0) for t=2:T for g=1:num_gens]
     end
     err  = [errp; errn]
 
-    if T <= 1 || num_gens < 1
+    if (T <= 1 || num_gens < 1) && !isempty(err)
         return 0.0, 0.0
     end
     return norm(err, lnorm), norm(err, 1)/((T-1)*(num_gens))
 end
 
-function computePrimalCost(primal::mpPrimalSolution, opfdata::OPFData; sc::Bool)
+function computePrimalCost(primal::mpPrimalSolution, opfdata::OPFData; options::Option = Option())
     gen = opfdata.generators
     baseMVA = opfdata.baseMVA
     gencost = 0.0
-    arr = sc ? [1] : (1:size(opfdata.Pd, 2))
+    arr = options.sc_constr ? [1] : (1:size(opfdata.Pd, 2))
     for p in arr
         for g in 1:size(primal.PG, 2)
             Pg = primal.PG[p,g]
