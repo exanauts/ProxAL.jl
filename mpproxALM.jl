@@ -2,18 +2,18 @@
 # proximal ALM implementation
 #
 
-function runProxALM_mp(opfdata::OPFData, rawdata::RawData, perturbation::Number = 0.1; sc::Bool, savefile::String = "")
-    T = sc ? (length(rawdata.ctgs_arr) + 1) : size(opfdata.Pd, 2)
+function runProxALM_mp(opfdata::OPFData, rawdata::RawData, perturbation::Number = 0.1; options::Option = Option())
+    T = options.sc_constr ? (length(rawdata.ctgs_arr) + 1) : size(opfdata.Pd, 2)
 
 
     #
     # Compute optimal solution using Ipopt
     #
-    monolithic = scopf_model(opfdata, rawdata; sc = sc)
+    monolithic = scopf_model(opfdata, rawdata; options = options)
     t0 = time()
-    xstar, λstar = solve_scmodel(monolithic, opfdata, rawdata; sc = sc)
+    xstar, λstar = solve_scmodel(monolithic, opfdata, rawdata; options = options)
     tmonolithic = time() - t0
-    zstar = computePrimalCost(xstar, opfdata; sc = sc)
+    zstar = computePrimalCost(xstar, opfdata; options = options)
     @printf("Optimal generation cost = %.2f\n", zstar)
 
     #
@@ -25,16 +25,16 @@ function runProxALM_mp(opfdata::OPFData, rawdata::RawData, perturbation::Number 
     #
     # Start from scratch
     #
-    x = initializePrimalSolution(opfdata, T; sc = sc)
-    λ = initializeDualSolution(opfdata, T; sc = sc)
+    x = initializePrimalSolution(opfdata, T; options = options)
+    λ = initializeDualSolution(opfdata, T; options = options)
     if true
         nlpmodel = Vector{JuMP.Model}(undef, T)
         params = initializeParams(1.0; aladin = false, jacobi = true)
         params.τ = 0
         for t = 1:T
             params.ρ = Float64(t > 1)*ones(size(λ.λp))
-            nlpmodel[t] = scopf_model(opfdata, rawdata, t; sc = sc, params = params, primal = x, dual = λ)
-            nlpmodel[t], status = solve_scmodel(nlpmodel[t], opfdata, t; sc = sc, initial_x = x, initial_λ = λ, params = params)
+            nlpmodel[t] = scopf_model(opfdata, rawdata, t; options = options, params = params, primal = x, dual = λ)
+            nlpmodel[t], status = solve_scmodel(nlpmodel[t], opfdata, t; options = options, initial_x = x, initial_λ = λ, params = params)
             if status != :Optimal && status != :UserLimit
                 error("something went wrong in the initialization with status ", status)
             end
@@ -89,9 +89,9 @@ function runProxALM_mp(opfdata::OPFData, rawdata::RawData, perturbation::Number 
         nlpmodel = Vector{JuMP.Model}(undef, T)
         soltimes = zeros(T)
         for t = 1:T
-            nlpmodel[t] = scopf_model(opfdata, rawdata, t; sc = sc, params = params, primal = x, dual = λ)
+            nlpmodel[t] = scopf_model(opfdata, rawdata, t; options = options, params = params, primal = x, dual = λ)
             t0 = time()
-            nlpmodel[t], status = solve_scmodel(nlpmodel[t], opfdata, t; sc = sc, initial_x = x, initial_λ = λ, params = params)
+            nlpmodel[t], status = solve_scmodel(nlpmodel[t], opfdata, t; options = options, initial_x = x, initial_λ = λ, params = params)
             soltimes[t] = time() - t0
             if status != :Optimal && status != :UserLimit
                 error("something went wrong in the x-update of proximal ALM with status ", status)
@@ -121,25 +121,25 @@ function runProxALM_mp(opfdata::OPFData, rawdata::RawData, perturbation::Number 
         #
         # update the λ
         #
-        updateDualSolution(λ, x, opfdata, tol; sc = sc, params = params)
+        updateDualSolution(λ, x, opfdata, tol; options = options, params = params)
         #println("rho: avg = ", sum(params.ρ)/((T-1)*size(λ.λp, 2)), " max = ", maximum(params.ρ), " # nonzeros = ", norm(params.ρ, 0), "/", ((T-1)*size(λ.λp, 2)))
 
 
         #
         # Compute the primal error
         #
-        primviol, primviolavg = computePrimalViolation(x, opfdata; sc = sc, lnorm = Inf)
+        primviol, primviolavg = computePrimalViolation(x, opfdata; options = options, lnorm = Inf)
 
         #
         # Compute the KKT error --> has meaningful value
         #                           only if both x and λ have been updated
         #
-        dualviol, dualviolavg = computeDualViolation(x, xprev, λ, λprev, nlpmodel, opfdata; sc = sc, lnorm = Inf, params = params)
+        dualviol, dualviolavg = computeDualViolation(x, xprev, λ, λprev, nlpmodel, opfdata; options = options, lnorm = Inf, params = params)
 
 
 
-        dist = computeDistance(x, xstar; sc = sc, lnorm = Inf)
-        gencost = computePrimalCost(x, opfdata; sc = sc)
+        dist = computeDistance(x, xstar; options = options, lnorm = Inf)
+        gencost = computePrimalCost(x, opfdata; options = options)
         gap = abs((gencost - zstar)/zstar)
 
         if verbose_level > 1
@@ -159,8 +159,8 @@ function runProxALM_mp(opfdata::OPFData, rawdata::RawData, perturbation::Number 
         end
 
         savedata[iter,:] = [dist, gap, primviol, dualviol, primviolavg, dualviolavg, timeNLP, tmonolithic]
-        if !isempty(savefile)
-            writedlm(savefile, savedata)
+        if !isempty(options.savefile)
+            writedlm(options.savefile, savedata)
         end
     end
 
@@ -177,12 +177,14 @@ function updatePrimalSolution(x::mpPrimalSolution, nlpmodel::Vector{JuMP.Model},
 end
 
 
-function updateDualSolution(dual::mpDualSolution, x::mpPrimalSolution, opfdata::OPFData, tol::Array{Float64}; sc::Bool, params::AlgParams)
+function updateDualSolution(dual::mpDualSolution, x::mpPrimalSolution, opfdata::OPFData, tol::Array{Float64};
+    options::Option = Option(),
+    params::AlgParams)
     for t=2:size(dual.λp, 1), g=1:size(dual.λp, 2)
-        if sc
+        if options.sc_constr
             errp = +x.PG[1,g] - x.PG[t,g] - opfdata.generators[g].scen_agc
             errn = -x.PG[1,g] + x.PG[t,g] - opfdata.generators[g].scen_agc
-        else
+        elseif options.has_ramping
             errp = +x.PG[t-1,g] - x.PG[t,g] - opfdata.generators[g].ramp_agc
             errn = -x.PG[t-1,g] + x.PG[t,g] - opfdata.generators[g].ramp_agc
         end

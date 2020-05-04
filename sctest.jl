@@ -19,14 +19,9 @@ for (idx, case) in enumerate(["data/case9", ARGS[1]])
         rawdata.ctgs_arr = rawdata.ctgs_arr[1:T]
     end
     opfdata = opf_loaddata(rawdata)
+    opt = Option()
+    opt.sc_constr = true
+    opt.savefile = getDataFilename("", case, "mpproxALM", T, 0, true, 0)
 
-    if idx > 1
-        savefile = getDataFilename("", case, "mpproxALM", T, 0, true, 0)
-    else
-        savefile = ""
-    end
-    x, λ, savedata = runProxALM_mp(opfdata, rawdata; sc = true, savefile = savefile)
-    if idx > 1
-        writedlm(savefile, savedata)
-    end
+    x, λ, savedata = runProxALM_mp(opfdata, rawdata; options = opt)
 end

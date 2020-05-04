@@ -59,6 +59,7 @@ mutable struct Gener
     shutdown::Float64
     n::Int 
     coeff::Array
+    alpha::Float64
 end
 
 struct OPFData
@@ -73,6 +74,40 @@ struct OPFData
     BusGenerators::Array     #list of generators for each bus (Array of Array)
     Pd::Array                #2d array of active power demands over a time horizon
     Qd::Array                #2d array of reactive power demands
+end
+
+
+mutable struct Option
+    obj_gencost::Bool
+    has_ramping::Bool
+    phase1::Bool
+    freq_ctrl::Bool
+    load_shed::Bool
+    sc_constr::Bool
+    piecewise::Bool
+    powerflow_solve::Bool
+    weight_loadshed::Float64
+    weight_freqctrl::Float64
+    savefile::String
+    prev_val::Vector{Float64}
+    neg_g::Vector{Int}
+
+    function Option()
+        new(true,  # obj_gencost
+            false, # has_ramping
+            false, # phase1
+            false, # freq_ctrl
+            false, # load_shed
+            false, # sc_constr
+            false, # piecewise
+            false, # powerflow_solve
+            1.0,   # weight_loadshed
+            1.0,   # weight_freqctrl
+            "",    # savefile
+            Vector{Float64}(), # prev_val
+            Vector{Int}()      # neg_g
+        )
+    end
 end
 
 
@@ -181,11 +216,12 @@ function opf_loaddata(raw::RawData; time_horizon::Int=0, load_scale::Float64=1.0
     end
 
     generators = Array{Gener}(undef, num_on)
+    R = 0.04 # Droop regulation
     i=0
     for git in gens_on
         i += 1
 
-        generators[i] = Gener(0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, Array{Int}(undef, 0)) #gen_arr[i,1:end]...)
+        generators[i] = Gener(0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,Array{Int}(undef, 0),0)
 
         generators[i].bus      = gen_arr[git,1]
         generators[i].Pg       = gen_arr[git,2] / baseMVA
@@ -210,6 +246,7 @@ function opf_loaddata(raw::RawData; time_horizon::Int=0, load_scale::Float64=1.0
         generators[i].startup  = costgen_arr[git,2]
         generators[i].shutdown = costgen_arr[git,3]
         generators[i].n        = costgen_arr[git,4]
+        generators[i].alpha    = -((1/R)*generators[i].Pmax)
         if generators[i].gentype == 1
             generators[i].coeff = costgen_arr[git,5:end]  
             error("Piecewise linear costs remains to be implemented.")
