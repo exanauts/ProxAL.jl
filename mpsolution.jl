@@ -140,7 +140,7 @@ function computeDualViolation(x::mpPrimalSolution, xprev::mpPrimalSolution, λ::
                     else
                         for s=2:size(λ.λp, 1)
                             kkt[idx_pg] += +λ.λp[s,g]-λ.λn[s,g]
-                            kkt[idx_pg] -= +λprev.λp[s,g]-λprev.λn[s,g] + params.ρ[t,g]*(
+                            kkt[idx_pg] -= +λprev.λp[s,g]-λprev.λn[s,g] + params.ρ[s,g]*(
                                             x.PG[1,g] - xprev.PG[s,g] + xprev.SL[s,g] -
                                             gen[g].scen_agc
                                         )
@@ -162,7 +162,7 @@ function computeDualViolation(x::mpPrimalSolution, xprev::mpPrimalSolution, λ::
                     else
                         for s=2:size(λ.λp, 1)
                             kkt[idx_pg] += +λ.λp[s,g]
-                            kkt[idx_pg] -= +λprev.λp[s,g] + params.ρ[t,g]*(
+                            kkt[idx_pg] -= +λprev.λp[s,g] + params.ρ[s,g]*(
                                             x.PG[1,g] - xprev.PG[s,g] +
                                             (gen[g].alpha*xprev.SL[s])
                                         )
