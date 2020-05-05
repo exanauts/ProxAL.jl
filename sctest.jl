@@ -23,6 +23,7 @@ for (idx, case) in enumerate([ARGS[1]])
     opt.sc_constr = true
     opt.freq_ctrl = true
     opt.weight_freqctrl = 0
+    opt.weight_sc_gencost = 1/length(rawdata.ctgs_arr)
     opt.savefile = getDataFilename("", case, "mpproxALM", T, 1.0, true, 0)
 
     x, λ, savedata = runProxALM_mp(opfdata, rawdata; options = opt)
