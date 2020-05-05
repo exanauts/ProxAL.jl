@@ -38,11 +38,11 @@ function runProxALM_mp(opfdata::OPFData, rawdata::RawData, perturbation::Number 
             if status != :Optimal && status != :UserLimit
                 error("something went wrong in the initialization with status ", status)
             end
-            updatePrimalSolution(x, nlpmodel, t)
+            updatePrimalSolution(x, nlpmodel, t; options = options)
             if t == 1
                 for s=2:T
                     nlpmodel[s] = nlpmodel[1]
-                    updatePrimalSolution(x, nlpmodel, s)
+                    updatePrimalSolution(x, nlpmodel, s; options = options)
                 end
             end
         end
@@ -63,8 +63,7 @@ function runProxALM_mp(opfdata::OPFData, rawdata::RawData, perturbation::Number 
     maxρ = 5.0Float64(T > 1)*max(maximum(abs.(λstar.λp)), maximum(abs.(λstar.λn)))
     #maxρ = 0.2
     params = initializeParams(maxρ; aladin = false, jacobi = true)
-    #params.τ = 0.8
-    params.ρ = zeros(size(λ.λp))
+    params.ρ = params.updateρ ? zeros(size(λ.λp)) : maxρ*ones(size(λ.λp))
     tol = 1e-2*ones(size(λ.λp))
     params.iterlim = 100
     savedata = zeros(params.iterlim, 8)
@@ -102,7 +101,7 @@ function runProxALM_mp(opfdata::OPFData, rawdata::RawData, perturbation::Number 
             # Gauss-Siedel --> immediately update
             #
             if !params.jacobi
-                updatePrimalSolution(x, nlpmodel, t)
+                updatePrimalSolution(x, nlpmodel, t; options = options)
             end
         end
 
@@ -112,7 +111,7 @@ function runProxALM_mp(opfdata::OPFData, rawdata::RawData, perturbation::Number 
         if params.jacobi
             timeNLP += maximum(soltimes)
             for t in 1:length(nlpmodel)
-                updatePrimalSolution(x, nlpmodel, t)
+                updatePrimalSolution(x, nlpmodel, t; options = options)
             end
         else
             timeNLP += soltimes[1] + maximum(soltimes[2:end])
@@ -168,38 +167,54 @@ function runProxALM_mp(opfdata::OPFData, rawdata::RawData, perturbation::Number 
 end
 
 
-function updatePrimalSolution(x::mpPrimalSolution, nlpmodel::Vector{JuMP.Model}, t::Int)
+function updatePrimalSolution(x::mpPrimalSolution, nlpmodel::Vector{JuMP.Model}, t::Int;
+                              options::Option = Option())
     x.PG[t,:] = getvalue(nlpmodel[t][:Pg])
     x.QG[t,:] = getvalue(nlpmodel[t][:Qg])
     x.VM[t,:] = getvalue(nlpmodel[t][:Vm])
     x.VA[t,:] = getvalue(nlpmodel[t][:Va])
-    x.SL[t,:] = getvalue(nlpmodel[t][:Sl])
+    if options.sc_constr && options.freq_ctrl
+        x.SL[t] = getvalue(nlpmodel[t][:Sl])
+    else
+        x.SL[t,:] = getvalue(nlpmodel[t][:Sl])
+    end
 end
 
 
 function updateDualSolution(dual::mpDualSolution, x::mpPrimalSolution, opfdata::OPFData, tol::Array{Float64};
-    options::Option = Option(),
-    params::AlgParams)
+                            options::Option = Option(),
+                            params::AlgParams)
     for t=2:size(dual.λp, 1), g=1:size(dual.λp, 2)
+        viol = 0
         if options.sc_constr
-            errp = +x.PG[1,g] - x.PG[t,g] - opfdata.generators[g].scen_agc
-            errn = -x.PG[1,g] + x.PG[t,g] - opfdata.generators[g].scen_agc
+            if options.freq_ctrl
+                errp = +x.PG[1,g] - x.PG[t,g] + (opfdata.generators[g].alpha*x.SL[t])
+                errn = 0
+                viol = abs(errp)
+            else
+                errp = +x.PG[1,g] - x.PG[t,g] - opfdata.generators[g].scen_agc
+                errn = -x.PG[1,g] + x.PG[t,g] - opfdata.generators[g].scen_agc
+                viol = max(errp, errn, 0)
+            end
         elseif options.has_ramping
             errp = +x.PG[t-1,g] - x.PG[t,g] - opfdata.generators[g].ramp_agc
             errn = -x.PG[t-1,g] + x.PG[t,g] - opfdata.generators[g].ramp_agc
+            viol = max(errp, errn, 0)
         end
         if params.updateρ
-            if params.ρ[t,g] < params.maxρ && max(errp, errn, 0) > tol[t,g]
+            if params.ρ[t,g] < params.maxρ && viol > tol[t,g]
                 params.ρ[t,g] = min(params.ρ[t,g] + 0.1params.maxρ, params.maxρ)
             else
-                if max(errp, errn, 0) <= tol[t,g]
+                if viol <= tol[t,g]
                     tol[t,g] = max(tol[t,g]/1.2, params.zero)
                 end
             end
         end
         dual.λp[t,g] += params.θ*params.ρ[t,g]*errp
-        dual.λn[t,g] += params.θ*params.ρ[t,g]*errn
-        dual.λp[t,g] = max(dual.λp[t,g], 0)
-        dual.λn[t,g] = max(dual.λn[t,g], 0)
+        if !options.sc_constr || !options.freq_ctrl
+            dual.λn[t,g] += params.θ*params.ρ[t,g]*errn
+            dual.λp[t,g] = max(dual.λp[t,g], 0)
+            dual.λn[t,g] = max(dual.λn[t,g], 0)
+        end
     end
 end

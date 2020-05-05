@@ -29,7 +29,7 @@ function initializeParams(maxρ = 10.0; aladin::Bool, jacobi::Bool)
         nlpiterlim = 10000
         updateρ = false
     else
-        τ = 2maxρ
+        τ = 10maxρ
         μ = 0.0
         nlpiterlim = 10000
         updateρ = true
