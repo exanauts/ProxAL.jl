@@ -127,7 +127,7 @@ function scopf_model(opfdata::OPFData, rawdata::RawData; options::Option = Optio
     #
     # set objective function
     #
-    @NLobjective(opfmodel, Min, obj_gencost + (options.weight_freqctrl*obj_freq_ctrl))
+    @NLobjective(opfmodel, Min, (1e-3*obj_gencost) + (options.weight_freqctrl*obj_freq_ctrl))
 
 
     # constraints for each block
@@ -358,7 +358,7 @@ function scopf_model(opfdata::OPFData, rawdata::RawData, t::Int;
     #
     # set objective function
     #
-    @objective(opfmodel, Min, penalty + obj_gencost + (options.weight_freqctrl*obj_freq_ctrl))
+    @objective(opfmodel, Min, penalty + (1e-3*obj_gencost) + (options.weight_freqctrl*obj_freq_ctrl))
 
 
     # Network data
@@ -477,7 +477,7 @@ function penalty_expression(opfmodel::JuMP.Model, opfdata::OPFData, t::Int;
                     for s=2:size(dual.λp, 1)
                         penalty +=     dual.λp[s,g]*(+Pg[g] - primal.PG[s,g] - gen[g].scen_agc)
                         penalty +=     dual.λn[s,g]*(-Pg[g] + primal.PG[s,g] - gen[g].scen_agc)
-                        penalty += 0.5params.ρ[t,g]*(+Pg[g] - primal.PG[s,g] + primal.SL[s,g] - gen[g].scen_agc)^2
+                        penalty += 0.5params.ρ[s,g]*(+Pg[g] - primal.PG[s,g] + primal.SL[s,g] - gen[g].scen_agc)^2
                     end
                 end
             
@@ -489,7 +489,7 @@ function penalty_expression(opfmodel::JuMP.Model, opfdata::OPFData, t::Int;
                 else
                     for s=2:size(dual.λp, 1)
                         penalty +=     dual.λp[s,g]*(+Pg[g] - primal.PG[s,g] + (gen[g].alpha*primal.SL[s]))
-                        penalty += 0.5params.ρ[t,g]*(+Pg[g] - primal.PG[s,g] + (gen[g].alpha*primal.SL[s]))^2
+                        penalty += 0.5params.ρ[s,g]*(+Pg[g] - primal.PG[s,g] + (gen[g].alpha*primal.SL[s]))^2
                     end
                 end
 
