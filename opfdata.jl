@@ -86,6 +86,7 @@ mutable struct Option
     sc_constr::Bool
     piecewise::Bool
     powerflow_solve::Bool
+    weight_sc_gencost::Float64
     weight_loadshed::Float64
     weight_freqctrl::Float64
     savefile::String
@@ -101,6 +102,7 @@ mutable struct Option
             false, # sc_constr
             false, # piecewise
             false, # powerflow_solve
+            1.0,   # weight_sc_gencost
             1.0,   # weight_loadshed
             1.0,   # weight_freqctrl
             "",    # savefile

@@ -60,9 +60,10 @@ function runProxALM_mp(opfdata::OPFData, rawdata::RawData, perturbation::Number 
     #
     # Initialize algorithmic parameters
     #
-    maxρ = 5.0Float64(T > 1)*max(maximum(abs.(λstar.λp)), maximum(abs.(λstar.λn)))
-    #maxρ = 0.2
+    maxρ = 0.1#5.0Float64(T > 1)*max(maximum(abs.(λstar.λp)), maximum(abs.(λstar.λn)))
     params = initializeParams(maxρ; aladin = false, jacobi = true)
+    params.τ = params.jacobi ? 10maxρ : 0
+    params.updateρ = !(options.sc_constr && options.freq_ctrl)
     params.ρ = params.updateρ ? zeros(size(λ.λp)) : maxρ*ones(size(λ.λp))
     tol = 1e-2*ones(size(λ.λp))
     params.iterlim = 100

@@ -183,7 +183,7 @@ function computeDualViolation(x::mpPrimalSolution, xprev::mpPrimalSolution, λ::
                     end
                     if t < length(nlpmodel)
                         kkt[idx_pg] += +λ.λp[t+1,g]-λ.λn[t+1,g]
-                        kkt[idx_pg] -= +λprev.λ[t+1,g]-λprev.λn[t+1,g] + params.ρ[t,g]*(
+                        kkt[idx_pg] -= +λprev.λ[t+1,g]-λprev.λn[t+1,g] + params.ρ[t+1,g]*(
                                         x.PG[t,g] - xprev.PG[t+1,g] + xprev.SL[t+1,g] -
                                         gen[g].ramp_agc
                                     )
@@ -193,12 +193,12 @@ function computeDualViolation(x::mpPrimalSolution, xprev::mpPrimalSolution, λ::
         end
         # The proximal part in both ALADIN and proximal ALM
         for g=1:length(gen)
-            pg_idx = linearindex(nlpmodel[t][:Pg][g])
-            kkt[pg_idx] -= params.τ*(x.PG[t,g] - xprev.PG[t,g])
+            idx_pg = linearindex(nlpmodel[t][:Pg][g])
+            kkt[idx_pg] -= params.τ*(x.PG[t,g] - xprev.PG[t,g])
         end
         if params.jacobi && options.sc_constr && options.freq_ctrl && t > 1
-            sl_idx = linearindex(nlpmodel[t][:Sl])
-            kkt[sl_idx] -= params.τ*(x.SL[t] - xprev.SL[t])
+            idx_sl = linearindex(nlpmodel[t][:Sl])
+            kkt[idx_sl] -= params.τ*(x.SL[t] - xprev.SL[t])
         end
 
         #
@@ -251,23 +251,22 @@ function computePrimalViolation(primal::mpPrimalSolution, opfdata::OPFData; opti
 end
 
 function computePrimalCost(primal::mpPrimalSolution, opfdata::OPFData; options::Option = Option())
+    T = size(primal.PG, 1)
     gen = opfdata.generators
     baseMVA = opfdata.baseMVA
     gencost = 0.0
     if options.sc_constr && options.freq_ctrl
-        for t=2:length(primal.SL)
+        for t=2:T
             gencost += 0.5options.weight_freqctrl*(primal.SL[t])^2
         end
     end
     if !options.obj_gencost
         return gencost
     end
-    arr = options.sc_constr ? [1]#=(1:length(primal.SL))=# : (1:size(opfdata.Pd, 2))
-    T = length(primal.SL)
-    for p in arr
+    for p in 1:T
         for g in 1:size(primal.PG, 2)
             Pg = primal.PG[p,g]
-            weight = (options.sc_constr && p > 1) ? 0.0#=(1/(T-1))=# : 1.0
+            weight = (options.sc_constr && p > 1) ? options.weight_sc_gencost : 1.0
             gencost += weight*( gen[g].coeff[gen[g].n-2]*(baseMVA*Pg)^2 +
                                 gen[g].coeff[gen[g].n-1]*(baseMVA*Pg)   +
                                 gen[g].coeff[gen[g].n  ])

@@ -75,10 +75,11 @@ function scopf_model(opfdata::OPFData, rawdata::RawData; options::Option = Optio
             @NLexpression(opfmodel, obj_gencost,
                 sum(  generators[g].coeff[generators[g].n-2]*(baseMVA*Pg[1,g])^2
                     + generators[g].coeff[generators[g].n-1]*(baseMVA*Pg[1,g])
-                    + generators[g].coeff[generators[g].n  ] for g=1:ngen) #=+ ((1/(T-1))*
+                    + generators[g].coeff[generators[g].n  ] for g=1:ngen) +
+                (options.weight_sc_gencost*
                 sum(  generators[g].coeff[generators[g].n-2]*(baseMVA*Pg[t,g])^2
                     + generators[g].coeff[generators[g].n-1]*(baseMVA*Pg[t,g])
-                    + generators[g].coeff[generators[g].n  ] for t=2:T, g=1:ngen))=#
+                    + generators[g].coeff[generators[g].n  ] for t=2:T, g=1:ngen))
             )
         else
             @NLexpression(opfmodel, obj_gencost, 0)
@@ -337,13 +338,11 @@ function scopf_model(opfdata::OPFData, rawdata::RawData, t::Int;
             obj_gencost +=sum(generators[g].coeff[generators[g].n-2]*(baseMVA*Pg[g])^2
                             + generators[g].coeff[generators[g].n-1]*(baseMVA*Pg[g])
                             + generators[g].coeff[generators[g].n  ] for g=1:ngen)
-        #=
         elseif t > 1 && options.sc_constr
-            T = length(primal.SL)
-            obj_gencost += (1/(T-1))*sum( generators[g].coeff[generators[g].n-2]*(baseMVA*Pg[g])^2
-                                        + generators[g].coeff[generators[g].n-1]*(baseMVA*Pg[g])
-                                        + generators[g].coeff[generators[g].n  ] for g=1:ngen)
-        =#
+            obj_gencost += options.weight_sc_gencost*
+                            sum(  generators[g].coeff[generators[g].n-2]*(baseMVA*Pg[g])^2
+                                + generators[g].coeff[generators[g].n-1]*(baseMVA*Pg[g])
+                                + generators[g].coeff[generators[g].n  ] for g=1:ngen)
         end
     end
 
