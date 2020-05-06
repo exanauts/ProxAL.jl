@@ -22,6 +22,7 @@ for (idx, case) in enumerate([ARGS[1]])
     opt = Option()
     opt.sc_constr = true
     opt.freq_ctrl = true
+    opt.two_block = true
     opt.weight_freqctrl = 0
     opt.weight_sc_gencost = 1/length(rawdata.ctgs_arr)
     opt.savefile = getDataFilename("", case, "mpproxALM", T, 1.0, true, 0)

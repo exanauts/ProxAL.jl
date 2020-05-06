@@ -85,6 +85,7 @@ mutable struct Option
     load_shed::Bool
     sc_constr::Bool
     piecewise::Bool
+    two_block::Bool
     powerflow_solve::Bool
     weight_sc_gencost::Float64
     weight_loadshed::Float64
@@ -101,6 +102,7 @@ mutable struct Option
             false, # load_shed
             false, # sc_constr
             false, # piecewise
+            false, # two_block
             false, # powerflow_solve
             1.0,   # weight_sc_gencost
             1.0,   # weight_loadshed
