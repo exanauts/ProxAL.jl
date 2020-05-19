@@ -290,22 +290,39 @@ function computePrimalViolation(primal::mpPrimalSolution, opfdata::OPFData; opti
 end
 
 function computePrimalCost(primal::mpPrimalSolution, opfdata::OPFData; options::Option = Option())
+    ## generation costs
+    gencost = 0.0
+    if options.obj_gencost
+        gencost = computeGenerationCost(primal, opfdata; options = options)
+    end
+
+    ## penalty costs due to infeasibility
+    penalty = 0.0
+    if options.obj_penalty
+        penalty = computePenaltyCost(primal, opfdata; options = options)
+    end
+
+    ## frequency control costs
+    freqctrl = 0.0
+    if options.sc_constr && options.freq_ctrl
+        for t=2:length(primal.SL)
+            freqctrl += 0.5*(primal.SL[t])^2
+        end
+    end
+
+    totalcost = gencost + (options.weight_loadshed*penalty) + (options.weight_freqctrl*freqctrl)
+    return totalcost
+end
+
+function computeGenerationCost(primal::mpPrimalSolution, opfdata::OPFData; options::Option = Option())
     T = size(primal.PG, 1)
     gen = opfdata.generators
     baseMVA = opfdata.baseMVA
     gencost = 0.0
-    if options.sc_constr && options.freq_ctrl
-        for t=2:T
-            gencost += 0.5options.weight_freqctrl*(primal.SL[t])^2
-        end
-    end
-    if !options.obj_gencost
-        return gencost
-    end
     for p in 1:T
         for g in 1:size(primal.PG, 2)
             Pg = primal.PG[p,g]
-            weight = (options.sc_constr && p > 1) ? options.weight_sc_gencost : 1.0
+            weight = p > 1 ? options.weight_scencost : 1.0
             gencost += weight*( gen[g].coeff[gen[g].n-2]*(baseMVA*Pg)^2 +
                                 gen[g].coeff[gen[g].n-1]*(baseMVA*Pg)   +
                                 gen[g].coeff[gen[g].n  ])
@@ -313,4 +330,11 @@ function computePrimalCost(primal::mpPrimalSolution, opfdata::OPFData; options::
     end
 
     return gencost
+end
+
+function computePenaltyCost(primal::mpPrimalSolution, opfdata::OPFData; options::Option = Option())
+    # TO DO
+    # NEED rawdata
+    #error("to do")
+    return 0.0
 end

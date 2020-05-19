@@ -79,6 +79,7 @@ end
 
 mutable struct Option
     obj_gencost::Bool
+    obj_penalty::Bool
     has_ramping::Bool
     phase1::Bool
     freq_ctrl::Bool
@@ -87,7 +88,7 @@ mutable struct Option
     piecewise::Bool
     two_block::Bool
     powerflow_solve::Bool
-    weight_sc_gencost::Float64
+    weight_scencost::Float64
     weight_loadshed::Float64
     weight_freqctrl::Float64
     savefile::String
@@ -96,6 +97,7 @@ mutable struct Option
 
     function Option()
         new(true,  # obj_gencost
+            false, # obj_penalty
             false, # has_ramping
             false, # phase1
             false, # freq_ctrl
@@ -104,7 +106,7 @@ mutable struct Option
             false, # piecewise
             false, # two_block
             false, # powerflow_solve
-            1.0,   # weight_sc_gencost
+            1.0,   # weight_scencost
             1.0,   # weight_loadshed
             1.0,   # weight_freqctrl
             "",    # savefile

@@ -20,6 +20,11 @@ for ramp_scale in [0.001, 0.002, 0.005]
     perturbation = 0.1
     opt = Option()
     opt.has_ramping = true
+    opt.weight_loadshed = 0
+    opt.weight_scencost = 1.0
+    opt.weight_freqctrl = 0
+    opt.obj_penalty = false
+    opt.obj_gencost = true
     opt.savefile = getDataFilename("", case, "mpproxALM", T, perturbation, true, ramp_scale)
 
 
