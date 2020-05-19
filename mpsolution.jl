@@ -74,16 +74,16 @@ function perturb(dual::mpDualSolution, factor::Number)
 end
 
 function computeDistance(x1::mpPrimalSolution, x2::mpPrimalSolution; options::Option = Option(), lnorm = 1)
-    if options.sc_constr && !options.freq_ctrl
-        xd = x1.PG[1,:] - x2.PG[1,:]
-        return norm(xd, lnorm)
-    elseif options.sc_constr && options.freq_ctrl && !options.two_block
-        xd = [x1.PG[1,:] - x2.PG[1,:]; x1.SL - x2.SL]
-        return norm(vcat(xd...), lnorm)
-    elseif options.sc_constr && options.freq_ctrl && options.two_block
+    if options.sc_constr && options.two_block
         xd = x1.PG_BASE - x2.PG_BASE
         xd = [vcat(xd...); x1.PG_REF - x2.PG_REF]
         return norm(xd, lnorm)
+    elseif options.sc_constr && !options.freq_ctrl
+        xd = x1.PG[1,:] - x2.PG[1,:]
+        return norm(xd, lnorm)
+    elseif options.sc_constr && options.freq_ctrl
+        xd = [x1.PG[1,:] - x2.PG[1,:]; x1.SL - x2.SL]
+        return norm(vcat(xd...), lnorm)
     end
     xd = [[x1.PG[t,:] - x2.PG[t,:];
            x1.QG[t,:] - x2.QG[t,:];
@@ -135,8 +135,16 @@ function computeDualViolation(x::mpPrimalSolution, xprev::mpPrimalSolution, λ::
             # The Aug Lag part in proximal ALM
             for g=1:length(gen)
                 idx_pg = linearindex(nlpmodel[t][:Pg][g])
+                # two-block reformulation
+                if options.sc_constr && options.two_block
+                    idx_pg_base = linearindex(nlpmodel[t][:Pg_base][g])
+                    kkt[idx_pg_base] += λ.λp[t,g]
+                    kkt[idx_pg_base] -= λprev.λp[t,g] + (params.ρ[t,g]*(
+                                    x.PG_BASE[t,g] - xprev.PG_REF[g]
+                                ))
+
                 # contingency
-                if options.sc_constr && !options.freq_ctrl
+                elseif options.sc_constr && !options.freq_ctrl
                     idx_sl = linearindex(nlpmodel[t][:Sl][g])
                     if t > 1
                         kkt[idx_pg] += -λ.λp[t,g]+λ.λn[t,g]
@@ -157,7 +165,7 @@ function computeDualViolation(x::mpPrimalSolution, xprev::mpPrimalSolution, λ::
                     end
 
                 # frequency control
-                elseif options.sc_constr && options.freq_ctrl && !options.two_block
+                elseif options.sc_constr && options.freq_ctrl
                     idx_sl = linearindex(nlpmodel[t][:Sl])
                     if t > 1
                         kkt[idx_pg] += -λ.λp[t,g]
@@ -177,14 +185,6 @@ function computeDualViolation(x::mpPrimalSolution, xprev::mpPrimalSolution, λ::
                                         )
                         end
                     end
-
-                # frequency control
-                elseif options.sc_constr && options.freq_ctrl && options.two_block
-                    idx_pg_base = linearindex(nlpmodel[t][:Pg_base][g])
-                    kkt[idx_pg_base] += λ.λp[t,g]
-                    kkt[idx_pg_base] -= λprev.λp[t,g] + (params.ρ[t,g]*(
-                                    x.PG_BASE[t,g] - xprev.PG_REF[g]
-                                ))
 
                 # multiperiod
                 elseif options.has_ramping
@@ -209,7 +209,7 @@ function computeDualViolation(x::mpPrimalSolution, xprev::mpPrimalSolution, λ::
             end
         end
         # The proximal part in both ALADIN and proximal ALM
-        if options.two_block && options.sc_constr && options.freq_ctrl
+        if options.sc_constr && options.two_block
             for g=1:length(gen)
                 idx_pg_base = linearindex(nlpmodel[t][:Pg_base][g])
                 kkt[idx_pg_base] -= params.τ*(x.PG_BASE[t,g] - xprev.PG_BASE[t,g])
@@ -241,7 +241,7 @@ function computeDualViolation(x::mpPrimalSolution, xprev::mpPrimalSolution, λ::
         end
         dualviol = [dualviol; kkt]
     end
-    if options.two_block && options.sc_constr && options.freq_ctrl
+    if options.sc_constr && options.two_block
         for g=1:length(gen)
             kkt_pg_ref = -params.τ*(x.PG_REF[g] - xprev.PG_REF[g])
             for t=1:size(λ.λp, 1)
@@ -268,14 +268,14 @@ function computePrimalViolation(primal::mpPrimalSolution, opfdata::OPFData; opti
     #
     # primal violation
     #
-    if options.sc_constr && !options.freq_ctrl
+    if options.sc_constr && options.two_block
+        errp = [abs(primal.PG_BASE[t,g] - primal.PG_REF[g]) for t=1:T for g=1:num_gens]
+        errn = zeros(0)
+    elseif options.sc_constr && !options.freq_ctrl
         errp = [max(+primal.PG[1,g] - primal.PG[t,g] - gen[g].scen_agc, 0) for t=2:T for g=1:num_gens]
         errn = [max(-primal.PG[1,g] + primal.PG[t,g] - gen[g].scen_agc, 0) for t=2:T for g=1:num_gens]
-    elseif options.sc_constr && options.freq_ctrl && !options.two_block
+    elseif options.sc_constr && options.freq_ctrl
         errp = [abs(+primal.PG[1,g] - primal.PG[t,g] + (gen[g].alpha*primal.SL[t])) for t=2:T for g=1:num_gens]
-        errn = zeros(0)
-    elseif options.sc_constr && options.freq_ctrl && options.two_block
-        errp = [abs(primal.PG_BASE[t,g] - primal.PG_REF[g]) for t=1:T for g=1:num_gens]
         errn = zeros(0)
     elseif options.has_ramping
         errp = [max(+primal.PG[t-1,g] - primal.PG[t,g] - gen[g].ramp_agc, 0) for t=2:T for g=1:num_gens]

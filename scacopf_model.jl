@@ -114,38 +114,52 @@ function scopf_model(opfdata::OPFData, rawdata::RawData; options::Option = Optio
 
     # security-constrained opf
     if options.sc_constr
-        # Coupling constraints
+        #
+        # Frequency control
+        #
         if options.freq_ctrl
-            # omega for primary control (frequency deviation in p.u.)
+            # primary frequency control
             @variable(opfmodel, -1 <= omega[t=2:T] <= 1, start=0)
-
-            if options.two_block
-                # 1st-stage variables
-                @variable(opfmodel, generators[i].Pmin <= Pg_ref[i=1:ngen] <= generators[i].Pmax)
-
-                # Copies of base-case power generation
-                @variable(opfmodel, generators[i].Pmin <= Pg_base[t=1:T,i=1:ngen] <= generators[i].Pmax)
-
-                # primary frequency control under contingency
-                @constraint(opfmodel,       [g=1:ngen],  Pg_base[1,g] - Pg[1,g] == 0)
-                @constraint(opfmodel, [t=2:T,g=1:ngen],  Pg_base[t,g] - Pg[t,g] + (generators[g].alpha*omega[t]) == 0)
-
-                # consensus constraints
-                @constraint(opfmodel, ramping_p[t=1:T,g=1:ngen], Pg_base[t,g] == Pg_ref[g])
-            else
-                # primary frequency control under contingency
-                @constraint(opfmodel, ramping_p[t=2:T,g=1:ngen],  Pg[1,g] - Pg[t,g] + (generators[g].alpha*omega[t]) == 0)
-            end
-
-            # minimize frequency changes
             @NLexpression(opfmodel, obj_freq_ctrl, 0.5*sum(omega[t]^2 for t=2:T))
         else
-            # power generation@(contingency - base case) <= bounded by ramp factor
-            @constraint(opfmodel, ramping_p[t=2:T,g=1:ngen],  Pg[1,g] - Pg[t,g] <= generators[g].scen_agc)
-            @constraint(opfmodel, ramping_n[t=2:T,g=1:ngen], -Pg[1,g] + Pg[t,g] <= generators[g].scen_agc)
-
             # ignore
             @NLexpression(opfmodel, obj_freq_ctrl, 0)
+        end
+
+        #
+        # Add coupling constraints
+        #
+        if options.two_block
+            # 1st-stage variables
+            @variable(opfmodel, generators[i].Pmin <= Pg_ref[i=1:ngen] <= generators[i].Pmax)
+
+            # Copies of base-case power generation
+            @variable(opfmodel, generators[i].Pmin <= Pg_base[t=1:T,i=1:ngen] <= generators[i].Pmax)
+
+            # definition of Pg_base
+            @constraint(opfmodel, [g=1:ngen],  Pg_base[1,g] - Pg[1,g] == 0)
+
+            # consensus constraints
+            @constraint(opfmodel, ramping_p[t=1:T,g=1:ngen], Pg_base[t,g] == Pg_ref[g])
+
+            #
+            # Reformulated coupling constraints -- no longer coupling
+            #
+            if options.freq_ctrl
+                @constraint(opfmodel, [t=2:T,g=1:ngen],  Pg_base[t,g] - Pg[t,g] + (generators[g].alpha*omega[t]) == 0)
+            else
+                @constraint(opfmodel, [t=2:T,g=1:ngen],  Pg_base[t,g] - Pg[t,g] <= generators[g].scen_agc)
+                @constraint(opfmodel, [t=2:T,g=1:ngen], -Pg_base[t,g] + Pg[t,g] <= generators[g].scen_agc)
+            end
+        else
+            if options.freq_ctrl
+                # primary frequency control under contingency
+                @constraint(opfmodel, ramping_p[t=2:T,g=1:ngen],  Pg[1,g] - Pg[t,g] + (generators[g].alpha*omega[t]) == 0)
+            else
+                # power generation@(contingency - base case) <= bounded by ramp factor
+                @constraint(opfmodel, ramping_p[t=2:T,g=1:ngen],  Pg[1,g] - Pg[t,g] <= generators[g].scen_agc)
+                @constraint(opfmodel, ramping_n[t=2:T,g=1:ngen], -Pg[1,g] + Pg[t,g] <= generators[g].scen_agc)
+            end
         end
     
     # multi-period opf
@@ -304,7 +318,7 @@ function solve_scmodel(opfmodel::JuMP.Model, opfdata::OPFData, rawdata::RawData;
             primal.VA[t,b] = getvalue(opfmodel[:Va][t,b])
         end
     end
-    if options.two_block && options.sc_constr
+    if options.sc_constr && options.two_block
         for t=1:T, g=1:ngen
             primal.PG_BASE[t,g] = getvalue(opfmodel[:Pg_base][t,g])
             if t == 1
@@ -321,7 +335,7 @@ function solve_scmodel(opfmodel::JuMP.Model, opfdata::OPFData, rawdata::RawData;
     for t=2:T
         for g=1:ngen
             dual.λp[t,g] = internalmodel(opfmodel).inner.mult_g[linearindex(opfmodel[:ramping_p][t,g])]
-            if options.freq_ctrl
+            if options.sc_constr && (options.freq_ctrl || options.two_block)
                 continue
             end
             dual.λp[t,g] = abs(dual.λp[t,g])
@@ -385,14 +399,25 @@ function scopf_model(opfdata::OPFData, rawdata::RawData, t::Int;
     # slack variable for ramping constraints
     #
     if options.sc_constr
+        # 2-block reformulation
+        if options.two_block
+            @variable(opfmodel, generators[i].Pmin <= Pg_base[i=1:ngen] <= generators[i].Pmax)
+        end
+
         if options.freq_ctrl
             @variable(opfmodel, -Float64(t > 1) <= Sl <= Float64(t > 1), start = 0)
             if options.two_block
-                @variable(opfmodel, generators[i].Pmin <= Pg_base[i=1:ngen] <= generators[i].Pmax)
                 @constraint(opfmodel, [g=1:ngen], Pg_base[g] - Pg[g] + (generators[g].alpha*Sl) == 0)
             end
         else
             @variable(opfmodel, 0 <= Sl[g=1:ngen] <= 2Float64(t > 1)*generators[g].scen_agc)
+            if options.two_block
+                if t > 1
+                    @constraint(opfmodel, [g=1:ngen], Pg_base[g] - Pg[g] + Sl[g] == generators[g].scen_agc)
+                else
+                    @constraint(opfmodel, [g=1:ngen], Pg_base[g] - Pg[g] == 0)
+                end
+            end
         end
     else
         @variable(opfmodel, 0 <= Sl[g=1:ngen] <= 2Float64(t > 1)*generators[g].ramp_agc)
@@ -545,8 +570,14 @@ function penalty_expression(opfmodel::JuMP.Model, opfdata::OPFData, t::Int;
     #
     else
         for g=1:length(gen)
-            # security-constrained opf
-            if options.sc_constr && !options.freq_ctrl
+            # two-block reformulation of security-constrained opf
+            if options.sc_constr && options.two_block
+                Pg_base = opfmodel[:Pg_base]
+                penalty +=     dual.λp[t,g]*(Pg_base[g] - primal.PG_REF[g])
+                penalty += 0.5params.ρ[t,g]*(Pg_base[g] - primal.PG_REF[g])^2
+
+            # classical security-constrained opf
+            elseif options.sc_constr && !options.freq_ctrl
                 if t > 1
                     penalty +=     dual.λp[t,g]*(+primal.PG[1,g] - Pg[g] - gen[g].scen_agc)
                     penalty +=     dual.λn[t,g]*(-primal.PG[1,g] + Pg[g] - gen[g].scen_agc)
@@ -560,11 +591,6 @@ function penalty_expression(opfmodel::JuMP.Model, opfdata::OPFData, t::Int;
                 end
             
             # frequency control security-constrained opf
-            elseif options.sc_constr && options.freq_ctrl && options.two_block
-                Pg_base = opfmodel[:Pg_base]
-                penalty +=     dual.λp[t,g]*(Pg_base[g] - primal.PG_REF[g])
-                penalty += 0.5params.ρ[t,g]*(Pg_base[g] - primal.PG_REF[g])^2
-
             elseif options.sc_constr && options.freq_ctrl
                 if t > 1
                     penalty +=     dual.λp[t,g]*(+primal.PG[1,g] - Pg[g] + (gen[g].alpha*Sl))
@@ -596,7 +622,7 @@ function penalty_expression(opfmodel::JuMP.Model, opfdata::OPFData, t::Int;
     # the proximal part
     #
     if !iszero(params.τ)
-        if options.two_block && options.sc_constr && options.freq_ctrl
+        if options.sc_constr && options.two_block
             if t == 1
                 for g=1:length(gen)
                     penalty += 0.5*params.τ*(Pg[g] - primal.PG[t,g])^2
@@ -608,13 +634,13 @@ function penalty_expression(opfmodel::JuMP.Model, opfdata::OPFData, t::Int;
                 end
             end
         else
-        for g=1:length(gen)
-            penalty += 0.5*params.τ*(Pg[g] - primal.PG[t,g])^2
+            for g=1:length(gen)
+                penalty += 0.5*params.τ*(Pg[g] - primal.PG[t,g])^2
+            end
+            if params.jacobi && options.sc_constr && options.freq_ctrl && t > 1
+                penalty += 0.5*params.τ*(Sl - primal.SL[t])^2
+            end
         end
-        if params.jacobi && options.sc_constr && options.freq_ctrl && t > 1
-            penalty += 0.5*params.τ*(Sl - primal.SL[t])^2
-        end
-    end
     end
 
     return penalty
@@ -639,7 +665,7 @@ function solve_scmodel(opfmodel::JuMP.Model, opfdata::OPFData, t::Int;
     if initial_x == nothing
         for g=1:length(gen)
             setvalue(Pg[g], 0.5*(gen[g].Pmax + gen[g].Pmin))
-            if options.sc_constr && options.freq_ctrl && options.two_block
+            if options.sc_constr && options.two_block
                 setvalue(opfmodel[:Pg_base][g], 0.5*(gen[g].Pmax + gen[g].Pmin))
             end
             setvalue(Qg[g], 0.5*(gen[g].Qmax + gen[g].Qmin))
@@ -653,8 +679,10 @@ function solve_scmodel(opfmodel::JuMP.Model, opfdata::OPFData, t::Int;
         setvalue.(Qg, initial_x.QG[t,:])
         setvalue.(Vm, initial_x.VM[t,:])
         setvalue.(Va, initial_x.VA[t,:])
-        if options.sc_constr && options.freq_ctrl
-            setvalue(Sl, initial_x.SL[t])
+        if options.sc_constr
+            if options.freq_ctrl
+                setvalue(Sl, initial_x.SL[t])
+            end
             if options.two_block
                 setvalue.(opfmodel[:Pg_base], initial_x.PG_BASE[t,:])
             end
