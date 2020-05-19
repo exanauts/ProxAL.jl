@@ -68,23 +68,52 @@ function scopf_model(opfdata::OPFData, rawdata::RawData; options::Option = Optio
     end
 
 
+    # Generation cost
+    if options.obj_gencost
+        @NLexpression(opfmodel, obj_gencost,
+            sum((t > 1 ? options.weight_scencost : 1.0)*(
+                    generators[g].coeff[generators[g].n-2]*(baseMVA*Pg[1,g])^2
+                    + generators[g].coeff[generators[g].n-1]*(baseMVA*Pg[1,g])
+                    + generators[g].coeff[generators[g].n  ])
+                for t=1:T, g=1:ngen)
+        )
+    else
+        @NLexpression(opfmodel, obj_gencost, 0)
+    end
+
+
+    # slack variables to allow infeasibility in power flow equations
+    if options.obj_penalty
+        @variable(opfmodel, sigma_P1[1:T,1:nbus] >= 0, start = 0)
+        @variable(opfmodel, sigma_P2[1:T,1:nbus] >= 0, start = 0)
+        @variable(opfmodel, sigma_Q1[1:T,1:nbus] >= 0, start = 0)
+        @variable(opfmodel, sigma_Q2[1:T,1:nbus] >= 0, start = 0)
+        @variable(opfmodel, sigma_lineFrom[1:T,1:length(opfdata.lines)] >= 0, start = 0)
+        @variable(opfmodel, sigma_lineTo[1:T,1:length(opfdata.lines)] >= 0, start = 0)
+
+
+        @NLexpression(opfmodel, obj_penalty,
+            sum(  sigma_P1[1,b] + sigma_P2[1,b] + sigma_Q1[1,b] + sigma_Q2[1,b] for b=1:nbus) +
+            sum(  sigma_lineFrom[1,l] + sigma_lineTo[1,l] for l=1:length(opfdata.lines)) +
+            (options.weight_scencost*
+            sum(  sigma_P1[t,b] + sigma_P2[t,b] + sigma_Q1[t,b] + sigma_Q2[t,b] for t=2:T, b=1:nbus) +
+            sum(  sigma_lineFrom[t,l] + sigma_lineTo[t,l] for t=2:T, l=1:length(opfdata.lines)))
+        )
+    else
+        @NLexpression(opfmodel, sigma_P1[1:T,1:nbus], 0)
+        @NLexpression(opfmodel, sigma_P2[1:T,1:nbus], 0)
+        @NLexpression(opfmodel, sigma_Q1[1:T,1:nbus], 0)
+        @NLexpression(opfmodel, sigma_Q2[1:T,1:nbus], 0)
+        @NLexpression(opfmodel, sigma_lineFrom[1:T,1:length(opfdata.lines)], 0)
+        @NLexpression(opfmodel, sigma_lineTo[1:T,1:length(opfdata.lines)], 0)
+
+
+        @NLexpression(opfmodel, obj_penalty, 0)
+    end
+
+
     # security-constrained opf
     if options.sc_constr
-        # Minimize only base case cost
-        if options.obj_gencost
-            @NLexpression(opfmodel, obj_gencost,
-                sum(  generators[g].coeff[generators[g].n-2]*(baseMVA*Pg[1,g])^2
-                    + generators[g].coeff[generators[g].n-1]*(baseMVA*Pg[1,g])
-                    + generators[g].coeff[generators[g].n  ] for g=1:ngen) +
-                (options.weight_sc_gencost*
-                sum(  generators[g].coeff[generators[g].n-2]*(baseMVA*Pg[t,g])^2
-                    + generators[g].coeff[generators[g].n-1]*(baseMVA*Pg[t,g])
-                    + generators[g].coeff[generators[g].n  ] for t=2:T, g=1:ngen))
-            )
-        else
-            @NLexpression(opfmodel, obj_gencost, 0)
-        end
-
         # Coupling constraints
         if options.freq_ctrl
             # omega for primary control (frequency deviation in p.u.)
@@ -125,17 +154,6 @@ function scopf_model(opfdata::OPFData, rawdata::RawData; options::Option = Optio
         @constraint(opfmodel, ramping_p[t=2:T,g=1:ngen],  Pg[t-1,g] - Pg[t,g] <= generators[g].ramp_agc)
         @constraint(opfmodel, ramping_n[t=2:T,g=1:ngen], -Pg[t-1,g] + Pg[t,g] <= generators[g].ramp_agc)
 
-        # Minimize cost over the entire horizon
-        if options.obj_gencost
-            @NLexpression(opfmodel, obj_gencost,
-                sum(  generators[g].coeff[generators[g].n-2]*(baseMVA*Pg[t,g])^2
-                    + generators[g].coeff[generators[g].n-1]*(baseMVA*Pg[t,g])
-                    + generators[g].coeff[generators[g].n  ] for t=1:T,g=1:ngen)
-            )
-        else
-            @NLexpression(opfmode, obj_gencost, 0)
-        end
-
         # ignore
         @NLexpression(opfmodel, obj_freq_ctrl, 0)
     end
@@ -143,7 +161,10 @@ function scopf_model(opfdata::OPFData, rawdata::RawData; options::Option = Optio
     #
     # set objective function
     #
-    @NLobjective(opfmodel, Min, (1e-3*obj_gencost) + (options.weight_freqctrl*obj_freq_ctrl))
+    @NLobjective(opfmodel,Min, 1e-3*(obj_gencost +
+                                    (options.weight_loadshed*obj_penalty) +
+                                    (options.weight_freqctrl*obj_freq_ctrl))
+    )
 
 
     # constraints for each block
@@ -180,7 +201,7 @@ function scopf_model(opfdata::OPFData, rawdata::RawData; options::Option = Optio
                 ( sum( YffR[l] for l in FromLines[b]) + sum( YttR[l] for l in ToLines[b]) + YshR[b] ) * Vm[t,b]^2 
                 + sum( Vm[t,b]*Vm[t,busIdx[lines[l].to]]  *( YftR[l]*cos(Va[t,b]-Va[t,busIdx[lines[l].to]]  ) + YftI[l]*sin(Va[t,b]-Va[t,busIdx[lines[l].to]]  )) for l in FromLines[b] )  
                 + sum( Vm[t,b]*Vm[t,busIdx[lines[l].from]]*( YtfR[l]*cos(Va[t,b]-Va[t,busIdx[lines[l].from]]) + YtfI[l]*sin(Va[t,b]-Va[t,busIdx[lines[l].from]])) for l in ToLines[b]   ) 
-                - ( sum(baseMVA*Pg[t,g] for g in BusGeners[b]) - Pd[b]) / baseMVA      # Sbus part
+                - ( sum(baseMVA*Pg[t,g] for g in BusGeners[b]) - Pd[b] + sigma_P1[t,b] - sigma_P2[t,b]) / baseMVA      # Sbus part
                 ==0
             )
 
@@ -189,7 +210,7 @@ function scopf_model(opfdata::OPFData, rawdata::RawData; options::Option = Optio
                 ( sum(-YffI[l] for l in FromLines[b]) + sum(-YttI[l] for l in ToLines[b]) - YshI[b] ) * Vm[t,b]^2 
                 + sum( Vm[t,b]*Vm[t,busIdx[lines[l].to]]  *(-YftI[l]*cos(Va[t,b]-Va[t,busIdx[lines[l].to]]  ) + YftR[l]*sin(Va[t,b]-Va[t,busIdx[lines[l].to]]  )) for l in FromLines[b] )
                 + sum( Vm[t,b]*Vm[t,busIdx[lines[l].from]]*(-YtfI[l]*cos(Va[t,b]-Va[t,busIdx[lines[l].from]]) + YtfR[l]*sin(Va[t,b]-Va[t,busIdx[lines[l].from]])) for l in ToLines[b]   )
-                - ( sum(baseMVA*Qg[t,g] for g in BusGeners[b]) - Qd[b]) / baseMVA      #Sbus part
+                - ( sum(baseMVA*Qg[t,g] for g in BusGeners[b]) - Qd[b] + sigma_Q1[t,b] - sigma_Q2[t,b]) / baseMVA      #Sbus part
                 ==0
             )
         end
@@ -211,6 +232,7 @@ function scopf_model(opfdata::OPFData, rawdata::RawData; options::Option = Optio
                     + 2*Vm[t,busIdx[lines[l].from]]*Vm[t,busIdx[lines[l].to]]*(Yre*cos(Va[t,busIdx[lines[l].from]]-Va[t,busIdx[lines[l].to]])-Yim*sin(Va[t,busIdx[lines[l].from]]-Va[t,busIdx[lines[l].to]])) 
                     ) 
                     - flowmax
+                    - (sigma_lineFrom[t,l]/baseMVA)
                     <=0
                 )
   
@@ -223,6 +245,7 @@ function scopf_model(opfdata::OPFData, rawdata::RawData; options::Option = Optio
                     + 2*Vm[t,busIdx[lines[l].from]]*Vm[t,busIdx[lines[l].to]]*(Yre*cos(Va[t,busIdx[lines[l].from]]-Va[t,busIdx[lines[l].to]])-Yim*sin(Va[t,busIdx[lines[l].from]]-Va[t,busIdx[lines[l].to]]))
                     )
                     - flowmax
+                    - (sigma_lineTo[t,l]/baseMVA)
                     <=0
                 )
             end
@@ -332,7 +355,35 @@ function scopf_model(opfdata::OPFData, rawdata::RawData, t::Int;
     @variable(opfmodel, buses[i].Vmin <= Vm[i=1:nbus] <= buses[i].Vmax)
     @variable(opfmodel, Va[1:nbus])
 
+    #
+    # slack variables to allow infeasibility in power flow equations
+    #
+    if options.obj_penalty
+        @variable(opfmodel, sigma_P1[1:nbus] >= 0, start = 0)
+        @variable(opfmodel, sigma_P2[1:nbus] >= 0, start = 0)
+        @variable(opfmodel, sigma_Q1[1:nbus] >= 0, start = 0)
+        @variable(opfmodel, sigma_Q2[1:nbus] >= 0, start = 0)
+        @variable(opfmodel, sigma_lineFrom[1:length(opfdata.lines)] >= 0, start = 0)
+        @variable(opfmodel, sigma_lineTo[1:length(opfdata.lines)] >= 0, start = 0)
+
+        @expression(opfmodel, obj_penalty, (t > 1 ? options.weight_scencost : 1.0)*(
+            sum(  sigma_P1[b] + sigma_P2[b] + sigma_Q1[b] + sigma_Q2[b] for b=1:nbus) +
+            sum(  sigma_lineFrom[l] + sigma_lineTo[l] for l=1:length(opfdata.lines)))
+        )
+    else
+        @NLexpression(opfmodel, sigma_P1[1:nbus], 0)
+        @NLexpression(opfmodel, sigma_P2[1:nbus], 0)
+        @NLexpression(opfmodel, sigma_Q1[1:nbus], 0)
+        @NLexpression(opfmodel, sigma_Q2[1:nbus], 0)
+        @NLexpression(opfmodel, sigma_lineFrom[1:length(opfdata.lines)], 0)
+        @NLexpression(opfmodel, sigma_lineTo[1:length(opfdata.lines)], 0)
+
+        @expression(opfmodel, obj_penalty, 0)
+    end
+
+    #
     # slack variable for ramping constraints
+    #
     if options.sc_constr
         if options.freq_ctrl
             @variable(opfmodel, -Float64(t > 1) <= Sl <= Float64(t > 1), start = 0)
@@ -361,16 +412,10 @@ function scopf_model(opfdata::OPFData, rawdata::RawData, t::Int;
     #
     @expression(opfmodel, obj_gencost, 0)
     if options.obj_gencost
-        if t == 1 || !options.sc_constr
-            obj_gencost +=sum(generators[g].coeff[generators[g].n-2]*(baseMVA*Pg[g])^2
+        obj_gencost += (t > 1 ? options.weight_scencost : 1.0)*
+                        sum(  generators[g].coeff[generators[g].n-2]*(baseMVA*Pg[g])^2
                             + generators[g].coeff[generators[g].n-1]*(baseMVA*Pg[g])
                             + generators[g].coeff[generators[g].n  ] for g=1:ngen)
-        elseif t > 1 && options.sc_constr
-            obj_gencost += options.weight_sc_gencost*
-                            sum(  generators[g].coeff[generators[g].n-2]*(baseMVA*Pg[g])^2
-                                + generators[g].coeff[generators[g].n-1]*(baseMVA*Pg[g])
-                                + generators[g].coeff[generators[g].n  ] for g=1:ngen)
-        end
     end
 
     #
@@ -384,7 +429,12 @@ function scopf_model(opfdata::OPFData, rawdata::RawData, t::Int;
     #
     # set objective function
     #
-    @objective(opfmodel, Min, penalty + (1e-3*obj_gencost) + (options.weight_freqctrl*obj_freq_ctrl))
+    @objective(opfmodel, Min, penalty +
+        (1e-3*(
+            obj_gencost + (options.weight_loadshed*obj_penalty) + (options.weight_freqctrl*obj_freq_ctrl)
+            )
+        )
+    )
 
 
     # Network data
@@ -419,7 +469,7 @@ function scopf_model(opfdata::OPFData, rawdata::RawData, t::Int;
             ( sum( YffR[l] for l in FromLines[b]) + sum( YttR[l] for l in ToLines[b]) + YshR[b] ) * Vm[b]^2 
             + sum( Vm[b]*Vm[busIdx[lines[l].to]]  *( YftR[l]*cos(Va[b]-Va[busIdx[lines[l].to]]  ) + YftI[l]*sin(Va[b]-Va[busIdx[lines[l].to]]  )) for l in FromLines[b] )  
             + sum( Vm[b]*Vm[busIdx[lines[l].from]]*( YtfR[l]*cos(Va[b]-Va[busIdx[lines[l].from]]) + YtfI[l]*sin(Va[b]-Va[busIdx[lines[l].from]])) for l in ToLines[b]   ) 
-            - ( sum(baseMVA*Pg[g] for g in BusGeners[b]) - Pd[b]) / baseMVA      # Sbus part
+            - ( sum(baseMVA*Pg[g] for g in BusGeners[b]) - Pd[b] + sigma_P1[b] - sigma_P2[b]) / baseMVA      # Sbus part
             ==0
         )
 
@@ -428,7 +478,7 @@ function scopf_model(opfdata::OPFData, rawdata::RawData, t::Int;
             ( sum(-YffI[l] for l in FromLines[b]) + sum(-YttI[l] for l in ToLines[b]) - YshI[b] ) * Vm[b]^2 
             + sum( Vm[b]*Vm[busIdx[lines[l].to]]  *(-YftI[l]*cos(Va[b]-Va[busIdx[lines[l].to]]  ) + YftR[l]*sin(Va[b]-Va[busIdx[lines[l].to]]  )) for l in FromLines[b] )
             + sum( Vm[b]*Vm[busIdx[lines[l].from]]*(-YtfI[l]*cos(Va[b]-Va[busIdx[lines[l].from]]) + YtfR[l]*sin(Va[b]-Va[busIdx[lines[l].from]])) for l in ToLines[b]   )
-            - ( sum(baseMVA*Qg[g] for g in BusGeners[b]) - Qd[b]) / baseMVA      #Sbus part
+            - ( sum(baseMVA*Qg[g] for g in BusGeners[b]) - Qd[b] + sigma_Q1[b] - sigma_Q2[b]) / baseMVA      #Sbus part
             ==0
         )
     end
@@ -450,6 +500,7 @@ function scopf_model(opfdata::OPFData, rawdata::RawData, t::Int;
                 + 2*Vm[busIdx[lines[l].from]]*Vm[busIdx[lines[l].to]]*(Yre*cos(Va[busIdx[lines[l].from]]-Va[busIdx[lines[l].to]])-Yim*sin(Va[busIdx[lines[l].from]]-Va[busIdx[lines[l].to]])) 
                 ) 
                 - flowmax
+                - (sigma_lineFrom[l]/baseMVA)
                 <=0
             )
 
@@ -462,6 +513,7 @@ function scopf_model(opfdata::OPFData, rawdata::RawData, t::Int;
                 + 2*Vm[busIdx[lines[l].from]]*Vm[busIdx[lines[l].to]]*(Yre*cos(Va[busIdx[lines[l].from]]-Va[busIdx[lines[l].to]])-Yim*sin(Va[busIdx[lines[l].from]]-Va[busIdx[lines[l].to]]))
                 )
                 - flowmax
+                - (sigma_lineTo[l]/baseMVA)
                 <=0
             )
         end
