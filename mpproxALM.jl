@@ -45,7 +45,7 @@ function runProxALM_mp(opfdata::OPFData, rawdata::RawData, perturbation::Number 
                     updatePrimalSolution(x, nlpmodel, s; options = options)
                 end
                 # update PG_REF
-                if options.sc_constr && options.freq_ctrl && options.two_block
+                if options.sc_constr && options.two_block
                     x.PG_REF .= x.PG[1,:]
                 end
             end
@@ -67,7 +67,7 @@ function runProxALM_mp(opfdata::OPFData, rawdata::RawData, perturbation::Number 
     maxρ = 0.5#5.0Float64(T > 1)*max(maximum(abs.(λstar.λp)), maximum(abs.(λstar.λn)))
     params = initializeParams(maxρ; aladin = false, jacobi = true)
     params.τ = params.jacobi ? 10maxρ : 0
-    params.updateρ = !(options.sc_constr && options.freq_ctrl)
+    params.updateρ = !options.sc_constr || !options.freq_ctrl && !options.two_block
     params.ρ = params.updateρ ? zeros(size(λ.λp)) : maxρ*ones(size(λ.λp))
     tol = 1e-2*ones(size(λ.λp))
     params.iterlim = 100
@@ -125,7 +125,7 @@ function runProxALM_mp(opfdata::OPFData, rawdata::RawData, perturbation::Number 
         #
         # Update PG_REF
         #
-        if options.sc_constr && options.freq_ctrl && options.two_block
+        if options.sc_constr && options.two_block
             for g=1:length(opfdata.generators)
                 denom = params.τ + sum(params.ρ[t,g] for t=1:T)
                 if !iszero(denom)
@@ -198,8 +198,10 @@ function updatePrimalSolution(x::mpPrimalSolution, nlpmodel::Vector{JuMP.Model},
     x.QG[t,:] = getvalue(nlpmodel[t][:Qg])
     x.VM[t,:] = getvalue(nlpmodel[t][:Vm])
     x.VA[t,:] = getvalue(nlpmodel[t][:Va])
-    if options.sc_constr && options.freq_ctrl
-        x.SL[t] = getvalue(nlpmodel[t][:Sl])
+    if options.sc_constr
+        if options.freq_ctrl
+            x.SL[t] = getvalue(nlpmodel[t][:Sl])
+        end
         if options.two_block
             x.PG_BASE[t,:] = getvalue(nlpmodel[t][:Pg_base])
         end
@@ -213,16 +215,17 @@ function updateDualSolution(dual::mpDualSolution, x::mpPrimalSolution, opfdata::
                             options::Option = Option(),
                             params::AlgParams)
     for t=1:size(dual.λp, 1), g=1:size(dual.λp, 2)
-        if t == 1 && !(options.sc_constr && options.freq_ctrl && options.two_block)
+        if t == 1 && !(options.sc_constr && options.two_block)
             continue
         end
         viol = 0
-        if options.sc_constr
+        if options.sc_constr && options.two_block
+            errp = x.PG_BASE[t,g] - x.PG_REF[g]
+            errn = 0
+            viol = abs(errp)
+        elseif options.sc_constr
             if options.freq_ctrl
                 errp = +x.PG[1,g] - x.PG[t,g] + (opfdata.generators[g].alpha*x.SL[t])
-                if options.two_block
-                    errp = x.PG_BASE[t,g] - x.PG_REF[g]
-                end
                 errn = 0
                 viol = abs(errp)
             else
@@ -245,7 +248,7 @@ function updateDualSolution(dual::mpDualSolution, x::mpPrimalSolution, opfdata::
             end
         end
         dual.λp[t,g] += params.θ*params.ρ[t,g]*errp
-        if !options.sc_constr || !options.freq_ctrl
+        if !options.sc_constr || !options.freq_ctrl && !options.two_block
             dual.λn[t,g] += params.θ*params.ρ[t,g]*errn
             dual.λp[t,g] = max(dual.λp[t,g], 0)
             dual.λn[t,g] = max(dual.λn[t,g], 0)
