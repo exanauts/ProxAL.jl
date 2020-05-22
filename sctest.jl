@@ -23,7 +23,7 @@ for (idx, case) in enumerate([ARGS[1]])
     opt.sc_constr = true
     opt.freq_ctrl = true
     opt.two_block = true
-    opt.obj_penalty = true
+    opt.obj_penalty = false
     opt.weight_scencost = 1/length(rawdata.ctgs_arr)
     opt.weight_loadshed = 2500.0
     opt.weight_freqctrl = 0
