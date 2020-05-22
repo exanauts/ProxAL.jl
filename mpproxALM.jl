@@ -105,7 +105,7 @@ function runProxALM_mp(opfdata::OPFData, rawdata::RawData, perturbation::Number 
             #
             # Gauss-Siedel --> immediately update
             #
-            if !params.jacobi
+            if !params.jacobi && !options.two_block
                 updatePrimalSolution(x, nlpmodel, t; options = options)
             end
         end
