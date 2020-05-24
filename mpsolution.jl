@@ -108,7 +108,7 @@ function computeDualViolation(x::mpPrimalSolution, xprev::mpPrimalSolution, λ::
         #
         # First get ∇_x Lagrangian
         #
-        inner = internalmodel(nlpmodel[t]).inner
+        # inner = internalmodel(nlpmodel[t]).inner
         #=
         kkt = grad_Lagrangian(nlpmodel[t], inner.x, inner.mult_g)
         for j = 1:length(kkt)
@@ -123,7 +123,8 @@ function computeDualViolation(x::mpPrimalSolution, xprev::mpPrimalSolution, λ::
             end
         end
         =#
-        kkt = zeros(length(inner.x))
+        # kkt = zeros(length(inner.x))
+        kkt = zeros(JuMP.num_variables(nlpmodel[t]))
 
         #
         # Now adjust it so that the final quantity represents the error in the KKT conditions
@@ -134,10 +135,10 @@ function computeDualViolation(x::mpPrimalSolution, xprev::mpPrimalSolution, λ::
         else
             # The Aug Lag part in proximal ALM
             for g=1:length(gen)
-                idx_pg = linearindex(nlpmodel[t][:Pg][g])
+                idx_pg = JuMP.optimizer_index(nlpmodel[t][:Pg][g]).value
                 # two-block reformulation
                 if options.sc_constr && options.two_block
-                    idx_pg_base = linearindex(nlpmodel[t][:Pg_base][g])
+                    idx_pg_base = JuMP.optimizer_index(nlpmodel[t][:Pg_base][g]).value
                     kkt[idx_pg_base] += λ.λp[t,g]
                     kkt[idx_pg_base] -= λprev.λp[t,g] + (params.ρ[t,g]*(
                                     x.PG_BASE[t,g] - xprev.PG_REF[g]
@@ -145,7 +146,7 @@ function computeDualViolation(x::mpPrimalSolution, xprev::mpPrimalSolution, λ::
 
                 # contingency
                 elseif options.sc_constr && !options.freq_ctrl
-                    idx_sl = linearindex(nlpmodel[t][:Sl][g])
+                    idx_sl = JuMP.optimizer_index(nlpmodel[t][:Sl][g]).value
                     if t > 1
                         kkt[idx_pg] += -λ.λp[t,g]+λ.λn[t,g]
                         temp = - params.ρ[t,g]*(
@@ -166,7 +167,7 @@ function computeDualViolation(x::mpPrimalSolution, xprev::mpPrimalSolution, λ::
 
                 # frequency control
                 elseif options.sc_constr && options.freq_ctrl
-                    idx_sl = linearindex(nlpmodel[t][:Sl])
+                    idx_sl = JuMP.optimizer_index(nlpmodel[t][:Sl]).value
                     if t > 1
                         kkt[idx_pg] += -λ.λp[t,g]
                         kkt[idx_sl] -= -gen[g].alpha*λ.λp[t,g]
@@ -188,7 +189,7 @@ function computeDualViolation(x::mpPrimalSolution, xprev::mpPrimalSolution, λ::
 
                 # multiperiod
                 elseif options.has_ramping
-                    idx_sl = linearindex(nlpmodel[t][:Sl][g])
+                    idx_sl = JuMP.optimizer_index(nlpmodel[t][:Sl][g]).value
                     if t > 1
                         kkt[idx_pg] += -λ.λp[t,g]+λ.λn[t,g]
                         temp = - params.ρ[t,g]*(
@@ -211,16 +212,16 @@ function computeDualViolation(x::mpPrimalSolution, xprev::mpPrimalSolution, λ::
         # The proximal part in both ALADIN and proximal ALM
         if options.sc_constr && options.two_block
             for g=1:length(gen)
-                idx_pg_base = linearindex(nlpmodel[t][:Pg_base][g])
+                idx_pg_base = JuMP.optimizer_index(nlpmodel[t][:Pg_base][g]).value
                 kkt[idx_pg_base] -= params.τ*(x.PG_BASE[t,g] - xprev.PG_BASE[t,g])
             end
         else
             for g=1:length(gen)
-                idx_pg = linearindex(nlpmodel[t][:Pg][g])
+                idx_pg = JuMP.optimizer_index(nlpmodel[t][:Pg][g]).value
                 kkt[idx_pg] -= params.τ*(x.PG[t,g] - xprev.PG[t,g])
             end
             if params.jacobi && options.sc_constr && options.freq_ctrl && t > 1
-                idx_sl = linearindex(nlpmodel[t][:Sl])
+                idx_sl = JuMP.optimizer_index(nlpmodel[t][:Sl]).value
                 kkt[idx_sl] -= params.τ*(x.SL[t] - xprev.SL[t])
             end
         end
@@ -228,12 +229,30 @@ function computeDualViolation(x::mpPrimalSolution, xprev::mpPrimalSolution, λ::
         #
         # Compute the KKT error now
         #
+        colLower = zeros(length(kkt))
+        colUpper = zeros(length(kkt))
+        colValue = zeros(length(kkt))
+        all_vars = JuMP.all_variables(nlpmodel[t])
+        for var in all_vars
+            j = JuMP.optimizer_index(var).value
+            if JuMP.has_lower_bound(var)
+                colLower[j] = JuMP.lower_bound(var)
+            else
+                colLower[j] = -Inf
+            end
+            if JuMP.has_lower_bound(var)
+                colUpper[j] = JuMP.lower_bound(var)
+            else
+                colUpper[j] = +Inf
+            end
+            colValue[j] = JuMP.value(var)
+        end
         for j = 1:length(kkt)
-            if (abs(nlpmodel[t].colLower[j] - nlpmodel[t].colUpper[j]) <= params.zero)
+            if (abs(colLower[j] - colUpper[j]) <= params.zero)
                 kkt[j] = 0.0 # ignore
-            elseif abs(inner.x[j] - nlpmodel[t].colLower[j]) <= params.zero
+            elseif abs(colValue[j] - colLower[j]) <= params.zero
                 kkt[j] = max(0, -kkt[j])
-            elseif abs(inner.x[j] - nlpmodel[t].colUpper[j]) <= params.zero
+            elseif abs(colValue[j] - colUpper[j]) <= params.zero
                 kkt[j] = max(0, +kkt[j])
             else
                 kkt[j] = abs(kkt[j])

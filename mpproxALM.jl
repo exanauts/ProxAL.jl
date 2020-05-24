@@ -35,7 +35,10 @@ function runProxALM_mp(opfdata::OPFData, rawdata::RawData, perturbation::Number 
             params.ρ = Float64(t > 1)*ones(size(λ.λp))
             nlpmodel[t] = scopf_model(opfdata, rawdata, t; options = options, params = params, primal = x, dual = λ)
             nlpmodel[t], status = solve_scmodel(nlpmodel[t], opfdata, t; options = options, initial_x = x, initial_λ = λ, params = params)
-            if status != :Optimal && status != :UserLimit
+            # if status != :Optimal && status != :UserLimit
+            if status != MOI.LOCALLY_SOLVED && status != MOI.OPTIMAL &&
+                status != MOI.ALMOST_LOCALLY_SOLVED && status != MOI.ALMOST_OPTIMAL &&
+                status != MOI.ITERATION_LIMIT
                 error("something went wrong in the initialization with status ", status)
             end
             updatePrimalSolution(x, nlpmodel, t; options = options)
@@ -98,7 +101,10 @@ function runProxALM_mp(opfdata::OPFData, rawdata::RawData, perturbation::Number 
             t0 = time()
             nlpmodel[t], status = solve_scmodel(nlpmodel[t], opfdata, t; options = options, initial_x = x, initial_λ = λ, params = params)
             soltimes[t] = time() - t0
-            if status != :Optimal && status != :UserLimit
+            # if status != :Optimal && status != :UserLimit
+            if status != MOI.LOCALLY_SOLVED && status != MOI.OPTIMAL &&
+                status != MOI.ALMOST_LOCALLY_SOLVED && status != MOI.ALMOST_OPTIMAL &&
+                status != MOI.ITERATION_LIMIT
                 error("something went wrong in the x-update of proximal ALM with status ", status)
             end
             #(verbose_level > 0) && acopf_outputAll(nlpmodel[p], opfdata, network, p)
@@ -195,19 +201,19 @@ end
 
 function updatePrimalSolution(x::mpPrimalSolution, nlpmodel::Vector{JuMP.Model}, t::Int;
                               options::Option = Option())
-    x.PG[t,:] = getvalue(nlpmodel[t][:Pg])
-    x.QG[t,:] = getvalue(nlpmodel[t][:Qg])
-    x.VM[t,:] = getvalue(nlpmodel[t][:Vm])
-    x.VA[t,:] = getvalue(nlpmodel[t][:Va])
+    x.PG[t,:] = value.(nlpmodel[t][:Pg])
+    x.QG[t,:] = value.(nlpmodel[t][:Qg])
+    x.VM[t,:] = value.(nlpmodel[t][:Vm])
+    x.VA[t,:] = value.(nlpmodel[t][:Va])
     if options.sc_constr
         if options.freq_ctrl
-            x.SL[t] = getvalue(nlpmodel[t][:Sl])
+            x.SL[t] = value(nlpmodel[t][:Sl])
         end
         if options.two_block
-            x.PG_BASE[t,:] = getvalue(nlpmodel[t][:Pg_base])
+            x.PG_BASE[t,:] = value.(nlpmodel[t][:Pg_base])
         end
     else
-        x.SL[t,:] = getvalue(nlpmodel[t][:Sl])
+        x.SL[t,:] = value.(nlpmodel[t][:Sl])
     end
 end
 
