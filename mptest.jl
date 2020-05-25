@@ -1,3 +1,4 @@
+using Distributed, SharedArrays
 using Printf
 using LinearAlgebra
 using JuMP, Ipopt
@@ -10,7 +11,9 @@ include("scacopf_model.jl")
 include("mpproxALM.jl")
 include("analysis.jl")
 
-for ramp_scale in [0.001, 0.002, 0.005]
+ENV["GKSwstype"]="nul"
+
+for ramp_scale in [0.005]
     case = ARGS[1]
     T = parse(Int, ARGS[2])
     scen = "data/mp_demand/"*basename(case)*"_onehour_60"
@@ -26,5 +29,5 @@ for ramp_scale in [0.001, 0.002, 0.005]
     opt.savefile = getDataFilename("", case, "proxALM", T, false, true, ramp_scale)
 
     T = size(opfdata.Pd, 2)
-    @time x, λ, savedata = runProxALM(opfdata, rawdata, T; options = opt)
+    @time x, λ, savedata = runProxALM(opfdata, rawdata, T; options = opt, verbose_level = 2, fullmodel = false, parallel = true)
 end

@@ -24,13 +24,14 @@ function initializePlot_iterative()
 end
 
 function updatePlot_iterative(plt, iter, distance, primviol, dualviol, optimgap)#, xavg_primviol=nothing, xavg_dualviol=nothing)
-    push!(plt, 1, iter, distance)
-    push!(plt, 2, iter, primviol)
-    push!(plt, 3, iter, dualviol)
-    push!(plt, 4, iter, optimgap)
+    push!(plt, 1, iter, max(distance, 1e-12))
+    push!(plt, 2, iter, max(primviol, 1e-12))
+    push!(plt, 3, iter, max(dualviol, 1e-12))
+    push!(plt, 4, iter, max(optimgap, 1e-12))
     #push!(plt, 4, iter, xavg_primviol)
     #push!(plt, 5, iter, xavg_dualviol)
-    gui()
+    savefig("dummy.png")
+    #gui()
 end
 
 function getDataFilename(prefix::String, case::String, algo::String,
