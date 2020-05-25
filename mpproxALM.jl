@@ -2,17 +2,25 @@
 # proximal ALM implementation
 #
 
-function runProxALM(opfdata::OPFData, rawdata::RawData, T::Int; options::Option = Option(), verbose_level::Int = 1)
+function runProxALM(opfdata::OPFData, rawdata::RawData, T::Int;
+                    options::Option = Option(), verbose_level::Int = 1, parallel::Bool = false, fullmodel::Bool = true)
     #
     # Compute optimal solution using Ipopt
     #
-    xstar, λstar, zstar, tfullmodel = solve_fullmodel(opfdata, rawdata, T; options = options)
-    (verbose_level > 0) && @printf("Optimal generation cost = %.2f\n", zstar)
+    if fullmodel
+        xstar, λstar, zstar, tfullmodel = solve_fullmodel(opfdata, rawdata, T; options = options)
+        (verbose_level > 0) && @printf("Optimal generation cost = %.2f\n", zstar)
+    else
+        xstar = initializePrimalSolution(opfdata, T; options = options)
+        λstar = initializeDualSolution(opfdata, T; options = options)
+        zstar, tfullmodel = -1.0, -1.0
+    end
+
 
     #
     # Initialize solution and the basemodel
     #
-    x, λ, base = initializeProxALM(opfdata, rawdata, T; options = options)
+    x, λ, base = initializeProxALM(opfdata, rawdata, T; options = options, parallel = parallel)
 
 
     #
@@ -27,9 +35,26 @@ function runProxALM(opfdata::OPFData, rawdata::RawData, T::Int; options::Option 
     maxρ = 0.5#1.0Float64(T > 1)*max(maximum(abs.(λstar.λp)), maximum(abs.(λstar.λn)))
     params = initializeParams(maxρ; aladin = false, jacobi = true, options = options)
     params.ρ = params.updateρ ? zeros(size(λ.λp)) : maxρ*ones(size(λ.λp))
-    tol = 1e-2*ones(size(λ.λp))
+    tol = 1e-3*ones(size(λ.λp))
+    #
+    # parallelize nlp solves
+    #
+    serial_indices = 1:T
+    parallel_indices = []
+    if parallel
+        optimalvector = SharedArray{Float64, 2}(base.colCount, T)
+        soltimesParallel = SharedVector{Float64}(T)
+        if params.jacobi || options.two_block
+            serial_indices = []
+            parallel_indices = 1:T
+        elseif options.sc_constr
+            serial_indices = 1:1
+            parallel_indices = 2:T
+        end
+    end
+
+    
     savedata = zeros(params.iterlim, 8)
-    tstart = time()
     timeNLP = 0.0
     iter = 0
     while iter < params.iterlim
@@ -47,12 +72,11 @@ function runProxALM(opfdata::OPFData, rawdata::RawData, T::Int; options::Option 
         #
         # x-update step
         #
-        soltimes = zeros(T)
-        for t = 1:T
+        for t in serial_indices
             t0 = time()
             opf_model_set_objective(base.nlpmodel[t], opfdata, t; options = options, params = params, primal = x, dual = λ)
             base.colValue[:,t] = opf_solve_model(base.nlpmodel[t])
-            soltimes[t] = time() - t0
+            timeNLP += time() - t0
 
             #
             # Gauss-Siedel --> immediately update
@@ -62,16 +86,37 @@ function runProxALM(opfdata::OPFData, rawdata::RawData, T::Int; options::Option 
             end
         end
 
+        if !isempty(parallel_indices)
+            #
+            # Parallel code
+            #
+            @sync for t in parallel_indices
+                function xstep()
+                    opfmodel = opf_model(opfdata, rawdata, t; options = options)
+                    opf_model_set_objective(opfmodel, opfdata, t; options = options, params = params, primal = x, dual = λ)
+                    optimalvector[:,t] = opf_solve_model(opfmodel, opfdata, t; options = options, params = params, initial_x = x, initial_λ = λ)
+                end
+                @async @spawn begin
+                    soltimesParallel[t] = @elapsed xstep()
+                end
+            end
+
+            #
+            # Back to serial code
+            timeNLP += maximum(soltimesParallel)
+            for t in parallel_indices
+                base.colValue[:,t] .= optimalvector[:,t]
+                updatePrimalSolution(x, base.colValue[:,t], base.colIndex, t; options = options)
+            end
+        end
+
         #
         # Jacobi --> update the x now
         #
-        if params.jacobi
-            timeNLP += maximum(soltimes)
-            for t in 1:T
+        if params.jacobi || options.two_block
+            for t in serial_indices
                 updatePrimalSolution(x, base.colValue[:,t], base.colIndex, t; options = options)
             end
-        else
-            timeNLP += soltimes[1] + maximum(soltimes[2:end])
         end
 
         #
@@ -227,7 +272,7 @@ function solve_fullmodel(opfdata::OPFData, rawdata::RawData, T::Int; options::Op
     return xstar, λstar, objvalue, solvetime
 end
 
-function initializeProxALM(opfdata::OPFData, rawdata::RawData, T::Int; options::Option = Option())
+function initializeProxALM(opfdata::OPFData, rawdata::RawData, T::Int; options::Option = Option(), parallel::Bool = false)
     #
     # initialize solution vectors
     #
@@ -256,7 +301,7 @@ function initializeProxALM(opfdata::OPFData, rawdata::RawData, T::Int; options::
         # Scenario-1/Period-1 model is standard ACOPF
         # Scenario-t/Period-t model has a quadratic penalty term from the coupling constraints
         #
-        params.ρ = Float64(t > 1)*ones(size(λ.λp))
+        params.ρ = 1e-3Float64(t > 1)*ones(size(λ.λp))
         nlpmodel[t] = opf_model(opfdata, rawdata, t; options = options)
 
         #
@@ -274,7 +319,14 @@ function initializeProxALM(opfdata::OPFData, rawdata::RawData, T::Int; options::
         # solve the subproblem
         #
         opf_model_set_objective(nlpmodel[t], opfdata, t; options = options, params = params, primal = x, dual = λ)
-        colValue[:,t] = opf_solve_model(nlpmodel[t])
+
+        #
+        # Solve only t=1
+        # We will solve t=2:T after the loop in parallel
+        #
+        if t == 1 || !parallel
+            colValue[:,t] = opf_solve_model(nlpmodel[t])
+        end
 
 
         #
@@ -282,20 +334,23 @@ function initializeProxALM(opfdata::OPFData, rawdata::RawData, T::Int; options::
         #
         all_vars = JuMP.all_variables(nlpmodel[t])
         for var in all_vars
-            j = JuMP.optimizer_index(var).value
+            if t == 1 || !parallel
+                j = JuMP.optimizer_index(var).value
+                colIndex[JuMP.name(var)] = j
+            else
+                j = colIndex[JuMP.name(var)]
+            end
             colLower[j, t] = has_lower_bound(var) ? lower_bound(var) : -Inf
             colUpper[j, t] = has_upper_bound(var) ? upper_bound(var) : +Inf
-            if t == 1
-                colIndex[JuMP.name(var)] = j
-            end
-            @assert colIndex[JuMP.name(var)] == j
         end
 
 
         #
         # Update the primal solution data structure
         #
-        updatePrimalSolution(x, colValue[:,t], colIndex, t; options = options)
+        if t == 1 || !parallel
+            updatePrimalSolution(x, colValue[:,t], colIndex, t; options = options)
+        end
         if t == 1
             #=
             for s=2:T
@@ -306,6 +361,24 @@ function initializeProxALM(opfdata::OPFData, rawdata::RawData, T::Int; options::
             if options.sc_constr && options.two_block
                 x.PR .= x.PG[1,:]
             end
+        end
+    end
+
+    if parallel
+        optimalvector = SharedArray{Float64, 2}(colCount, T)
+        params.ρ = 1e-3ones(size(λ.λp))
+        @sync for t=2:T
+            function xstep()
+                opfmodel = opf_model(opfdata, rawdata, t; options = options)
+                opf_model_set_objective(opfmodel, opfdata, t; options = options, params = params, primal = x, dual = λ)
+                optimalvector[:,t] = opf_solve_model(opfmodel)
+            end
+            @async @spawn begin
+                xstep()
+            end
+        end
+        for t=2:T
+            colValue[:,t] .= optimalvector[:,t]
         end
     end
 

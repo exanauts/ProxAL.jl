@@ -28,7 +28,7 @@ mutable struct AlgParams
 end
 
 function initializeParams(maxρ::Float64; aladin::Bool, jacobi::Bool, options::Option = Option())
-    iterlim = 100
+    iterlim = 50
     tol = 1e-2
     zero = 1e-4
     ρ = maxρ
@@ -38,7 +38,7 @@ function initializeParams(maxρ::Float64; aladin::Bool, jacobi::Bool, options::O
         nlpiterlim = 10000
         updateρ = false
     else
-        τ = (jacobi && !options.two_block) ? 10maxρ : 0
+        τ = (jacobi && !options.two_block) ? 2maxρ : 0
         μ = 0.0
         nlpiterlim = 10000
         # update AL parameter only if

@@ -674,3 +674,55 @@ function opf_solve_model(opfmodel::JuMP.Model)
 
     return x
 end
+
+function opf_solve_model(opfmodel::JuMP.Model, opfdata::OPFData, t::Int;
+                         options::Option = Option(), initial_x::mpPrimalSolution, initial_λ::mpDualSolution, params::AlgParams)
+    #
+    # Initialize from given solution
+    #
+    set_start_value.(opfmodel[:Pg], initial_x.PG[t,:])
+    set_start_value.(opfmodel[:Qg], initial_x.QG[t,:])
+    set_start_value.(opfmodel[:Vm], initial_x.VM[t,:])
+    set_start_value.(opfmodel[:Va], initial_x.VA[t,:])
+    if options.sc_constr
+        if options.freq_ctrl
+            set_start_value(opfmodel[:Sl], initial_x.SL[t])
+        end
+        if options.two_block
+            set_start_value.(opfmodel[:Pg_base], initial_x.PB[t,:])
+        end
+    end
+    if !options.freq_ctrl && !options.two_block && t > 1
+        for g=1:length(opfdata.generators)
+            xp = (initial_x == nothing) ? 0 : ((options.sc_constr ? initial_x.PG[1,g] : initial_x.PG[t-1,g]) - initial_x.PG[t,g])
+            dp = (options.sc_constr ? opfdata.generators[g].scen_agc : opfdata.generators[g].ramp_agc)
+            set_start_value(opfmodel[:Sl][g], min(max(0, -xp + dp), 2dp))
+        end
+    end
+
+
+    #
+    # Solve model
+    #
+    optimize!(opfmodel)
+    status = termination_status(opfmodel)
+    if  status != MOI.OPTIMAL &&
+        status != MOI.ALMOST_OPTIMAL &&
+        status != MOI.LOCALLY_SOLVED &&
+        status != MOI.ALMOST_LOCALLY_SOLVED &&
+        status != MOI.ITERATION_LIMIT
+        error("something went wrong in subproblem ", t, " with status ", status)
+    end
+
+
+    #
+    # Return optimal solution vector
+    #
+    all_vars = all_variables(opfmodel)
+    x = zeros(num_variables(opfmodel))
+    for var in all_vars
+        x[JuMP.optimizer_index(var).value] = value(var)
+    end
+
+    return x
+end
