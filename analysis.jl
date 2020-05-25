@@ -6,7 +6,7 @@ function optionsPlot(plt)
             linealpha = 0.7,
             yscale = :log10,
             framestyle = :box,
-            ylim = [1e-6, 1e1],
+            ylim = [1e-6, 1e+2],
             xtickfontsize = 12,
             ytickfontsize = 12,
             guidefontsize = 14,
@@ -34,13 +34,13 @@ function updatePlot_iterative(plt, iter, distance, primviol, dualviol, optimgap)
 end
 
 function getDataFilename(prefix::String, case::String, algo::String,
-                            num_partitions::Int, perturbation::Number, jacobi::Bool, ramp_scale = nothing)
+                            num_partitions::Int, sc_constr::Bool, jacobi::Bool, ramp_scale = nothing)
     return prefix * 
             basename(case) * 
             "_" * algo * 
             "_n" * string(num_partitions) * 
             (ramp_scale == nothing ? "" : ("_r" * string(100ramp_scale))) *
-            "_f" * string(perturbation) * 
+            "_f" * string(Int(sc_constr)) * 
             "_j" * string(Int(jacobi)) * 
             ".txt"
 end
@@ -110,30 +110,3 @@ function plot_fixedPartitions(fileprefix::String, savefileprefix::String, num_pa
     end
 end
 
-function plot_scenario()
-    pyplot()
-    p = []
-    case = ["case1354pegase"]
-    T = [10, 20, 30]
-    fileprefix = ["scenario_results_dynamic_rho_5/", "scenario_results_dynamic_rho_5/", "scenario_results_dynamic_rho_0.1/"]
-    for (i, ti) in enumerate(case)
-        for (j, tj) in enumerate(T)
-            datafile = getDataFilename(fileprefix[j], ti, "mpproxALM", tj, 0, true, 0)
-            savedata = isfile(datafile) ? readdlm(datafile) : 1e-12ones(2000, 8)
-            push!(p,
-                    plot(savedata[1:50,2:6],
-                        lab=["Gap" "Max primal err"  "Max dual err" "Avg primal err" "Avg dual err"],
-                        ls =[:solid :solid :solid :dash :dash],
-                        lc =[:green :red :blue :red :blue])
-            )
-            optionsPlot(p[end])
-            plot!(p[end], title="T = " * string(tj))
-            plt = twinx(p[end])
-            plot!(plt, savedata[1:50,7], ls = :dot, ylabel = "Time (s), assuming fully parallel", xtick = false, lc = :black)
-        end
-    end
-    if !isempty(p)
-        plot(p..., layout = (length(T), 1), size = (1000, 1000))
-        #savefig(getSaveFilename("", "case1354pegase", "", true))
-    end
-end

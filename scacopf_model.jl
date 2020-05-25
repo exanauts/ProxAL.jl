@@ -1,55 +1,17 @@
 
-function init_x(opfmodel::JuMP.Model, opfdata::OPFData, T::Int)
-    buses = opfdata.buses
-    generators = opfdata.generators
-    nbus = length(buses)
-    ngen = length(generators)
-
-    Vm = zeros(T, nbus)
-    for b=1:nbus
-        Vm[:,b] .= 0.5*(buses[b].Vmax + buses[b].Vmin)
-    end
-    Va = buses[opfdata.bus_ref].Va * ones(T, nbus)
-    set_start_value.(opfmodel[:Vm], Vm)
-    set_start_value.(opfmodel[:Va], Va)
-    # setvalue(opfmodel[:Vm], Vm)
-    # setvalue(opfmodel[:Va], Va)
-
-    Pg = zeros(T, ngen)
-    Qg = zeros(T, ngen)
-    for g=1:ngen
-        Pg[:,g] .= 0.5*(generators[g].Pmax + generators[g].Pmin)
-        Qg[:,g] .= 0.5*(generators[g].Qmax + generators[g].Qmin)
-    end
-    set_start_value.(opfmodel[:Pg], Pg)
-    set_start_value.(opfmodel[:Qg], Qg)
-    # setvalue(opfmodel[:Pg], Pg)
-    # setvalue(opfmodel[:Qg], Qg)
-end
-
-function scopf_model(opfdata::OPFData, rawdata::RawData; options::Option = Option())
-
-    # number of variable blocks
-    T = 1
-
-    # multi-period OPF
-    if options.has_ramping
-        T = size(opfdata.Pd, 2)
-    end
-
-    lines_off = [Line() for t in 1:T]
+function opf_fullmodel(opfdata::OPFData, rawdata::RawData, T::Int; options::Option = Option())
 
     # security-constrained OPF: explicitly add the "base case"
     if options.sc_constr
-        T = length(rawdata.ctgs_arr) + 1
         lines_off = [opfdata.lines[l] for l in rawdata.ctgs_arr]
         lines_off = [Line(); lines_off]
+    else
+        lines_off = [Line() for t in 1:T]
     end
 
 
     # the model
-    # opfmodel = Model(solver=IpoptSolver(print_level=1))
-    opfmodel = JuMP.Model(optimizer_with_attributes(Ipopt.Optimizer, "print_level" => 1))
+    opfmodel = JuMP.Model(optimizer_with_attributes(Ipopt.Optimizer, "print_level" => 5))
 
 
     #shortcuts for compactness
@@ -59,15 +21,13 @@ function scopf_model(opfdata::OPFData, rawdata::RawData; options::Option = Optio
     ngen  = length(generators)
     nbus  = length(buses)
 
-    @variable(opfmodel, generators[i].Pmin <= Pg[1:T,i=1:ngen] <= generators[i].Pmax)
-    @variable(opfmodel, generators[i].Qmin <= Qg[1:T,i=1:ngen] <= generators[i].Qmax)
-    @variable(opfmodel, buses[i].Vmin <= Vm[1:T,i=1:nbus] <= buses[i].Vmax)
-    @variable(opfmodel, Va[1:T,1:nbus])
+    @variable(opfmodel, generators[i].Pmin <= Pg[1:T,i=1:ngen] <= generators[i].Pmax, start = 0.5*(generators[i].Pmax + generators[i].Pmin))
+    @variable(opfmodel, generators[i].Qmin <= Qg[1:T,i=1:ngen] <= generators[i].Qmax, start = 0.5*(generators[i].Qmax + generators[i].Qmin))
+    @variable(opfmodel, buses[i].Vmin <= Vm[1:T,i=1:nbus] <= buses[i].Vmax, start = 0.5*(buses[i].Vmax + buses[i].Vmin))
+    @variable(opfmodel, Va[1:T,1:nbus], start = buses[opfdata.bus_ref].Va)
 
     # reference bus voltage angle
     for t in 1:T
-        # setlowerbound(Va[t,opfdata.bus_ref], buses[opfdata.bus_ref].Va)
-        # setupperbound(Va[t,opfdata.bus_ref], buses[opfdata.bus_ref].Va)
         fix(Va[t,opfdata.bus_ref], buses[opfdata.bus_ref].Va)
     end
 
@@ -76,9 +36,9 @@ function scopf_model(opfdata::OPFData, rawdata::RawData; options::Option = Optio
     if options.obj_gencost
         @expression(opfmodel, obj_gencost,
             sum((t > 1 ? options.weight_scencost : 1.0)*(
-                    generators[g].coeff[generators[g].n-2]*(baseMVA*Pg[1,g])^2
-                    + generators[g].coeff[generators[g].n-1]*(baseMVA*Pg[1,g])
-                    + generators[g].coeff[generators[g].n  ])
+                    generators[g].coeff[generators[g].n-2]*(baseMVA*Pg[t,g])^2
+                  + generators[g].coeff[generators[g].n-1]*(baseMVA*Pg[t,g])
+                  + generators[g].coeff[generators[g].n  ])
                 for t=1:T, g=1:ngen)
         )
     else
@@ -123,8 +83,7 @@ function scopf_model(opfdata::OPFData, rawdata::RawData; options::Option = Optio
         #
         if options.freq_ctrl
             # primary frequency control
-            @variable(opfmodel, -1 <= omega[t=1:T] <= 1, start=0)
-            fix(omega[1], 0; force = true)
+            @variable(opfmodel, -1 <= omega[t=2:T] <= 1, start=0)
             @expression(opfmodel, obj_freq_ctrl, 0.5*sum(omega[t]^2 for t=2:T))
         else
             # ignore
@@ -269,33 +228,21 @@ function scopf_model(opfdata::OPFData, rawdata::RawData; options::Option = Optio
                 )
             end
         end
-
-        #@printf("Contingency %d -> Buses: %d  Lines: %d  Generators: %d\n", c, nbus, nline, ngen)
-        #println("     lines with limits:  ", nlinelim)
     end
     return opfmodel
 end
 
-function solve_scmodel(opfmodel::JuMP.Model, opfdata::OPFData, rawdata::RawData; options::Option = Option())
-    T = options.sc_constr ? (length(rawdata.ctgs_arr) + 1) : size(opfdata.Pd, 2)
-    nbus = length(opfdata.buses)
-    ngen = length(opfdata.generators)
-
-    #
-    # Warm-start all primal variables
-    #
-    init_x(opfmodel, opfdata, T)
-
+function opf_solve_fullmodel(opfmodel::JuMP.Model, opfdata::OPFData, rawdata::RawData, T::Int; options::Option = Option())
     #
     # solve model
     #    
-    #status = solve(opfmodel)
     optimize!(opfmodel)
     status = termination_status(opfmodel)
-    if status != MOI.LOCALLY_SOLVED && status != MOI.OPTIMAL &&
-        status != MOI.ALMOST_LOCALLY_SOLVED && status != MOI.ALMOST_OPTIMAL
-    # if status != :Optimal
-        println("Stat is not optimal: ", status)
+    if  status != MOI.OPTIMAL &&
+        status != MOI.ALMOST_OPTIMAL &&
+        status != MOI.LOCALLY_SOLVED &&
+        status != MOI.ALMOST_LOCALLY_SOLVED
+        println("Non-decomposed model status is not optimal: ", status)
         return
     end
 
@@ -304,10 +251,10 @@ function solve_scmodel(opfmodel::JuMP.Model, opfdata::OPFData, rawdata::RawData;
     # Optimal primal solution
     #
     primal = initializePrimalSolution(opfdata, T; options = options)
+    nbus = length(opfdata.buses)
+    ngen = length(opfdata.generators)
     for t=1:T
         for g=1:ngen
-            # primal.PG[t,g] = getvalue(opfmodel[:Pg][t,g])
-            # primal.QG[t,g] = getvalue(opfmodel[:Qg][t,g])
             primal.PG[t,g] = value(opfmodel[:Pg][t,g])
             primal.QG[t,g] = value(opfmodel[:Qg][t,g])
             if t > 1
@@ -331,9 +278,9 @@ function solve_scmodel(opfmodel::JuMP.Model, opfdata::OPFData, rawdata::RawData;
     end
     if options.sc_constr && options.two_block
         for t=1:T, g=1:ngen
-            primal.PG_BASE[t,g] = value(opfmodel[:Pg_base][t,g])
+            primal.PB[t,g] = value(opfmodel[:Pg_base][t,g])
             if t == 1
-                primal.PG_REF[g] = value(opfmodel[:Pg_ref][g])
+                primal.PR[g] = value(opfmodel[:Pg_ref][g])
             end
         end
     end
@@ -343,16 +290,18 @@ function solve_scmodel(opfmodel::JuMP.Model, opfdata::OPFData, rawdata::RawData;
     # Optimal dual solution
     #
     dual = initializeDualSolution(opfdata, T; options = options)
-    for t=2:T
+    for t=1:T
+        if t == 1 && !(options.sc_constr && options.two_block)
+            continue
+        end
         for g=1:ngen
-            # dual.λp[t,g] = internalmodel(opfmodel).inner.mult_g[linearindex(opfmodel[:ramping_p][t,g])]
             dual.λp[t,g] = JuMP.dual(opfmodel[:ramping_p][t,g])
             if options.sc_constr && (options.freq_ctrl || options.two_block)
+                # coupling equality constraint
                 continue
             end
             dual.λp[t,g] = abs(dual.λp[t,g])
-            # dual.λn[t,g] = abs(internalmodel(opfmodel).inner.mult_g[linearindex(opfmodel[:ramping_n][t,g])])
-            dual.λn[t,g] = JuMP.dual(opfmodel[:ramping_n][t,g])
+            dual.λn[t,g] = abs(JuMP.dual(opfmodel[:ramping_n][t,g]))
         end
     end
 
@@ -360,14 +309,9 @@ function solve_scmodel(opfmodel::JuMP.Model, opfdata::OPFData, rawdata::RawData;
     return primal, dual
 end
 
-function scopf_model(opfdata::OPFData, rawdata::RawData, t::Int;
-    options::Option = Option(),
-    params::AlgParams,
-    dual::mpDualSolution,
-    primal::mpPrimalSolution)
+function opf_model(opfdata::OPFData, rawdata::RawData, t::Int; options::Option = Option())
 
     # the model
-    # opfmodel = Model(solver=IpoptSolver(print_level=1))
     opfmodel = JuMP.Model(optimizer_with_attributes(Ipopt.Optimizer, "print_level" => 1))
 
 
@@ -378,10 +322,10 @@ function scopf_model(opfdata::OPFData, rawdata::RawData, t::Int;
     ngen  = length(generators)
     nbus  = length(buses)
 
-    @variable(opfmodel, generators[i].Pmin <= Pg[i=1:ngen] <= generators[i].Pmax)
-    @variable(opfmodel, generators[i].Qmin <= Qg[i=1:ngen] <= generators[i].Qmax)
-    @variable(opfmodel, buses[i].Vmin <= Vm[i=1:nbus] <= buses[i].Vmax)
-    @variable(opfmodel, Va[1:nbus])
+    @variable(opfmodel, generators[i].Pmin <= Pg[i=1:ngen] <= generators[i].Pmax, start = 0.5*(generators[i].Pmax + generators[i].Pmin))
+    @variable(opfmodel, generators[i].Qmin <= Qg[i=1:ngen] <= generators[i].Qmax, start = 0.5*(generators[i].Qmax + generators[i].Qmin))
+    @variable(opfmodel, buses[i].Vmin <= Vm[i=1:nbus] <= buses[i].Vmax, start = 0.5*(buses[i].Vmax + buses[i].Vmin))
+    @variable(opfmodel, Va[1:nbus], start = buses[opfdata.bus_ref].Va)
 
     #
     # slack variables to allow infeasibility in power flow equations
@@ -393,11 +337,6 @@ function scopf_model(opfdata::OPFData, rawdata::RawData, t::Int;
         @variable(opfmodel, sigma_Q2[1:nbus] >= 0, start = 0)
         @variable(opfmodel, sigma_lineFrom[1:length(opfdata.lines)] >= 0, start = 0)
         @variable(opfmodel, sigma_lineTo[1:length(opfdata.lines)] >= 0, start = 0)
-
-        @expression(opfmodel, obj_penalty, (t > 1 ? options.weight_scencost : 1.0)*(
-            sum(  sigma_P1[b] + sigma_P2[b] + sigma_Q1[b] + sigma_Q2[b] for b=1:nbus) +
-            sum(  sigma_lineFrom[l] + sigma_lineTo[l] for l=1:length(opfdata.lines)))
-        )
     else
         @NLexpression(opfmodel, sigma_P1[1:nbus], 0)
         @NLexpression(opfmodel, sigma_P2[1:nbus], 0)
@@ -405,8 +344,6 @@ function scopf_model(opfdata::OPFData, rawdata::RawData, t::Int;
         @NLexpression(opfmodel, sigma_Q2[1:nbus], 0)
         @NLexpression(opfmodel, sigma_lineFrom[1:length(opfdata.lines)], 0)
         @NLexpression(opfmodel, sigma_lineTo[1:length(opfdata.lines)], 0)
-
-        @expression(opfmodel, obj_penalty, 0)
     end
 
     #
@@ -415,7 +352,10 @@ function scopf_model(opfdata::OPFData, rawdata::RawData, t::Int;
     if options.sc_constr
         # 2-block reformulation
         if options.two_block
-            @variable(opfmodel, generators[i].Pmin <= Pg_base[i=1:ngen] <= generators[i].Pmax)
+            @variable(opfmodel,
+                generators[i].Pmin <= Pg_base[i=1:ngen] <= generators[i].Pmax,
+                start = 0.5*(generators[i].Pmax + generators[i].Pmin)
+            )
         end
 
         if options.freq_ctrl
@@ -424,7 +364,10 @@ function scopf_model(opfdata::OPFData, rawdata::RawData, t::Int;
                 @constraint(opfmodel, [g=1:ngen], Pg_base[g] - Pg[g] + (generators[g].alpha*Sl) == 0)
             end
         else
-            @variable(opfmodel, 0 <= Sl[g=1:ngen] <= 2Float64(t > 1)*generators[g].scen_agc)
+            @variable(opfmodel,
+                0 <= Sl[g=1:ngen] <= 2Float64(t > 1)*generators[g].scen_agc,
+                start = Float64(t > 1)*generators[g].scen_agc
+            )
             if options.two_block
                 if t > 1
                     @constraint(opfmodel, [g=1:ngen], Pg_base[g] - Pg[g] + Sl[g] == generators[g].scen_agc)
@@ -434,48 +377,14 @@ function scopf_model(opfdata::OPFData, rawdata::RawData, t::Int;
             end
         end
     else
-        @variable(opfmodel, 0 <= Sl[g=1:ngen] <= 2Float64(t > 1)*generators[g].ramp_agc)
+        @variable(opfmodel,
+            0 <= Sl[g=1:ngen] <= 2Float64(t > 1)*generators[g].ramp_agc,
+            start = Float64(t > 1)*generators[g].ramp_agc
+        )
     end
 
     # reference bus voltage angle
-    # setlowerbound(Va[opfdata.bus_ref], buses[opfdata.bus_ref].Va)
-    # setupperbound(Va[opfdata.bus_ref], buses[opfdata.bus_ref].Va)
     fix(Va[opfdata.bus_ref], buses[opfdata.bus_ref].Va)
-
-    #
-    # Penalty terms
-    #
-    penalty = penalty_expression(opfmodel, opfdata, t; options = options, params = params, dual = dual, primal = primal)
-
-    #
-    # Generation cost
-    #
-    @expression(opfmodel, obj_gencost, 0)
-    if options.obj_gencost
-        obj_gencost += (t > 1 ? options.weight_scencost : 1.0)*
-                        sum(  generators[g].coeff[generators[g].n-2]*(baseMVA*Pg[g])^2
-                            + generators[g].coeff[generators[g].n-1]*(baseMVA*Pg[g])
-                            + generators[g].coeff[generators[g].n  ] for g=1:ngen)
-    end
-
-    #
-    # Frequency control
-    #
-    @expression(opfmodel, obj_freq_ctrl, 0)
-    if options.sc_constr && options.freq_ctrl && t > 1
-        obj_freq_ctrl += 0.5*Sl^2
-    end
-
-    #
-    # set objective function
-    #
-    @objective(opfmodel, Min, penalty +
-        (1e-3*(
-            obj_gencost + (options.weight_loadshed*obj_penalty) + (options.weight_freqctrl*obj_freq_ctrl)
-            )
-        )
-    )
-
 
     # Network data
     opfdata_c = opfdata
@@ -562,11 +471,81 @@ function scopf_model(opfdata::OPFData, rawdata::RawData, t::Int;
     return opfmodel
 end
 
-function penalty_expression(opfmodel::JuMP.Model, opfdata::OPFData, t::Int;
-    options::Option = Option(),
-    params::AlgParams,
-    dual::mpDualSolution,
-    primal::mpPrimalSolution)
+function opf_model_set_objective(opfmodel::JuMP.Model, opfdata::OPFData, t::Int;
+        options::Option = Option(), params::AlgParams, dual::mpDualSolution, primal::mpPrimalSolution)
+    #shortcuts for compactness
+    buses = opfdata.buses
+    baseMVA = opfdata.baseMVA
+    generators = opfdata.generators
+    ngen  = length(generators)
+    nbus  = length(buses)
+
+    #
+    # AL term
+    #
+    proxAL_expr = opf_model_get_proxAL_expr(opfmodel, opfdata, t; options = options, params = params, dual = dual, primal = primal)
+
+    #
+    # Penalties for infeasibility
+    #
+    if options.obj_penalty
+        sigma_P1 = opfmodel[:sigma_P1]
+        sigma_P2 = opfmodel[:sigma_P2]
+        sigma_Q1 = opfmodel[:sigma_Q1]
+        sigma_Q2 = opfmodel[:sigma_Q2]
+        sigma_lineFrom = opfmodel[:sigma_lineFrom]
+        sigma_lineTo = opfmodel[:sigma_lineTo]
+        obj_penalty = @expression(opfmodel,
+            (t > 1 ? options.weight_scencost : 1.0)*(
+                sum(  sigma_P1[b] + sigma_P2[b] + sigma_Q1[b] + sigma_Q2[b] for b=1:nbus) +
+                sum(  sigma_lineFrom[l] + sigma_lineTo[l] for l=1:length(opfdata.lines))
+                )
+            )
+    else
+        obj_penalty = @expression(opfmodel, 0)
+    end
+
+    #
+    # Generation cost
+    #
+    if options.obj_gencost
+        Pg = opfmodel[:Pg]
+        obj_gencost = @expression(opfmodel,
+            (t > 1 ? options.weight_scencost : 1.0)*
+                sum(  generators[g].coeff[generators[g].n-2]*(baseMVA*Pg[g])^2
+                    + generators[g].coeff[generators[g].n-1]*(baseMVA*Pg[g])
+                    + generators[g].coeff[generators[g].n  ] for g=1:ngen)
+        )
+    else
+        obj_gencost = @expression(opfmodel, 0)
+    end
+
+    #
+    # Frequency control
+    #
+    if options.sc_constr && options.freq_ctrl && t > 1
+        Sl = opfmodel[:Sl]
+        obj_freq_ctrl = @expression(opfmodel, 0.5*Sl^2)
+    else
+        obj_freq_ctrl = @expression(opfmodel, 0)
+    end
+
+
+    #
+    # set objective function
+    #
+    @objective(opfmodel, Min, proxAL_expr +
+        (1e-3*(
+            obj_gencost + (options.weight_loadshed*obj_penalty) + (options.weight_freqctrl*obj_freq_ctrl)
+            )
+        )
+    )
+
+    return
+end
+
+function opf_model_get_proxAL_expr(opfmodel::JuMP.Model, opfdata::OPFData, t::Int;
+        options::Option = Option(), params::AlgParams, dual::mpDualSolution, primal::mpPrimalSolution)
     Pg = opfmodel[:Pg]
     Qg = opfmodel[:Qg]
     Vm = opfmodel[:Vm]
@@ -577,7 +556,7 @@ function penalty_expression(opfmodel::JuMP.Model, opfdata::OPFData, t::Int;
     #
     # Penalty terms for ALADIN
     #
-    @expression(opfmodel, penalty, 0)
+    penalty = @expression(opfmodel, 0)
     if (params.aladin)
         error("to do: ALADIN for mpacopf")
     #
@@ -588,8 +567,8 @@ function penalty_expression(opfmodel::JuMP.Model, opfdata::OPFData, t::Int;
             # two-block reformulation of security-constrained opf
             if options.sc_constr && options.two_block
                 Pg_base = opfmodel[:Pg_base]
-                penalty +=     dual.λp[t,g]*(Pg_base[g] - primal.PG_REF[g])
-                penalty += 0.5params.ρ[t,g]*(Pg_base[g] - primal.PG_REF[g])^2
+                penalty +=     dual.λp[t,g]*(Pg_base[g] - primal.PR[g])
+                penalty += 0.5params.ρ[t,g]*(Pg_base[g] - primal.PR[g])^2
 
             # classical security-constrained opf
             elseif options.sc_constr && !options.freq_ctrl
@@ -662,77 +641,36 @@ function penalty_expression(opfmodel::JuMP.Model, opfdata::OPFData, t::Int;
     return penalty
 end
 
-function solve_scmodel(opfmodel::JuMP.Model, opfdata::OPFData, t::Int;
-    options::Option = Option(),
-    initial_x::mpPrimalSolution = nothing,
-    initial_λ::mpDualSolution = nothing,
-    params::AlgParams)
-    Pg = opfmodel[:Pg]
-    Qg = opfmodel[:Qg]
-    Vm = opfmodel[:Vm]
-    Va = opfmodel[:Va]
-    Sl = opfmodel[:Sl]
-    gen = opfdata.generators
-    bus = opfdata.buses
-
+function opf_solve_model(opfmodel::JuMP.Model)
     #
-    # Initial point
+    # Initialize from the previous solve
     #
-    if initial_x == nothing
-        for g=1:length(gen)
-            #setvalue(Pg[g], 0.5*(gen[g].Pmax + gen[g].Pmin))
-            set_start_value(Pg[g], 0.5*(gen[g].Pmax + gen[g].Pmin))
-            if options.sc_constr && options.two_block
-                #setvalue(opfmodel[:Pg_base][g], 0.5*(gen[g].Pmax + gen[g].Pmin))
-                set_start_value(opfmodel[:Pg_base][g], 0.5*(gen[g].Pmax + gen[g].Pmin))
-            end
-            #setvalue(Qg[g], 0.5*(gen[g].Qmax + gen[g].Qmin))
-            set_start_value(Qg[g], 0.5*(gen[g].Qmax + gen[g].Qmin))
-        end
-        for b=1:length(bus)
-            #setvalue(Vm[b], 0.5*(bus[b].Vmax + bus[b].Vmin))
-            set_start_value(Vm[b], 0.5*(bus[b].Vmax + bus[b].Vmin))
-            #setvalue(Va[b], bus[opfdata.bus_ref].Va)
-            set_start_value(Va[b], bus[opfdata.bus_ref].Va)
-        end
-    else
-        #setvalue.(Pg, initial_x.PG[t,:])
-        set_start_value.(Pg, initial_x.PG[t,:])
-        #setvalue.(Qg, initial_x.QG[t,:])
-        set_start_value.(Qg, initial_x.QG[t,:])
-        #setvalue.(Vm, initial_x.VM[t,:])
-        set_start_value.(Vm, initial_x.VM[t,:])
-        #setvalue.(Va, initial_x.VA[t,:])
-        set_start_value.(Va, initial_x.VA[t,:])
-        if options.sc_constr
-            if options.freq_ctrl
-                #setvalue(Sl, initial_x.SL[t])
-                set_start_value(Sl, initial_x.SL[t])
-            end
-            if options.two_block
-                #setvalue.(opfmodel[:Pg_base], initial_x.PG_BASE[t,:])
-                set_start_value.(opfmodel[:Pg_base], initial_x.PG_BASE[t,:])
-            end
-        end
-    end
-    #
-    # Initial point for slack variables
-    #
-    if !options.freq_ctrl && t > 1
-        for g=1:length(gen)
-            xp = (initial_x == nothing) ? 0 : ((options.sc_constr ? initial_x.PG[1,g] : initial_x.PG[t-1,g]) - initial_x.PG[t,g])
-            dp = (options.sc_constr ? gen[g].scen_agc : gen[g].ramp_agc)
-            #setvalue(Sl[g], min(max(0, -xp + dp), 2dp))
-            set_start_value(Sl[g], min(max(0, -xp + dp), 2dp))
-        end
+    if has_values(opfmodel)
+        set_start_value.(all_variables(opfmodel), value.(all_variables(opfmodel)))
     end
 
     #
     # Solve model
     #
-    # status = solve(opfmodel)
     optimize!(opfmodel)
     status = termination_status(opfmodel)
+    if  status != MOI.OPTIMAL &&
+        status != MOI.ALMOST_OPTIMAL &&
+        status != MOI.LOCALLY_SOLVED &&
+        status != MOI.ALMOST_LOCALLY_SOLVED &&
+        status != MOI.ITERATION_LIMIT
+        error("something went wrong in subproblem ", t, " with status ", status)
+    end
 
-    return opfmodel, status
+
+    #
+    # Return optimal solution vector
+    #
+    all_vars = all_variables(opfmodel)
+    x = zeros(num_variables(opfmodel))
+    for var in all_vars
+        x[JuMP.optimizer_index(var).value] = value(var)
+    end
+
+    return x
 end

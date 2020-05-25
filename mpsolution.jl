@@ -2,19 +2,24 @@
 # Data structures to represent primal and dual solutions
 #
 
-mutable struct mpDualSolution
-    λp::Array{Float64,2} #[t][g] := λ for the constraint (Pg[g,1] or Pg[g,t-1]) - Pg[g,t] <= r
-    λn::Array{Float64,2} #[t][g] := λ for the constraint (Pg[g,1] or Pg[g,t-1]) - Pg[g,t] >= -r
+mutable struct mpPrimalSolution
+    PB::Array{Float64,2} #[t,g] := (two_block decomposition) copy of Pg[1,g] in scenario t
+    PR::Array{Float64,1} #[g]   := (two_block decomposition) consensus variables Pr[g] == Pb[t,g] for all t
+    PG::Array{Float64,2} #[t,g] := Pg of gen g in scenario/time period t
+    QG::Array{Float64,2} #[t,g] := Qg of gen g in scenario/time period t
+    VM::Array{Float64,2} #[t,b] := Vm of bus b in scenario/time period t
+    VA::Array{Float64,2} #[t,b] := Va of bus b in scenario/time period t
+    SL::Array{Float64}   #[t,g] := (mp acopf)  Slack for Pg[t-1,g] - Pg[t,g] <= r
+                         #[t,g] := (sc acopf)  Slack for Pg[1,g] - Pg[t,g] <= r
+                         #[t]   := (freq_ctrl) Frequency change variable: Pg[t,g] == Pg[1,g] + alpha*Sl[t]
 end
 
-mutable struct mpPrimalSolution
-    PG_BASE::Array{Float64,2}
-    PG_REF::Array{Float64}
-    PG::Array{Float64,2} #[t][g] := Pg of gen g in scenario/time period t
-    QG::Array{Float64,2} #[t][g] := Qg of gen g in scenario/time period t
-    VM::Array{Float64,2} #[t][b] := Vm of bus b in scenario/time period t
-    VA::Array{Float64,2} #[t][b] := Va of bus b in scenario/time period t
-    SL::Array{Float64}   #[t][g] := Slack for (Pg[g,1] or Pg[g,t-1]) - Pg[g,t] <= r
+mutable struct mpDualSolution
+    λp::Array{Float64,2} #[t,g] := (two_block) λ for the constraint Pr[g] == Pb[t,g]
+                         #[t,g] := (mp acopf)  λ for the constraint Pg[t-1,g] - Pg[t,g] <= r
+                         #[t,g] := (sc acopf)  λ for the constraint Pg[1,g] - Pg[t,g] <= r
+                         #[t,g] := (freq_ctrl) λ for the constraint Pg[t,g] == Pg[1,g] + alpha*Sl[t]
+    λn::Array{Float64,2} #[t,g] := (mp/sc acopf) λ for the constraint -(Pg[1,g] or Pg[t-1,g]) + Pg[t,g] <= r
 end
 
 function initializeDualSolution(opfdata::OPFData, T::Int; options::Option = Option())
@@ -59,6 +64,8 @@ function initializePrimalSolution(opfdata::OPFData, T::Int; options::Option = Op
 end
 
 function perturb(primal::mpPrimalSolution, factor::Number)
+    primal.PB *= (1.0 + factor)
+    primal.PR *= (1.0 + factor)
     primal.PG *= (1.0 + factor)
     primal.QG *= (1.0 + factor)
     primal.VM *= (1.0 + factor)
@@ -69,42 +76,41 @@ end
 function perturb(dual::mpDualSolution, factor::Number)
     dual.λp *= (1.0 + factor)
     dual.λn *= (1.0 + factor)
-    dual.λp .= max.(dual.λp, 0)
-    dual.λn .= max.(dual.λn, 0)
 end
 
 function computeDistance(x1::mpPrimalSolution, x2::mpPrimalSolution; options::Option = Option(), lnorm = 1)
-    if options.sc_constr && options.two_block
-        xd = x1.PG_BASE - x2.PG_BASE
-        xd = [vcat(xd...); x1.PG_REF - x2.PG_REF]
-        return norm(xd, lnorm)
-    elseif options.sc_constr && !options.freq_ctrl
-        xd = x1.PG[1,:] - x2.PG[1,:]
-        return norm(xd, lnorm)
-    elseif options.sc_constr && options.freq_ctrl
-        xd = [x1.PG[1,:] - x2.PG[1,:]; x1.SL - x2.SL]
-        return norm(vcat(xd...), lnorm)
+    if options.sc_constr
+        if options.two_block
+            xd = x1.PR .- x2.PR
+            #xd = [vcat(xd...); x1.PR - x2.PR]
+        elseif options.freq_ctrl
+            xd = [x1.PG[1,:] - x2.PG[1,:]; x1.SL - x2.SL]
+        else
+            xd = x1.PG[1,:] - x2.PG[1,:]
+        end
+    else
+        xd = x1.PG .- x2.PG
+        #=
+        xd = [[ x1.PG[t,:] - x2.PG[t,:];
+                x1.QG[t,:] - x2.QG[t,:];
+                x1.VM[t,:] - x2.VM[t,:];
+                x1.VA[t,:] - x2.VA[t,:]] for t=1:size(x1.PG, 1)]
+        =#
     end
-    xd = [[x1.PG[t,:] - x2.PG[t,:];
-           x1.QG[t,:] - x2.QG[t,:];
-           x1.VM[t,:] - x2.VM[t,:];
-           x1.VA[t,:] - x2.VA[t,:]] for t=1:size(x1.PG, 1)]
-    return (isempty(xd) ? 0.0 : norm(vcat(xd...), lnorm))
+    return norm(vcat(xd...), lnorm)
 end
 
 function computeDistance(x1::mpDualSolution, x2::mpDualSolution; lnorm = 1)
     xd = [[x1.λp[t,:] - x2.λp[t,:];
            x1.λn[t,:] - x2.λn[t,:]] for t=1:size(x1.λ, 1)]
-    return (isempty(xd) ? 0.0 : norm(vcat(xd...), lnorm))
+    return norm(vcat(xd...), lnorm)
 end
 
-function computeDualViolation(x::mpPrimalSolution, xprev::mpPrimalSolution, λ::mpDualSolution, λprev::mpDualSolution, nlpmodel::Vector{JuMP.Model}, opfdata::OPFData;
-                              options::Option = Option(),
-                              params::AlgParams,
-                              lnorm = 1)
+function computeDualViolation(x::mpPrimalSolution, xprev::mpPrimalSolution, λ::mpDualSolution, λprev::mpDualSolution, nlpdata::AlgNLPData, opfdata::OPFData;
+                              options::Option = Option(), params::AlgParams, lnorm = 1)
     gen = opfdata.generators
     dualviol = []
-    for t = 1:length(nlpmodel)
+    for t = 1:length(nlpdata.nlpmodel)
         #
         # First get ∇_x Lagrangian
         #
@@ -123,8 +129,7 @@ function computeDualViolation(x::mpPrimalSolution, xprev::mpPrimalSolution, λ::
             end
         end
         =#
-        # kkt = zeros(length(inner.x))
-        kkt = zeros(JuMP.num_variables(nlpmodel[t]))
+        kkt = zeros(nlpdata.colCount)
 
         #
         # Now adjust it so that the final quantity represents the error in the KKT conditions
@@ -135,18 +140,16 @@ function computeDualViolation(x::mpPrimalSolution, xprev::mpPrimalSolution, λ::
         else
             # The Aug Lag part in proximal ALM
             for g=1:length(gen)
-                idx_pg = JuMP.optimizer_index(nlpmodel[t][:Pg][g]).value
+                idx_pg = nlpdata.colIndex["Pg[" * string(g) * "]"]
                 # two-block reformulation
                 if options.sc_constr && options.two_block
-                    idx_pg_base = JuMP.optimizer_index(nlpmodel[t][:Pg_base][g]).value
-                    kkt[idx_pg_base] += λ.λp[t,g]
-                    kkt[idx_pg_base] -= λprev.λp[t,g] + (params.ρ[t,g]*(
-                                    x.PG_BASE[t,g] - xprev.PG_REF[g]
-                                ))
+                    idx_pg_base = nlpdata.colIndex["Pg_base[" * string(g) * "]"]
+                    kkt[idx_pg_base] += λ.λp[t,g] - λprev.λp[t,g]
+                    kkt[idx_pg_base] -= params.ρ[t,g]*(x.PB[t,g] - xprev.PR[g])
 
                 # contingency
                 elseif options.sc_constr && !options.freq_ctrl
-                    idx_sl = JuMP.optimizer_index(nlpmodel[t][:Sl][g]).value
+                    idx_sl = nlpdata.colIndex["Sl[" * string(g) * "]"]
                     if t > 1
                         kkt[idx_pg] += -λ.λp[t,g]+λ.λn[t,g]
                         temp = - params.ρ[t,g]*(
@@ -167,7 +170,7 @@ function computeDualViolation(x::mpPrimalSolution, xprev::mpPrimalSolution, λ::
 
                 # frequency control
                 elseif options.sc_constr && options.freq_ctrl
-                    idx_sl = JuMP.optimizer_index(nlpmodel[t][:Sl]).value
+                    idx_sl = nlpdata.colIndex["Sl"]
                     if t > 1
                         kkt[idx_pg] += -λ.λp[t,g]
                         kkt[idx_sl] -= -gen[g].alpha*λ.λp[t,g]
@@ -189,7 +192,7 @@ function computeDualViolation(x::mpPrimalSolution, xprev::mpPrimalSolution, λ::
 
                 # multiperiod
                 elseif options.has_ramping
-                    idx_sl = JuMP.optimizer_index(nlpmodel[t][:Sl][g]).value
+                    idx_sl = nlpdata.colIndex["Sl[" * string(g) * "]"]
                     if t > 1
                         kkt[idx_pg] += -λ.λp[t,g]+λ.λn[t,g]
                         temp = - params.ρ[t,g]*(
@@ -199,9 +202,9 @@ function computeDualViolation(x::mpPrimalSolution, xprev::mpPrimalSolution, λ::
                         kkt[idx_pg] -= -λprev.λp[t,g]+λprev.λn[t,g]+temp
                         kkt[idx_sl] += temp
                     end
-                    if t < length(nlpmodel)
+                    if t < length(nlpdata.nlpmodel)
                         kkt[idx_pg] += +λ.λp[t+1,g]-λ.λn[t+1,g]
-                        kkt[idx_pg] -= +λprev.λ[t+1,g]-λprev.λn[t+1,g] + params.ρ[t+1,g]*(
+                        kkt[idx_pg] -= +λprev.λp[t+1,g]-λprev.λn[t+1,g] + params.ρ[t+1,g]*(
                                         x.PG[t,g] - xprev.PG[t+1,g] + xprev.SL[t+1,g] -
                                         gen[g].ramp_agc
                                     )
@@ -212,47 +215,26 @@ function computeDualViolation(x::mpPrimalSolution, xprev::mpPrimalSolution, λ::
         # The proximal part in both ALADIN and proximal ALM
         if options.sc_constr && options.two_block
             for g=1:length(gen)
-                idx_pg_base = JuMP.optimizer_index(nlpmodel[t][:Pg_base][g]).value
-                kkt[idx_pg_base] -= params.τ*(x.PG_BASE[t,g] - xprev.PG_BASE[t,g])
+                idx_pg_base = nlpdata.colIndex["Pg_base[" * string(g) * "]"]
+                kkt[idx_pg_base] -= params.τ*(x.PB[t,g] - xprev.PB[t,g])
             end
         else
             for g=1:length(gen)
-                idx_pg = JuMP.optimizer_index(nlpmodel[t][:Pg][g]).value
+                idx_pg = nlpdata.colIndex["Pg[" * string(g) * "]"]
                 kkt[idx_pg] -= params.τ*(x.PG[t,g] - xprev.PG[t,g])
             end
             if params.jacobi && options.sc_constr && options.freq_ctrl && t > 1
-                idx_sl = JuMP.optimizer_index(nlpmodel[t][:Sl]).value
+                idx_sl = nlpdata.colIndex["Sl"]
                 kkt[idx_sl] -= params.τ*(x.SL[t] - xprev.SL[t])
             end
         end
 
-        #
-        # Compute the KKT error now
-        #
-        colLower = zeros(length(kkt))
-        colUpper = zeros(length(kkt))
-        colValue = zeros(length(kkt))
-        all_vars = JuMP.all_variables(nlpmodel[t])
-        for var in all_vars
-            j = JuMP.optimizer_index(var).value
-            if JuMP.has_lower_bound(var)
-                colLower[j] = JuMP.lower_bound(var)
-            else
-                colLower[j] = -Inf
-            end
-            if JuMP.has_lower_bound(var)
-                colUpper[j] = JuMP.lower_bound(var)
-            else
-                colUpper[j] = +Inf
-            end
-            colValue[j] = JuMP.value(var)
-        end
         for j = 1:length(kkt)
-            if (abs(colLower[j] - colUpper[j]) <= params.zero)
+            if (abs(nlpdata.colLower[j, t] - nlpdata.colUpper[j, t]) <= params.zero)
                 kkt[j] = 0.0 # ignore
-            elseif abs(colValue[j] - colLower[j]) <= params.zero
+            elseif abs(nlpdata.colValue[j, t] - nlpdata.colLower[j, t]) <= params.zero
                 kkt[j] = max(0, -kkt[j])
-            elseif abs(colValue[j] - colUpper[j]) <= params.zero
+            elseif abs(nlpdata.colValue[j, t] - nlpdata.colUpper[j, t]) <= params.zero
                 kkt[j] = max(0, +kkt[j])
             else
                 kkt[j] = abs(kkt[j])
@@ -260,22 +242,22 @@ function computeDualViolation(x::mpPrimalSolution, xprev::mpPrimalSolution, λ::
         end
         dualviol = [dualviol; kkt]
     end
+
+    #
+    # Pg_ref in two_block decomposition
+    #
     if options.sc_constr && options.two_block
         for g=1:length(gen)
-            kkt_pg_ref = -params.τ*(x.PG_REF[g] - xprev.PG_REF[g])
+            kkt_pg_ref = -params.τ*(x.PR[g] - xprev.PR[g])
             for t=1:size(λ.λp, 1)
                 kkt_pg_ref += -λ.λp[t,g]+λprev.λp[t,g]+(params.ρ[t,g]*(
-                                x.PG_BASE[t,g] - x.PG_REF[g]
+                                x.PB[t,g] - x.PR[g]
                             ))
             end
             dualviol = [dualviol; kkt_pg_ref]
         end
     end
 
-
-    if isempty(dualviol)
-        return 0.0, 0.0
-    end
     return norm(dualviol, lnorm), norm(dualviol, 1)/length(dualviol)
 end
 
@@ -288,7 +270,7 @@ function computePrimalViolation(primal::mpPrimalSolution, opfdata::OPFData; opti
     # primal violation
     #
     if options.sc_constr && options.two_block
-        errp = [abs(primal.PG_BASE[t,g] - primal.PG_REF[g]) for t=1:T for g=1:num_gens]
+        errp = [abs(primal.PB[t,g] - primal.PR[g]) for t=1:T for g=1:num_gens]
         errn = zeros(0)
     elseif options.sc_constr && !options.freq_ctrl
         errp = [max(+primal.PG[1,g] - primal.PG[t,g] - gen[g].scen_agc, 0) for t=2:T for g=1:num_gens]
@@ -302,10 +284,10 @@ function computePrimalViolation(primal::mpPrimalSolution, opfdata::OPFData; opti
     end
     err  = [errp; errn]
 
-    if (T <= 1 || num_gens < 1) && !isempty(err)
+    if (T <= 1 || num_gens < 1)
         return 0.0, 0.0
     end
-    return norm(err, lnorm), norm(err, 1)/((T-1)*(num_gens))
+    return norm(err, lnorm), norm(err, 1)/((T-1)*num_gens)
 end
 
 function computePrimalCost(primal::mpPrimalSolution, opfdata::OPFData; options::Option = Option())
@@ -334,11 +316,10 @@ function computePrimalCost(primal::mpPrimalSolution, opfdata::OPFData; options::
 end
 
 function computeGenerationCost(primal::mpPrimalSolution, opfdata::OPFData; options::Option = Option())
-    T = size(primal.PG, 1)
     gen = opfdata.generators
     baseMVA = opfdata.baseMVA
     gencost = 0.0
-    for p in 1:T
+    for p in 1:size(primal.PG, 1)
         for g in 1:size(primal.PG, 2)
             Pg = primal.PG[p,g]
             weight = p > 1 ? options.weight_scencost : 1.0

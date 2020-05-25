@@ -1,15 +1,14 @@
 using Printf
 using LinearAlgebra
-using MathProgBase, JuMP, Ipopt
+using JuMP, Ipopt
 using Plots, Measures, DelimitedFiles
 
-include("params.jl")
 include("opfdata.jl")
+include("params.jl")
 include("mpsolution.jl")
 include("scacopf_model.jl")
 include("mpproxALM.jl")
 include("analysis.jl")
-include("kkt_manual.jl")
 
 for (idx, case) in enumerate([ARGS[1]])
     T = parse(Int, ARGS[2])
@@ -21,13 +20,15 @@ for (idx, case) in enumerate([ARGS[1]])
     opfdata = opf_loaddata(rawdata)
     opt = Option()
     opt.sc_constr = true
-    opt.freq_ctrl = true
+    opt.freq_ctrl = false
     opt.two_block = true
     opt.obj_penalty = false
-    opt.weight_scencost = 1/length(rawdata.ctgs_arr)
+    opt.weight_scencost = 0#1/length(rawdata.ctgs_arr)
     opt.weight_loadshed = 2500.0
     opt.weight_freqctrl = 0
-    opt.savefile = getDataFilename("", case, "mpproxALM", T, 1.0, true, 0)
+    opt.savefile = getDataFilename("", case, "proxALM", T, sc_constr, true, 0)
 
-    x, λ, savedata = runProxALM_mp(opfdata, rawdata; options = opt)
+    # include base case
+    T = length(rawdata.ctgs_arr) + 1
+    @time x, λ, savedata = runProxALM(opfdata, rawdata, T; options = opt)
 end
