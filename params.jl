@@ -1,3 +1,12 @@
+mutable struct AlgNLPData
+    nlpmodel::Vector{JuMP.Model}
+    colCount::Int64
+    colIndex::Dict{String, Int64}
+    colLower::Array{Float64, 2}
+    colUpper::Array{Float64, 2}
+    colValue::Array{Float64, 2}
+end
+
 #
 # Algorithmic parameters
 #
@@ -18,8 +27,8 @@ mutable struct AlgParams
     nlpiterlim::Int# Maximum # of iterations in NLP step
 end
 
-function initializeParams(maxρ = 10.0; aladin::Bool, jacobi::Bool)
-    iterlim = 2000
+function initializeParams(maxρ::Float64; aladin::Bool, jacobi::Bool, options::Option = Option())
+    iterlim = 100
     tol = 1e-2
     zero = 1e-4
     ρ = maxρ
@@ -29,10 +38,12 @@ function initializeParams(maxρ = 10.0; aladin::Bool, jacobi::Bool)
         nlpiterlim = 10000
         updateρ = false
     else
-        τ = 2maxρ
+        τ = (jacobi && !options.two_block) ? 10maxρ : 0
         μ = 0.0
         nlpiterlim = 10000
-        updateρ = true
+        # update AL parameter only if
+        # coupling constraints are inequalities
+        updateρ = !options.sc_constr || !options.freq_ctrl && !options.two_block
     end
     θ = 1.0
     updateτ = false
