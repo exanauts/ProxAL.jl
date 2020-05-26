@@ -641,7 +641,7 @@ function opf_model_get_proxAL_expr(opfmodel::JuMP.Model, opfdata::OPFData, t::In
     return penalty
 end
 
-function opf_solve_model(opfmodel::JuMP.Model)
+function opf_solve_model(opfmodel::JuMP.Model, t::Int)
     #
     # Initialize from the previous solve
     #
@@ -659,7 +659,10 @@ function opf_solve_model(opfmodel::JuMP.Model)
         status != MOI.LOCALLY_SOLVED &&
         status != MOI.ALMOST_LOCALLY_SOLVED &&
         status != MOI.ITERATION_LIMIT
-        error("something went wrong in subproblem ", t, " with status ", status)
+        println("something went wrong in subproblem ", t, " with status ", status)
+    end
+    if !has_values(opfmodel)
+        error("no solution vector available in subproblem ", t)
     end
 
 
@@ -694,7 +697,7 @@ function opf_solve_model(opfmodel::JuMP.Model, opfdata::OPFData, t::Int;
     end
     if !options.freq_ctrl && !options.two_block && t > 1
         for g=1:length(opfdata.generators)
-            xp = (initial_x == nothing) ? 0 : ((options.sc_constr ? initial_x.PG[1,g] : initial_x.PG[t-1,g]) - initial_x.PG[t,g])
+            xp = (options.sc_constr ? initial_x.PG[1,g] : initial_x.PG[t-1,g]) - initial_x.PG[t,g]
             dp = (options.sc_constr ? opfdata.generators[g].scen_agc : opfdata.generators[g].ramp_agc)
             set_start_value(opfmodel[:Sl][g], min(max(0, -xp + dp), 2dp))
         end
@@ -711,7 +714,10 @@ function opf_solve_model(opfmodel::JuMP.Model, opfdata::OPFData, t::Int;
         status != MOI.LOCALLY_SOLVED &&
         status != MOI.ALMOST_LOCALLY_SOLVED &&
         status != MOI.ITERATION_LIMIT
-        error("something went wrong in subproblem ", t, " with status ", status)
+        println("something went wrong in subproblem ", t, " with status ", status)
+    end
+    if !has_values(opfmodel)
+        error("no solution vector available in subproblem ", t)
     end
 
 
