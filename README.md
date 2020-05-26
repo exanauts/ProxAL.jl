@@ -1,7 +1,25 @@
-# Test ALADIN
 
-Source code to test the distributed Augmented Lagrangian method of [Houska et al](https://epubs.siam.org/doi/abs/10.1137/140975991) on the ACOPF.
+# Decomposition-based solver for multi-period security-constrained ACOPF
 
-# MPACOPF
+Julia package for solving multi-period security-constrained ACOPF problems.
 
-To see the usage, run "julia mpacopf.jl". For example, run with "julia mpacopf.jl data/case9 data/mp_demand/case9_onehour_60 10 0.1".
+## Brief description of algorithm
+The problem is decomposed into single-period single-scenario ACOPF problems by formulating an Augmented Lagrangian (AL) with respect to the cross-period/cross-scenario constraints (e.g., ramping constraints in multi-period ACOPF and AGC constraints in security-constrained ACOPF). The AL formulation is then solved by iteratively updating first the solution vectors in each single-period single-scenario problem using a Jacobi-like update and then the dual variables (as in the standard AL method).
+
+The Jacobi nature of the update implies that the single-period single-scenario problems can be solved in parallel. The package allows for the parallel solution of these problems.
+
+Currently, only multi-period or only security constraints are supported, i.e., the package does not address both simultaneously.
+
+
+# Usage
+To test the multi-period ACOPF on case118 with 50 time periods, run:
+```julia
+$ julia --project=. src/mptest.jl data/case118 50
+```
+
+To test security-constrained ACOPF on case118 with 50 scenarios, run:
+```julia
+$ julia --project=. src/sctest.jl data/case118 50
+```
+
+
