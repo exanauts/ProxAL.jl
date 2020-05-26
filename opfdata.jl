@@ -151,7 +151,7 @@ function ctgs_loaddata(raw::RawData, n)
     return raw.ctgs_arr[1:n]
 end
 
-function opf_loaddata(raw::RawData; time_horizon::Int=0, load_scale::Float64=1.0, ramp_scale::Float64=0.0, lineOff=Line())
+function opf_loaddata(raw::RawData; time_horizon_start::Int=1, time_horizon_end::Int=0, load_scale::Float64=1.0, ramp_scale::Float64=0.0, lineOff=Line(), demand_from_rawdata::Int = 0)
     #
     # load buses
     #
@@ -162,6 +162,10 @@ function opf_loaddata(raw::RawData; time_horizon::Int=0, load_scale::Float64=1.0
     for i in 1:num_buses
         @assert bus_arr[i,1]>0  #don't support nonpositive bus ids
         bus_arr[i,9] *= pi/180 # ANIRUDH: Bus is an immutable struct. Modify bus_arr itself
+        if demand_from_rawdata > 0
+            bus_arr[i,3] = raw.pd_arr[i,demand_from_rawdata]
+            bus_arr[i,4] = raw.qd_arr[i,demand_from_rawdata]
+        end
         buses[i] = Bus(bus_arr[i,1:13]...)
         # buses[i].Va *= pi/180 # ANIRUDH: See previous comment
         if buses[i].bustype==3
@@ -278,9 +282,9 @@ function opf_loaddata(raw::RawData; time_horizon::Int=0, load_scale::Float64=1.0
     # demands for multiperiod OPF
     Pd = raw.pd_arr
     Qd = raw.qd_arr
-    if time_horizon > 0
-        Pd = Pd[:,1:time_horizon] .* load_scale
-        Qd = Qd[:,1:time_horizon] .* load_scale
+    if time_horizon_end > 0
+        Pd = Pd[:,time_horizon_start:time_horizon_end] .* load_scale
+        Qd = Qd[:,time_horizon_start:time_horizon_end] .* load_scale
     end
 
     return OPFData(buses, lines, generators, bus_ref, baseMVA, busIdx, FromLines, ToLines, BusGeners, Pd, Qd)
