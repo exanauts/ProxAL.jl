@@ -3,7 +3,13 @@
 #
 
 function runProxALM(opfdata::OPFData, rawdata::RawData, T::Int;
-                    options::Option = Option(), verbose_level::Int = 1, parallel::Bool = false, fullmodel::Bool = true)
+                    options::Option = Option(),
+                    verbose_level::Int = 1,
+                    parallel::Bool = false,
+                    fullmodel::Bool = true,
+                    maxρ::Float64 = 1.0,
+                    initial_x = nothing,
+                    initial_λ = nothing)
     #
     # Compute optimal solution using Ipopt
     #
@@ -18,9 +24,10 @@ function runProxALM(opfdata::OPFData, rawdata::RawData, T::Int;
 
 
     #
-    # Initialize solution and the basemodel
+    # Initialize solution and the base data
     #
-    x, λ, base = initializeProxALM(opfdata, rawdata, T; options = options, parallel = parallel)
+    x, λ, base = initializeProxALM(opfdata, rawdata, T;
+                        options = options, parallel = parallel, initial_x = initial_x, initial_λ = initial_λ)
 
 
     #
@@ -32,7 +39,6 @@ function runProxALM(opfdata::OPFData, rawdata::RawData, T::Int;
     #
     # Initialize algorithmic parameters
     #
-    maxρ = 0.5#1.0Float64(T > 1)*max(maximum(abs.(λstar.λp)), maximum(abs.(λstar.λn)))
     params = initializeParams(maxρ; aladin = false, jacobi = true, options = options)
     params.ρ = params.updateρ ? zeros(size(λ.λp)) : maxρ*ones(size(λ.λp))
     tol = 1e-3*ones(size(λ.λp))
@@ -75,7 +81,7 @@ function runProxALM(opfdata::OPFData, rawdata::RawData, T::Int;
         for t in serial_indices
             t0 = time()
             opf_model_set_objective(base.nlpmodel[t], opfdata, t; options = options, params = params, primal = x, dual = λ)
-            base.colValue[:,t] = opf_solve_model(base.nlpmodel[t])
+            base.colValue[:,t] = opf_solve_model(base.nlpmodel[t], t)
             timeNLP += time() - t0
 
             #
@@ -152,7 +158,7 @@ function runProxALM(opfdata::OPFData, rawdata::RawData, T::Int;
         dist = computeDistance(x, xstar; options = options, lnorm = Inf)
         gencost = computePrimalCost(x, opfdata; options = options)
         gap = abs((gencost - zstar)/zstar)
-        (verbose_level > 1) && updatePlot_iterative(plt, iter, dist, primviol, dualviol, gap)
+        (verbose_level > 1) && updatePlot_iterative(plt, iter, dist, primviol, dualviol, gap, options.savefile)
 
 
         #
@@ -164,7 +170,7 @@ function runProxALM(opfdata::OPFData, rawdata::RawData, T::Int;
                             iter, primviol, dualviol, 100gap, dist)
         end
 
-        savedata[iter,:] = [dist, gap, primviol, dualviol, primviolavg, dualviolavg, timeNLP, tfullmodel]
+        savedata[iter,:] = [dist, gencost, primviol, dualviol, primviolavg, dualviolavg, timeNLP, tfullmodel]
         if !isempty(options.savefile)
             writedlm(options.savefile, savedata)
         end
@@ -272,12 +278,26 @@ function solve_fullmodel(opfdata::OPFData, rawdata::RawData, T::Int; options::Op
     return xstar, λstar, objvalue, solvetime
 end
 
-function initializeProxALM(opfdata::OPFData, rawdata::RawData, T::Int; options::Option = Option(), parallel::Bool = false)
+function initializeProxALM(opfdata::OPFData, rawdata::RawData, T::Int;
+                           options::Option = Option(),
+                           parallel::Bool = false,
+                           initial_x = nothing,
+                           initial_λ = nothing)
     #
     # initialize solution vectors
     #
-    x = initializePrimalSolution(opfdata, T; options = options)
-    λ = initializeDualSolution(opfdata, T; options = options)
+    if initial_x == nothing
+        x = initializePrimalSolution(opfdata, T; options = options)
+        sequential_solve = true
+    else
+        x = deepcopy(initial_x)
+        sequential_solve = false
+    end
+    if initial_λ == nothing
+        λ = initializeDualSolution(opfdata, T; options = options)
+    else
+        λ = deepcopy(initial_λ)
+    end
 
     
     #
@@ -301,7 +321,7 @@ function initializeProxALM(opfdata::OPFData, rawdata::RawData, T::Int; options::
         # Scenario-1/Period-1 model is standard ACOPF
         # Scenario-t/Period-t model has a quadratic penalty term from the coupling constraints
         #
-        params.ρ = 1e-3Float64(t > 1)*ones(size(λ.λp))
+        params.ρ = Float64(t > 1)*ones(size(λ.λp))
         nlpmodel[t] = opf_model(opfdata, rawdata, t; options = options)
 
         #
@@ -324,8 +344,8 @@ function initializeProxALM(opfdata::OPFData, rawdata::RawData, T::Int; options::
         # Solve only t=1
         # We will solve t=2:T after the loop in parallel
         #
-        if t == 1 || !parallel
-            colValue[:,t] = opf_solve_model(nlpmodel[t])
+        if t == 1 || (!parallel && sequential_solve)
+            colValue[:,t] = opf_solve_model(nlpmodel[t], t)
         end
 
 
@@ -334,7 +354,7 @@ function initializeProxALM(opfdata::OPFData, rawdata::RawData, T::Int; options::
         #
         all_vars = JuMP.all_variables(nlpmodel[t])
         for var in all_vars
-            if t == 1 || !parallel
+            if t == 1
                 j = JuMP.optimizer_index(var).value
                 colIndex[JuMP.name(var)] = j
             else
@@ -348,8 +368,10 @@ function initializeProxALM(opfdata::OPFData, rawdata::RawData, T::Int; options::
         #
         # Update the primal solution data structure
         #
-        if t == 1 || !parallel
-            updatePrimalSolution(x, colValue[:,t], colIndex, t; options = options)
+        if sequential_solve
+            if t == 1 || !parallel
+                updatePrimalSolution(x, colValue[:,t], colIndex, t; options = options)
+            end
         end
         if t == 1
             #=
@@ -364,14 +386,14 @@ function initializeProxALM(opfdata::OPFData, rawdata::RawData, T::Int; options::
         end
     end
 
-    if parallel
+    if parallel && sequential_solve
         optimalvector = SharedArray{Float64, 2}(colCount, T)
         params.ρ = 1e-3ones(size(λ.λp))
         @sync for t=2:T
             function xstep()
                 opfmodel = opf_model(opfdata, rawdata, t; options = options)
                 opf_model_set_objective(opfmodel, opfdata, t; options = options, params = params, primal = x, dual = λ)
-                optimalvector[:,t] = opf_solve_model(opfmodel)
+                optimalvector[:,t] = opf_solve_model(opfmodel, t)
             end
             @async @spawn begin
                 xstep()
@@ -379,6 +401,7 @@ function initializeProxALM(opfdata::OPFData, rawdata::RawData, T::Int; options::
         end
         for t=2:T
             colValue[:,t] .= optimalvector[:,t]
+            updatePrimalSolution(x, colValue[:,t], colIndex, t; options = options)
         end
     end
 

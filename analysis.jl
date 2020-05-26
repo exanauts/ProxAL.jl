@@ -23,14 +23,16 @@ function initializePlot_iterative()
     return plt
 end
 
-function updatePlot_iterative(plt, iter, distance, primviol, dualviol, optimgap)#, xavg_primviol=nothing, xavg_dualviol=nothing)
+function updatePlot_iterative(plt, iter, distance, primviol, dualviol, optimgap, savefile = "")
     push!(plt, 1, iter, max(distance, 1e-12))
     push!(plt, 2, iter, max(primviol, 1e-12))
     push!(plt, 3, iter, max(dualviol, 1e-12))
     push!(plt, 4, iter, max(optimgap, 1e-12))
-    #push!(plt, 4, iter, xavg_primviol)
-    #push!(plt, 5, iter, xavg_dualviol)
-    savefig("dummy.png")
+    if isempty(savefile)
+        savefig("__dummy.png")
+    else
+        savefig(savefile * ".png")
+    end
     #gui()
 end
 

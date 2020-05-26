@@ -78,6 +78,27 @@ function perturb(dual::mpDualSolution, factor::Number)
     dual.λn *= (1.0 + factor)
 end
 
+function shiftBackward(primal::mpPrimalSolution)
+    for t=1:size(primal.PB, 1)-1
+        primal.PG[t,:] .= primal.PG[t+1,:]
+        primal.QG[t,:] .= primal.QG[t+1,:]
+        primal.VM[t,:] .= primal.VM[t+1,:]
+        primal.VA[t,:] .= primal.VA[t+1,:]
+        if length(size(primal.SL)) > 1
+            primal.SL[t,:] .= primal.SL[t+1,:]
+        else
+            primal.SL[t] = primal.SL[t+1]
+        end
+    end
+end
+
+function shiftBackward(dual::mpDualSolution)
+    for t=1:size(dual.λp, 1)-1
+        dual.λp[t,:] .= dual.λp[t+1,:]
+        dual.λn[t,:] .= dual.λn[t+1,:]
+    end
+end
+
 function computeDistance(x1::mpPrimalSolution, x2::mpPrimalSolution; options::Option = Option(), lnorm = 1)
     if options.sc_constr
         if options.two_block
