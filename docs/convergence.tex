@@ -276,16 +276,30 @@ For this, $\rho$ should be chosen large enough that the quadratic penalty functi
     \]
 \end{enumerate}
 
-Now, observe that since $\{\mathcal{L}^k\}$ is monotonically decreasing, we have:
+Now, observe that:
 \begin{align*}
-\mathcal{L}^k &\geq \frac{1}{k}\sum_{j=1}^{k} \mathcal{L}^j \\
-&\geq \frac{1}{k}\sum_{j=1}^k L(x^j, \lambda^j) \\
+\frac{1}{k}\sum_{j=1}^{k} \mathcal{L}^j & \geq \frac{1}{k}\sum_{j=1}^k L(x^j, \lambda^j) \\
 &\geq \frac{1}{k}\sum_{j=1}^k \left[L^\star + (\lambda^j)^\top \left(\sum_{i=1}^N A_i x_i^j - b\right) \right] \\
 &\geq L^\star + \frac{1}{k\rho}\sum_{j=1}^k \left[(\lambda^j)^\top \left(\lambda^j - \lambda^{j-1}\right)\right] \quad \text{from~\eqref{eq:dualstep}}\\
 &\geq L^\star + \frac{1}{2k\rho}\sum_{j=1}^k \left[\norm{\lambda^j}^2  - \norm{\lambda^{j-1}}^2\right] \\
 &\geq L^\star - \frac{1}{2k\rho}\norm{\lambda^{0}}^2.
 \end{align*}
+Re-arranging the above inequality, we have
+\begin{equation*}
+\sum_{j=1}^k (\mathcal{L}^j - L^\star) \geq -\frac{1}{2\rho}\norm{\lambda^{0}}^2.
+\end{equation*}
 
+Suppose now that $\left\{\mathcal{L}^k\right\}$ is unbounded from below. Then, there exists an index $k_0$ such that $\mathcal{L}^{k_0} < L^\star$ for all $k \geq k_0$.
+Since the sequence $\left\{\mathcal{L}^k\right\}$ is monotone, we have:
+\begin{equation*}
+\sum_{j=1}^k (\mathcal{L}^j - L^\star) \leq \sum_{j=1}^{k_0} (\mathcal{L}^j - L^\star) + (k - k_0) (\mathcal{L}^{k_0} - L^\star) = \text{constant} - (k - k_0) \cdot (\text{positive constant}), \; \forall k \geq k_0.
+\end{equation*}
+
+Combing the last two inequalities, we have:
+\begin{equation*}
+-\frac{1}{2\rho}\norm{\lambda^{0}}^2 \leq \text{constant} - (k - k_0) \cdot (\text{positive constant}), \; \forall k \geq k_0
+\end{equation*}
+which results in a contradiction as $k \to \infty$.
 
 \section{Next steps/to do}
 \begin{itemize}
