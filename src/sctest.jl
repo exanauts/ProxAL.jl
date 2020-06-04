@@ -10,12 +10,13 @@ include("mpsolution.jl")
 include("scacopf_model.jl")
 include("mpproxALM.jl")
 include("analysis.jl")
+include("rolling_horizon.jl")
 
 ENV["GKSwstype"]="nul"
 
 for case in [ARGS[1]]
     T = parse(Int, ARGS[2])
-    scen = "../data/mp_demand/"*basename(case)*"_onehour_60"
+    scen = "./data/mp_demand/"*basename(case)*"_onehour_60"
     rawdata = RawData(case, scen)
     if length(rawdata.ctgs_arr) > T
         rawdata.ctgs_arr = rawdata.ctgs_arr[1:T]

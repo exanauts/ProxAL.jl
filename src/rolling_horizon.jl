@@ -21,7 +21,7 @@ function rolling_horizon_mp_proxALM(case::String,
     #
     # Option 1: solve the initial full model with ipopt
     #
-    x, λ, _, _ = solve_fullmodel(opfdata, rawdata, T; options = opt)
+    x, λ, _, _ = solve_fullmodel(opfdata, rawdata, T; options = options)
     #=
     if isfile(getDataFilename("optimal_pg", case, "proxALM", T, options.sc_constr, true, ramp_scale))
         x.PG = readdlm(getDataFilename("optimal_pg", case, "proxALM", T, options.sc_constr, true, ramp_scale))
@@ -60,6 +60,7 @@ function rolling_horizon_mp_proxALM(case::String,
                                    parallel = parallel,
                                    fullmodel = false,
                                    maxρ = maxρ,
+                                   verbose_level = 2,
                                    initial_x = x,
                                    initial_λ = λ)
         

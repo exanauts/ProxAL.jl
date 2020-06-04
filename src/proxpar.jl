@@ -11,12 +11,13 @@ using Distributed
     using JuMP, Ipopt
     using Plots, Measures, DelimitedFiles
 
-    include("opfdata.jl")
-    include("params.jl")
-    include("mpsolution.jl")
-    include("scacopf_model.jl")
-    include("mpproxALM.jl")
-    include("analysis.jl")
+    include("./src/opfdata.jl")
+    include("./src/params.jl")
+    include("./src/mpsolution.jl")
+    include("./src/scacopf_model.jl")
+    include("./src/mpproxALM.jl")
+    include("./src/analysis.jl")
+    include("./src/rolling_horizon.jl")
 end
 
 

@@ -10,13 +10,14 @@ include("mpsolution.jl")
 include("scacopf_model.jl")
 include("mpproxALM.jl")
 include("analysis.jl")
+include("rolling_horizon.jl")
 
 ENV["GKSwstype"]="nul"
 
 for ramp_scale in [0.001]
     case = ARGS[1]
     T = parse(Int, ARGS[2])
-    scen = "../data/mp_demand/"*basename(case)*"_onehour_60"
+    scen = "./data/mp_demand/"*basename(case)*"_onehour_60"
     rawdata = RawData(case, scen)
     opfdata = opf_loaddata(rawdata; time_horizon_start = 1, time_horizon_end = T, load_scale = 1.0, ramp_scale = ramp_scale)
     opt = Option()
