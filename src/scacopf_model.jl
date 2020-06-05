@@ -604,9 +604,9 @@ function opf_model_get_proxAL_expr(opfmodel::JuMP.Model, opfdata::OPFData, t::In
                     penalty += 0.5params.ρ[t,g]*(+primal.PG[t-1,g] - Pg[g] + Sl[g] - gen[g].ramp_agc)^2
                 end
                 if t < size(opfdata.Pd, 2)
-                    penalty +=   dual.λp[t+1,g]*(+Pg[g] - primal.PG[t+1,g] - gen[g].ramp_agc)
-                    penalty +=   dual.λn[t+1,g]*(-Pg[g] + primal.PG[t+1,g] - gen[g].ramp_agc)
-                    penalty += 0.5params.ρ[t,g]*(+Pg[g] - primal.PG[t+1,g] + primal.SL[t+1,g] - gen[g].ramp_agc)^2
+                    penalty +=     dual.λp[t+1,g]*(+Pg[g] - primal.PG[t+1,g] - gen[g].ramp_agc)
+                    penalty +=     dual.λn[t+1,g]*(-Pg[g] + primal.PG[t+1,g] - gen[g].ramp_agc)
+                    penalty += 0.5params.ρ[t+1,g]*(+Pg[g] - primal.PG[t+1,g] + primal.SL[t+1,g] - gen[g].ramp_agc)^2
                 end
             end
         end
