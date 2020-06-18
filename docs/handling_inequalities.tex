@@ -1,0 +1,117 @@
+\documentclass[11pt]{article}
+
+\usepackage{amsmath, amsfonts, amsthm, amssymb, mathtools}
+\usepackage{authblk, color, bm, graphicx, epstopdf, url}
+\usepackage[font = small, labelfont = bf, labelsep = period]{caption}
+\usepackage{subcaption}
+\usepackage{xspace}
+\usepackage{enumitem,hyperref}
+\usepackage{accents}
+\newcommand{\ubar}[1]{\underaccent{\bar}{#1}}
+
+\usepackage{booktabs, tabularx, multirow}
+\newcolumntype{C}{>{\centering\arraybackslash}X}
+\newcolumntype{R}{>{\raggedleft\arraybackslash}X}
+\newcolumntype{L}{>{\raggedright\arraybackslash}X}
+
+\newtheorem{prop}{Proposition}
+\newtheorem{obs}{Observation}
+\newtheorem{rem}{Remark}
+\newtheorem{ques}{Question}
+
+\newcommand{\comment}[1]{{\color{red}#1}}
+\newcommand{\Image}[1]{\mathop{\text{Im}}\left(#1\right)}
+\newcommand{\norm}[1]{\left\lVert #1 \right\rVert}
+
+\usepackage{fullpage}[2cm]
+\linespread{1.5}
+
+\allowdisplaybreaks
+
+\title{Jacobi decomposition of the proximal augmented lagrangian}
+\author{Anirudh Subramanyam, Youngdae Kim, Mihai Anitescu}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\section{Formulation}
+We consider block nonconvex optimization problems \textit{coupled with linear inequality constraints}.
+\begin{equation}\label{eq:nlp}
+\begin{array}{r@{\;\;}l}
+\displaystyle\mathop{\text{minimize}}_{x_1, \ldots, x_N} & \displaystyle \sum_{i = 1}^N f_i(x_i) \\
+\text{subject to}
+& \displaystyle x_i \in X_i \coloneqq \left\{
+x_i \in \mathbb{R}^{n_i} : 
+g_i(x_i) \leq 0
+\right\}, \;\; i \in [N] \coloneqq \{1, \ldots, N\} \\
+& \displaystyle \sum_{i = 1}^N A_i x_i \leq b.
+\end{array}
+\end{equation}
+where $f_i: \mathbb{R}^{n_i} \mapsto \mathbb{R}$ and $g_i :\mathbb{R}^{n_i} \mapsto \mathbb{R}^{d_i}$ are twice continuously differentiable functions.
+For convenience, we denote by $x$ to mean all the decision variables $(x_1, \ldots, x_N)$.
+We assume that $A_i \in \mathbb{R}^{m \times n_i}$ has full row rank and that LICQ holds everywhere.
+
+\section{Inexact penalty reformulation}
+We note that $\sum_{i = 1}^N A_i x_i \leq b$ can be equivalently written as $\sum_{i = 1}^N A_i x_i + z =  b$, where $z_i = y^2_i$, $i \in [m]$, and $y \in \mathbb{R}^m$.
+We then proceed to move the equality constraints $z_i = y^2_i$ into the objective using a quadratic penalty parameter $\theta > 0$:
+\begin{equation}\label{eq:penalty}
+\begin{array}{r@{\;\;}l}
+\displaystyle\mathop{\text{minimize}}_{x, y, z} & \displaystyle \sum_{i = 1}^N f_i(x_i) + (\theta/2) \sum_{i = 1}^m (z_i - y_i^2)^2 \\
+\text{subject to}
+& \displaystyle x_i \in X_i \; i \in [N], \;\; y \in \mathbb{R}^m, \;\; z \in \mathbb{R}^m \\
+& \displaystyle \sum_{i = 1}^N A_i x_i + z = b.
+\end{array}
+\end{equation}
+
+\begin{prop}
+    Suppose that $(x, y, z, \lambda, \mu)$ is a local minimizer of~\eqref{eq:penalty} where LICQ holds, i.e., it satisfies:
+    \begin{subequations}\label{eq:kkt_penalty}
+        \begin{align}
+        & x_i \in X_i, \;\; && i \in [N] \label{eq:kkt_penalty:primal}\\
+        & \nabla f_i(x_i) + \frac{\partial g_i(x_i)}{\partial x_i}^\top \mu_i + A_i^\top \lambda = 0, \;\; && i \in [N]\label{eq:kkt_penalty:lagrangian_x} \\
+        & \mathrm{diag}(g_i(x_i)) \mu_i = 0, \;\;\mu_i \in \mathbb{R}^{d_i}_{+}, \;\; && i \in [N]\label{eq:kkt_penalty:complementarity} \\
+        & \sum_{i = 1}^N A_i x_i + z = b \label{eq:kkt_penalty:coupling_primal}\\
+        & \theta (z_i - y_i^2) + \lambda_i = 0, \;\; && i \in [m] \label{eq:kkt_penalty:lagrangian_z} \\
+        & (z_i - y_i^2) y_i = 0, \;\; && i \in [m]  \label{eq:kkt_penalty:lagrangian_y} \\
+        & 3y_i^2 - z_i \geq 0, \;\; && i \in [m] \label{eq:kkt_penalty:second_order}
+        \end{align}
+    \end{subequations}
+    Note that~\eqref{eq:kkt_penalty:primal}--\eqref{eq:kkt_penalty:lagrangian_y} are the KKT conditions whereas~\eqref{eq:kkt_penalty:second_order} follows from the second-order necessary conditions.
+    Then, as $\theta \to \infty$, every limit point of a sequence of points from the above feasible set is a KKT point of~\eqref{eq:nlp}.
+\end{prop}
+\begin{proof}
+    The KKT points of the original NLP~\eqref{eq:nlp} satisfy:
+    \begin{subequations}\label{eq:kkt_nlp}
+        \begin{align}
+        & \eqref{eq:kkt_penalty:primal}, \eqref{eq:kkt_penalty:lagrangian_x}, \eqref{eq:kkt_penalty:complementarity}, \notag\\
+        & \sum_{i = 1}^N A_i x_i \leq b \label{eq:kkt_nlp:coupling_primal}\\
+        & \lambda \geq 0 \label{eq:kkt_nlp:coupling_dual}
+        \end{align}
+    \end{subequations}
+Therefore, we only need to show that~\eqref{eq:kkt_nlp:coupling_primal} and~\eqref{eq:kkt_nlp:coupling_dual} are satisfied in the limit $\theta \to \infty$.
+
+First, we show that \eqref{eq:kkt_nlp:coupling_dual} is satisfied for any finite $\theta > 0$.
+From~\eqref{eq:kkt_penalty:lagrangian_y}, we have that $(z_i - y_i^2)  = 0$ or $y_i = 0$ for all $i \in [m]$.
+If $(z_i - y_i^2)  = 0$, then~\eqref{eq:kkt_penalty:lagrangian_z} implies that $\lambda_i = 0$.
+If $y_i = 0$, then~\eqref{eq:kkt_penalty:second_order} implies that $z_i \leq 0$, which combined with~\eqref{eq:kkt_penalty:lagrangian_z} implies that $\lambda_i \geq 0$.
+In both cases, \eqref{eq:kkt_nlp:coupling_dual} is satisfied.
+
+Now, we show that~\eqref{eq:kkt_nlp:coupling_primal} is satisfied in the limit $\theta \to \infty$.
+Substitute the expression for $\lambda_i$ from~\eqref{eq:kkt_penalty:lagrangian_z} into~\eqref{eq:kkt_penalty:lagrangian_x}:
+\begin{equation*}
+A_i^\top (z - \mathrm{diag}(y)y) = \frac{1}{\theta} \left[\nabla f_i(x_i) + \frac{\partial g_i(x_i)}{\partial x_i}^\top \mu_i\right]
+\end{equation*}
+As $\theta \to \infty$, the right-hand side $\to 0$. Since $A_i$ has full row rank, this implies that $(z - \mathrm{diag}(y)y) \to 0$, i.e., $z_i = y_i^2 \geq 0$ as $\theta \to \infty$.
+Substituting this into~\eqref{eq:kkt_penalty:coupling_primal}, we see that~\eqref{eq:kkt_nlp:coupling_primal} is satisfied.
+\end{proof}
+
+
+\section{Algorithm}
+Refer to the other document.
+$(y, z)$ play the role of $x_N$.
+Extending the constraints on the $x$ variable blocks to be inequalities instead of equalities is straightforward, since only the last variable block ($(y, z)$ in our case) plays an important role in the proof.
+Apart from that, all of the assumptions are satisfied.
+In particular, $(y, z)$ are unconstrained except via the linear coupling constraints and their objective component is Lipschitz differentiable.
+For the latter, we have to assume that $X_i$ are compact, which would ensure that the optimal values of $(y_i, z_i)$ obtained in the algorithm will also be bounded in some domain and hence, the quadratic penalty would be locally Lipschitz differentiable over that domain.
+\end{document}
