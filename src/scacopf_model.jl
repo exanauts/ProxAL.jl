@@ -34,7 +34,7 @@ function opf_fullmodel(opfdata::OPFData, rawdata::RawData, T::Int; options::Opti
 
     # Generation cost
     if options.obj_gencost
-        @expression(opfmodel, obj_gencost,
+        @NLexpression(opfmodel, obj_gencost,
             sum((t > 1 ? options.weight_scencost : 1.0)*(
                     generators[g].coeff[generators[g].n-2]*(baseMVA*Pg[t,g])^2
                   + generators[g].coeff[generators[g].n-1]*(baseMVA*Pg[t,g])
@@ -42,7 +42,7 @@ function opf_fullmodel(opfdata::OPFData, rawdata::RawData, T::Int; options::Opti
                 for t=1:T, g=1:ngen)
         )
     else
-        @expression(opfmodel, obj_gencost, 0)
+        @NLexpression(opfmodel, obj_gencost, 0)
     end
 
 
@@ -56,7 +56,7 @@ function opf_fullmodel(opfdata::OPFData, rawdata::RawData, T::Int; options::Opti
         @variable(opfmodel, sigma_lineTo[1:T,1:length(opfdata.lines)] >= 0, start = 0)
 
 
-        @expression(opfmodel, obj_penalty,
+        @NLexpression(opfmodel, obj_penalty,
             sum(  sigma_P1[1,b] + sigma_P2[1,b] + sigma_Q1[1,b] + sigma_Q2[1,b] for b=1:nbus) +
             sum(  sigma_lineFrom[1,l] + sigma_lineTo[1,l] for l=1:length(opfdata.lines)) +
             (options.weight_scencost*
@@ -72,7 +72,7 @@ function opf_fullmodel(opfdata::OPFData, rawdata::RawData, T::Int; options::Opti
         @NLexpression(opfmodel, sigma_lineTo[1:T,1:length(opfdata.lines)], 0)
 
 
-        @expression(opfmodel, obj_penalty, 0)
+        @NLexpression(opfmodel, obj_penalty, 0)
     end
 
 
@@ -84,10 +84,10 @@ function opf_fullmodel(opfdata::OPFData, rawdata::RawData, T::Int; options::Opti
         if options.freq_ctrl
             # primary frequency control
             @variable(opfmodel, -1 <= omega[t=2:T] <= 1, start=0)
-            @expression(opfmodel, obj_freq_ctrl, 0.5*sum(omega[t]^2 for t=2:T))
+            @NLexpression(opfmodel, obj_freq_ctrl, 0.5*sum(omega[t]^2 for t=2:T))
         else
             # ignore
-            @expression(opfmodel, obj_freq_ctrl, 0)
+            @NLexpression(opfmodel, obj_freq_ctrl, 0)
         end
 
         #
@@ -129,19 +129,44 @@ function opf_fullmodel(opfdata::OPFData, rawdata::RawData, T::Int; options::Opti
     # multi-period opf
     elseif options.has_ramping
         # Ramping up/down constraints
-        @constraint(opfmodel, ramping_p[t=2:T,g=1:ngen],  Pg[t-1,g] - Pg[t,g] <= generators[g].ramp_agc)
-        @constraint(opfmodel, ramping_n[t=2:T,g=1:ngen], -Pg[t-1,g] + Pg[t,g] <= generators[g].ramp_agc)
+        if options.quadratic_penalty
+            # Slack for ramping constraints
+            @variable(opfmodel, sigma_ramp_p[2:T,1:ngen], start = 0)
+            @variable(opfmodel, sigma_ramp_n[2:T,1:ngen], start = 0)
+
+            # Used to enforce non-negativitiy of slacks
+            @variable(opfmodel, sigma_ramp_p_squared[2:T,1:ngen], start = 0)
+            @variable(opfmodel, sigma_ramp_n_squared[2:T,1:ngen], start = 0)
+
+            # the actual ramping constraints with slacks
+            @constraint(opfmodel, ramping_p[t=2:T,g=1:ngen],  Pg[t-1,g] - Pg[t,g] + sigma_ramp_p[t,g] == generators[g].ramp_agc)
+            @constraint(opfmodel, ramping_n[t=2:T,g=1:ngen], -Pg[t-1,g] + Pg[t,g] + sigma_ramp_n[t,g] == generators[g].ramp_agc)
+
+            # penalize non-negativitiy of slacks in the objective
+            @NLexpression(opfmodel, obj_quadratic_penalty,
+                            sum((sigma_ramp_p[t,g] - sigma_ramp_p_squared[t,g])^2 +
+                                (sigma_ramp_n[t,g] - sigma_ramp_n_squared[t,g])^2
+                                for t=2:T,g=1:ngen)
+            )
+        else
+            @constraint(opfmodel, ramping_p[t=2:T,g=1:ngen],  Pg[t-1,g] - Pg[t,g] <= generators[g].ramp_agc)
+            @constraint(opfmodel, ramping_n[t=2:T,g=1:ngen], -Pg[t-1,g] + Pg[t,g] <= generators[g].ramp_agc)
+
+            # ignore
+            @NLexpression(opfmodel, obj_quadratic_penalty, 0)
+        end
 
         # ignore
-        @expression(opfmodel, obj_freq_ctrl, 0)
+        @NLexpression(opfmodel, obj_freq_ctrl, 0)
     end
 
     #
     # set objective function
     #
-    @objective(opfmodel,Min, 1e-3*(obj_gencost +
-                                  (options.weight_loadshed*obj_penalty) +
-                                  (options.weight_freqctrl*obj_freq_ctrl))
+    @NLobjective(opfmodel,Min, 1e-3*(obj_gencost +
+                                    (options.weight_loadshed*obj_penalty) +
+                                    (options.weight_freqctrl*obj_freq_ctrl) +
+                                    (options.weight_quadratic_penalty*obj_quadratic_penalty))
     )
 
 

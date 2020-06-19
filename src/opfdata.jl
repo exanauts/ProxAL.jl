@@ -87,7 +87,9 @@ mutable struct Option
     sc_constr::Bool
     piecewise::Bool
     two_block::Bool
+    quadratic_penalty::Bool
     powerflow_solve::Bool
+    weight_quadratic_penalty::Float64
     weight_scencost::Float64
     weight_loadshed::Float64
     weight_freqctrl::Float64
@@ -105,7 +107,9 @@ mutable struct Option
             false, # sc_constr
             false, # piecewise
             false, # two_block
+            false, # quadratic_penalty
             false, # powerflow_solve
+            1.0,   # weight_quadratic_penalty
             1.0,   # weight_scencost
             1.0,   # weight_loadshed
             1.0,   # weight_freqctrl
