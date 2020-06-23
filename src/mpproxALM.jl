@@ -133,6 +133,13 @@ function runProxALM(opfdata::OPFData, rawdata::RawData, T::Int;
         end
 
         #
+        # Update quadratic penalty slacks
+        #
+        if options.has_ramping && options.quadratic_penalty
+            updatePrimalSolutionQuadSlacks(x, xprev, λ, opfdata; options = options, params = params)
+        end
+
+        #
         # update the λ
         #
         updateDualSolution(λ, x, opfdata, tol; options = options, params = params)
@@ -226,6 +233,20 @@ function updatePrimalSolutionPgRef(x::mpPrimalSolution, xprev::mpPrimalSolution,
     end
 end
 
+function updatePrimalSolutionQuadSlacks(x::mpPrimalSolution, xprev::mpPrimalSolution, λ::mpDualSolution, opfdata::OPFData;
+                                        options::Option = Option(), params::AlgParams)
+    gen = opfdata.generators
+    for t=2:size(x.ZZ, 1), g=1:length(gen)
+        denom = params.τ + params.ρ[t,g] + options.weight_quadratic_penalty
+        if !iszero(denom)
+            x.ZZ[t,g] = (1.0/denom)*(
+                            (params.τ*xprev.ZZ[t,g]) - λ.λp[t,g] -
+                            (params.ρ[t,g]*(x.PG[t-1,g] - x.PG[t,g] + x.SL[t,g] - gen[g].ramp_agc))
+                          )
+        end
+    end
+end
+
 function updateDualSolution(dual::mpDualSolution, x::mpPrimalSolution, opfdata::OPFData, tol::Array{Float64, 2};
                             options::Option = Option(), params::AlgParams)
     for t=1:size(dual.λp, 1), g=1:size(dual.λp, 2)
@@ -247,6 +268,10 @@ function updateDualSolution(dual::mpDualSolution, x::mpPrimalSolution, opfdata::
                 errn = -x.PG[1,g] + x.PG[t,g] - opfdata.generators[g].scen_agc
                 viol = max(errp, errn, 0)
             end
+        elseif options.has_ramping && options.quadratic_penalty
+            errp = +x.PG[t-1,g] - x.PG[t,g] + x.SL[t,g] + x.ZZ[t,g] - opfdata.generators[g].ramp_agc
+            errn = 0
+            viol = abs(errp)
         elseif options.has_ramping
             errp = +x.PG[t-1,g] - x.PG[t,g] - opfdata.generators[g].ramp_agc
             errn = -x.PG[t-1,g] + x.PG[t,g] - opfdata.generators[g].ramp_agc
@@ -262,11 +287,15 @@ function updateDualSolution(dual::mpDualSolution, x::mpPrimalSolution, opfdata::
             end
         end
         dual.λp[t,g] += params.θ*params.ρ[t,g]*errp
-        if !options.sc_constr || !options.freq_ctrl && !options.two_block
-            dual.λn[t,g] += params.θ*params.ρ[t,g]*errn
-            dual.λp[t,g] = max(dual.λp[t,g], 0)
-            dual.λn[t,g] = max(dual.λn[t,g], 0)
+        if options.sc_constr && (options.freq_ctrl || options.two_block)
+            continue
         end
+        if options.has_ramping && options.quadratic_penalty
+            continue
+        end
+        dual.λn[t,g] += params.θ*params.ρ[t,g]*errn
+        dual.λp[t,g] = max(dual.λp[t,g], 0)
+        dual.λn[t,g] = max(dual.λn[t,g], 0)
     end
 end
 
@@ -382,6 +411,14 @@ function initializeProxALM(opfdata::OPFData, rawdata::RawData, T::Int;
             # update Pg_ref
             if options.sc_constr && options.two_block
                 x.PR .= x.PG[1,:]
+            end
+        end
+        if t == T
+            # update ZZ
+            if options.has_ramping && options.quadratic_penalty
+                for s = 2:T, g=1:size(x.ZZ, 2)
+                    x.ZZ[s,g] = -(+x.PG[s-1,g] - x.PG[s,g] + x.SL[s,g] - opfdata.generators[g].ramp_agc)
+                end
             end
         end
     end

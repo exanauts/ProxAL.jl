@@ -34,7 +34,7 @@ function opf_fullmodel(opfdata::OPFData, rawdata::RawData, T::Int; options::Opti
 
     # Generation cost
     if options.obj_gencost
-        @NLexpression(opfmodel, obj_gencost,
+        @expression(opfmodel, obj_gencost,
             sum((t > 1 ? options.weight_scencost : 1.0)*(
                     generators[g].coeff[generators[g].n-2]*(baseMVA*Pg[t,g])^2
                   + generators[g].coeff[generators[g].n-1]*(baseMVA*Pg[t,g])
@@ -42,7 +42,7 @@ function opf_fullmodel(opfdata::OPFData, rawdata::RawData, T::Int; options::Opti
                 for t=1:T, g=1:ngen)
         )
     else
-        @NLexpression(opfmodel, obj_gencost, 0)
+        @expression(opfmodel, obj_gencost, 0)
     end
 
 
@@ -56,7 +56,7 @@ function opf_fullmodel(opfdata::OPFData, rawdata::RawData, T::Int; options::Opti
         @variable(opfmodel, sigma_lineTo[1:T,1:length(opfdata.lines)] >= 0, start = 0)
 
 
-        @NLexpression(opfmodel, obj_penalty,
+        @expression(opfmodel, obj_penalty,
             sum(  sigma_P1[1,b] + sigma_P2[1,b] + sigma_Q1[1,b] + sigma_Q2[1,b] for b=1:nbus) +
             sum(  sigma_lineFrom[1,l] + sigma_lineTo[1,l] for l=1:length(opfdata.lines)) +
             (options.weight_scencost*
@@ -72,7 +72,7 @@ function opf_fullmodel(opfdata::OPFData, rawdata::RawData, T::Int; options::Opti
         @NLexpression(opfmodel, sigma_lineTo[1:T,1:length(opfdata.lines)], 0)
 
 
-        @NLexpression(opfmodel, obj_penalty, 0)
+        @expression(opfmodel, obj_penalty, 0)
     end
 
 
@@ -84,10 +84,10 @@ function opf_fullmodel(opfdata::OPFData, rawdata::RawData, T::Int; options::Opti
         if options.freq_ctrl
             # primary frequency control
             @variable(opfmodel, -1 <= omega[t=2:T] <= 1, start=0)
-            @NLexpression(opfmodel, obj_freq_ctrl, 0.5*sum(omega[t]^2 for t=2:T))
+            @expression(opfmodel, obj_freq_ctrl, 0.5*sum(omega[t]^2 for t=2:T))
         else
             # ignore
-            @NLexpression(opfmodel, obj_freq_ctrl, 0)
+            @expression(opfmodel, obj_freq_ctrl, 0)
         end
 
         #
@@ -131,42 +131,35 @@ function opf_fullmodel(opfdata::OPFData, rawdata::RawData, T::Int; options::Opti
         # Ramping up/down constraints
         if options.quadratic_penalty
             # Slack for ramping constraints
-            @variable(opfmodel, sigma_ramp_p[2:T,1:ngen], start = 0)
-            @variable(opfmodel, sigma_ramp_n[2:T,1:ngen], start = 0)
+            @variable(opfmodel, 0 <= Sl[2:T,g=1:ngen] <= 2generators[g].ramp_agc, start = generators[g].ramp_agc)
 
-            # Used to enforce non-negativitiy of slacks
-            @variable(opfmodel, sigma_ramp_p_squared[2:T,1:ngen], start = 0)
-            @variable(opfmodel, sigma_ramp_n_squared[2:T,1:ngen], start = 0)
+            # Slack to satisfy assumptions for convergence
+            @variable(opfmodel, quad[2:T,g=1:ngen], start = 0)
 
-            # the actual ramping constraints with slacks
-            @constraint(opfmodel, ramping_p[t=2:T,g=1:ngen],  Pg[t-1,g] - Pg[t,g] + sigma_ramp_p[t,g] == generators[g].ramp_agc)
-            @constraint(opfmodel, ramping_n[t=2:T,g=1:ngen], -Pg[t-1,g] + Pg[t,g] + sigma_ramp_n[t,g] == generators[g].ramp_agc)
+            # the actual ramping constraint with slacks
+            @constraint(opfmodel, ramping_p[t=2:T,g=1:ngen],  Pg[t-1,g] - Pg[t,g] + Sl[t,g] + quad[t,g] == generators[g].ramp_agc)
 
-            # penalize non-negativitiy of slacks in the objective
-            @NLexpression(opfmodel, obj_quadratic_penalty,
-                            sum((sigma_ramp_p[t,g] - sigma_ramp_p_squared[t,g])^2 +
-                                (sigma_ramp_n[t,g] - sigma_ramp_n_squared[t,g])^2
-                                for t=2:T,g=1:ngen)
-            )
+            # drive quad to zero
+            @expression(opfmodel, obj_quadratic_penalty, 0.5*sum(quad[t,g]^2 for t=2:T,g=1:ngen))
         else
             @constraint(opfmodel, ramping_p[t=2:T,g=1:ngen],  Pg[t-1,g] - Pg[t,g] <= generators[g].ramp_agc)
             @constraint(opfmodel, ramping_n[t=2:T,g=1:ngen], -Pg[t-1,g] + Pg[t,g] <= generators[g].ramp_agc)
 
             # ignore
-            @NLexpression(opfmodel, obj_quadratic_penalty, 0)
+            @expression(opfmodel, obj_quadratic_penalty, 0)
         end
 
         # ignore
-        @NLexpression(opfmodel, obj_freq_ctrl, 0)
+        @expression(opfmodel, obj_freq_ctrl, 0)
     end
 
     #
     # set objective function
     #
-    @NLobjective(opfmodel,Min, 1e-3*(obj_gencost +
-                                    (options.weight_loadshed*obj_penalty) +
-                                    (options.weight_freqctrl*obj_freq_ctrl) +
-                                    (options.weight_quadratic_penalty*obj_quadratic_penalty))
+    @objective(opfmodel,Min, 1e-3*(obj_gencost +
+                                  (options.weight_loadshed*obj_penalty) +
+                                  (options.weight_freqctrl*obj_freq_ctrl) +
+                                  (options.weight_quadratic_penalty*obj_quadratic_penalty))
     )
 
 
@@ -291,8 +284,13 @@ function opf_solve_fullmodel(opfmodel::JuMP.Model, opfdata::OPFData, rawdata::Ra
                         primal.SL[t,g] = min(2rhs, max(0, rhs - primal.PG[1,g] + primal.PG[t,g]))
                     end
                 elseif options.has_ramping
-                    rhs = opfdata.generators[g].ramp_agc
-                    primal.SL[t,g] = min(2rhs, max(0, rhs - primal.PG[t-1,g] + primal.PG[t,g]))
+                    if options.quadratic_penalty
+                        primal.ZZ[t,g] = value(opfmodel[:quad][t,g])
+                        primal.SL[t,g] = value(opfmodel[:Sl][t,g])
+                    else
+                        rhs = opfdata.generators[g].ramp_agc
+                        primal.SL[t,g] = min(2rhs, max(0, rhs - primal.PG[t-1,g] + primal.PG[t,g]))
+                    end
                 end
             end
         end
@@ -322,6 +320,10 @@ function opf_solve_fullmodel(opfmodel::JuMP.Model, opfdata::OPFData, rawdata::Ra
         for g=1:ngen
             dual.λp[t,g] = JuMP.dual(opfmodel[:ramping_p][t,g])
             if options.sc_constr && (options.freq_ctrl || options.two_block)
+                # coupling equality constraint
+                continue
+            end
+            if options.has_ramping && options.quadratic_penalty
                 # coupling equality constraint
                 continue
             end
@@ -622,6 +624,15 @@ function opf_model_get_proxAL_expr(opfmodel::JuMP.Model, opfdata::OPFData, t::In
                 end
 
             # multi-period opf
+            elseif options.has_ramping && options.quadratic_penalty
+                if t > 1
+                    penalty +=     dual.λp[t,g]*(+primal.PG[t-1,g] - Pg[g] + Sl[g] + primal.ZZ[t,g] - gen[g].ramp_agc)
+                    penalty += 0.5params.ρ[t,g]*(+primal.PG[t-1,g] - Pg[g] + Sl[g] + primal.ZZ[t,g] - gen[g].ramp_agc)^2
+                end
+                if t < size(opfdata.Pd, 2)
+                    penalty +=     dual.λp[t+1,g]*(+Pg[g] - primal.PG[t+1,g] + primal.SL[t+1,g] + primal.ZZ[t+1,g] - gen[g].ramp_agc)
+                    penalty += 0.5params.ρ[t+1,g]*(+Pg[g] - primal.PG[t+1,g] + primal.SL[t+1,g] + primal.ZZ[t+1,g] - gen[g].ramp_agc)^2
+                end
             elseif options.has_ramping
                 if t > 1
                     penalty +=     dual.λp[t,g]*(+primal.PG[t-1,g] - Pg[g] - gen[g].ramp_agc)
