@@ -336,7 +336,7 @@ function computePrimalViolation(primal::mpPrimalSolution, opfdata::OPFData; opti
         errp = [abs(+primal.PG[1,g] - primal.PG[t,g] + (gen[g].alpha*primal.SL[t])) for t=2:T for g=1:num_gens]
         errn = zeros(0)
     elseif options.has_ramping && options.quadratic_penalty
-        errp = [abs(primal.ZZ[t,g]) for t=2:T for g=1:num_gens]
+        errp = [abs(+primal.PG[t-1,g] - primal.PG[t,g] + primal.SL[t,g] + primal.ZZ[t,g] - gen[g].ramp_agc) for t=2:T for g=1:num_gens]
         errn = zeros(0)
     elseif options.has_ramping
         errp = [max(+primal.PG[t-1,g] - primal.PG[t,g] - gen[g].ramp_agc, 0) for t=2:T for g=1:num_gens]
