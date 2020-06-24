@@ -46,6 +46,7 @@ function initializeParams(maxρ::Float64; aladin::Bool, jacobi::Bool, options::O
         nlpiterlim = 10000
         # update AL parameter only if
         # coupling constraints are inequalities
+        updateρ = false
         if options.sc_constr
             updateρ = !(options.freq_ctrl || options.two_block)
         end

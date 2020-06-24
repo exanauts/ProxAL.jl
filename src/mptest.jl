@@ -28,8 +28,8 @@ for ramp_scale in [0.001]
     opfdata = opf_loaddata(rawdata; time_horizon_start = 1, time_horizon_end = T, load_scale = 1.0, ramp_scale = ramp_scale)
     opt = Option()
     opt.has_ramping = true
-    opt.quadratic_penalty = false
-    opt.weight_quadratic_penalty = 0.0
+    opt.quadratic_penalty = true
+    opt.weight_quadratic_penalty = 100
     opt.weight_loadshed = 0
     opt.weight_scencost = 1.0
     opt.weight_freqctrl = 0
