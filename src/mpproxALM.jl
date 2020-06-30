@@ -60,6 +60,7 @@ function runProxALM(opfdata::OPFData, rawdata::RawData, T::Int;
     end
 
     
+    lyapunovprev = Inf
     savedata = zeros(params.iterlim, 8)
     timeNLP = 0.0
     iter = 0
@@ -162,6 +163,17 @@ function runProxALM(opfdata::OPFData, rawdata::RawData, T::Int;
         #
         # Compute convergence metrics
         #
+        primalcost, penalty, proximal = computeLyapunovFunction(x, λ, xprev, opfdata, T; options = options, params = params)
+        lyapunov = primalcost + penalty + proximal
+        delta_lyapunov = lyapunovprev - lyapunov
+        lyapunovprev = lyapunov
+        if params.updateτ
+            #if delta_lyapunov <= 0.0  && params.τ < 10.0maxρ
+            if iter%8 == 0 && params.τ < 3maxρ
+                params.τ += maxρ
+                println("increasing τ")
+            end
+        end
         dist = computeDistance(x, xstar; options = options, lnorm = Inf)
         gencost = computePrimalCost(x, opfdata; options = options)
         gap = abs((gencost - zstar)/zstar)
@@ -173,8 +185,8 @@ function runProxALM(opfdata::OPFData, rawdata::RawData, T::Int;
         #
         converged = min(dist, max(primviol, dualviol)) <= params.tol
         if verbose_level > 0 || converged
-            @printf("iter %d: primviol = %.3f, dualviol = %.3f, gap = %.3f%%, distance = %.3f\n",
-                            iter, primviol, dualviol, 100gap, dist)
+            @printf("iter %d: primviol = %.3f, dualviol = %.3f, gap = %.3f%%, distance = %.3f, delta = %.3f\n",
+                            iter, primviol, dualviol, 100gap, dist, delta_lyapunov)
         end
 
         savedata[iter,:] = [dist, gencost, primviol, dualviol, primviolavg, dualviolavg, timeNLP, tfullmodel]
