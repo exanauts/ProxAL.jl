@@ -768,3 +768,82 @@ function opf_solve_model(opfmodel::JuMP.Model, opfdata::OPFData, t::Int;
 
     return x
 end
+
+function computeLyapunovFunction(x::mpPrimalSolution, dual::mpDualSolution, xprev::mpPrimalSolution, opfdata::OPFData, T::Int; options::Option = Option(), params::AlgParams)
+    gen = opfdata.generators
+
+    # compute the primal cost
+    primalcost = computePrimalCost(x, opfdata; options = options)
+
+    # compute the AL part
+    penalty = 0
+    for t=1:T, g=1:length(gen)
+        # two-block reformulation of security-constrained opf
+        if options.sc_constr && options.two_block
+            penalty +=     dual.λp[t,g]*(x.PB[t,g] - x.PR[g])
+            penalty += 0.5params.ρ[t,g]*(x.PB[t,g] - x.PR[g])^2
+
+        # classical security-constrained opf
+        elseif options.sc_constr && !options.freq_ctrl
+            if t > 1
+                penalty +=     dual.λp[t,g]*(+x.PG[1,g] - x.PG[t,g] - gen[g].scen_agc)
+                penalty +=     dual.λn[t,g]*(-x.PG[1,g] + x.PG[t,g] - gen[g].scen_agc)
+                penalty += 0.5params.ρ[t,g]*(+x.PG[1,g] - x.PG[t,g] + x.SL[t,g] - gen[g].scen_agc)^2
+            end
+
+        # frequency control security-constrained opf
+        elseif options.sc_constr && options.freq_ctrl
+            if t > 1
+                penalty +=     dual.λp[t,g]*(+x.PG[1,g] - x.PG[t,g] + (gen[g].alpha*x.SL[t]))
+                penalty += 0.5params.ρ[t,g]*(+x.PG[1,g] - x.PG[t,g] + (gen[g].alpha*x.SL[t]))^2
+            end
+
+        # multi-period opf
+        elseif options.has_ramping && options.quadratic_penalty
+            if t > 1
+                penalty +=     dual.λp[t,g]*(+x.PG[t-1,g] - x.PG[t,g] + x.SL[t,g] + x.ZZ[t,g] - gen[g].ramp_agc)
+                penalty += 0.5params.ρ[t,g]*(+x.PG[t-1,g] - x.PG[t,g] + x.SL[t,g] + x.ZZ[t,g] - gen[g].ramp_agc)^2
+            end
+        elseif options.has_ramping
+            if t > 1
+                penalty +=     dual.λp[t,g]*(+x.PG[t-1,g] - x.PG[t,g] - gen[g].ramp_agc)
+                penalty +=     dual.λn[t,g]*(-x.PG[t-1,g] + x.PG[t,g] - gen[g].ramp_agc)
+                penalty += 0.5params.ρ[t,g]*(+x.PG[t-1,g] - x.PG[t,g] + x.SL[t,g] - gen[g].ramp_agc)^2
+            end
+        end
+    end
+
+    # compute the proximal part
+    proximal = 0
+    if options.sc_constr && options.two_block
+        for g=1:length(gen)
+            proximal += 0.5*params.τ*(x.PG[1,g] - xprev.PG[1,g])^2
+            for t=2:T
+                proximal += 0.5*params.τ*(x.PB[t,g] - xprev.PB[t,g])^2
+            end
+        end
+    else
+        for t=1:T, g=1:length(gen)
+            proximal += 0.5*params.τ*(x.PG[t,g] - xprev.PG[t,g])^2
+        end
+        if params.jacobi && options.sc_constr && options.freq_ctrl
+            for t=2:T
+                proximal += 0.5*params.τ*(x.SL[t] - xprev.SL[t])^2
+            end
+        end
+    end
+    # prox from PgRef
+    if options.sc_constr && options.two_block
+        for g=1:length(gen)
+            proximal += 0.5*params.τ*(x.PR[g] - xprev.PR[g])^2
+        end
+    end
+    # prox from quadratic penalty
+    if options.has_ramping && options.quadratic_penalty
+        for t=2:T, g=1:length(gen)
+            proximal += 0.5*params.τ*(x.ZZ[t,g] - xprev.ZZ[t,g])^2
+        end
+    end
+
+    return primalcost, penalty, (0.5*proximal)
+end

@@ -107,14 +107,18 @@ function computeDistance(x1::mpPrimalSolution, x2::mpPrimalSolution; options::Op
     if options.sc_constr
         if options.two_block
             xd = x1.PR .- x2.PR
+            denom = norm(vcat(x2.PR...), lnorm)
             #xd = [vcat(xd...); x1.PR - x2.PR]
         elseif options.freq_ctrl
             xd = [x1.PG[1,:] - x2.PG[1,:]; x1.SL - x2.SL]
+            denom = norm(vcat([x2.PG[1,:]; x2.SL]...), lnorm)
         else
             xd = x1.PG[1,:] - x2.PG[1,:]
+            denom = norm(vcat(x2.PG...), lnorm)
         end
     else
         xd = x1.PG .- x2.PG
+        denom = norm(vcat(x2.PG...), lnorm)
         #=
         xd = [[ x1.PG[t,:] - x2.PG[t,:];
                 x1.QG[t,:] - x2.QG[t,:];
@@ -122,7 +126,7 @@ function computeDistance(x1::mpPrimalSolution, x2::mpPrimalSolution; options::Op
                 x1.VA[t,:] - x2.VA[t,:]] for t=1:size(x1.PG, 1)]
         =#
     end
-    return norm(vcat(xd...), lnorm)
+    return norm(vcat(xd...), lnorm)/denom
 end
 
 function computeDistance(x1::mpDualSolution, x2::mpDualSolution; lnorm = 1)
@@ -378,7 +382,7 @@ function computePrimalCost(primal::mpPrimalSolution, opfdata::OPFData; options::
     end
 
     totalcost = gencost + (options.weight_loadshed*penalty) + (options.weight_freqctrl*freqctrl) + (options.weight_quadratic_penalty*quad)
-    return totalcost
+    return 1e-3totalcost
 end
 
 function computeGenerationCost(primal::mpPrimalSolution, opfdata::OPFData; options::Option = Option())
