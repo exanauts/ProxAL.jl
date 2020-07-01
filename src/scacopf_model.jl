@@ -721,7 +721,7 @@ function opf_model_get_proxAL_expr(opfmodel::JuMP.Model, opfdata::OPFData, t::In
             else
                 Pg_base = opfmodel[:Pg_base]
                 for g=1:length(gen)
-                    penalty += 0.5*params.τ*(Pg_base[g] - primal.PG_BASE[t,g])^2
+                    penalty += 0.5*params.τ*(Pg_base[g] - primal.PB[t,g])^2
                 end
             end
         else
