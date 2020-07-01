@@ -40,7 +40,7 @@ function initializeParams(maxρ::Float64; aladin::Bool, jacobi::Bool, options::O
     else
         τ = 0
         if jacobi && !options.two_block
-            τ = (options.sc_constr ? 10maxρ : maxρ)
+            τ = 3maxρ
         end
         μ = 0.0
         nlpiterlim = 10000
@@ -55,7 +55,7 @@ function initializeParams(maxρ::Float64; aladin::Bool, jacobi::Bool, options::O
         end
     end
     θ = 1.0
-    updateτ = true
+    updateτ = false
     return AlgParams(aladin, jacobi, iterlim, tol, zero, ρ, τ, μ, θ, maxρ, updateρ, updateτ, nlpiterlim)
 end
 
