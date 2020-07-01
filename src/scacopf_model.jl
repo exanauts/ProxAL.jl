@@ -1,5 +1,5 @@
 
-function opf_fullmodel(opfdata::OPFData, rawdata::RawData, T::Int; options::Option = Option())
+function opf_fullmodel(opfdata::OPFData, rawdata::RawData, T::Int; options::Option = Option(), maxρ::Float64 = 1.0, compute_Lstar::Bool = false)
 
     # security-constrained OPF: explicitly add the "base case"
     if options.sc_constr
@@ -31,6 +31,15 @@ function opf_fullmodel(opfdata::OPFData, rawdata::RawData, T::Int; options::Opti
         fix(Va[t,opfdata.bus_ref], buses[opfdata.bus_ref].Va)
     end
 
+    #
+    # Quadratic penalty for computing lower bound on lyapunov sequence
+    #
+    @expression(opfmodel, lyapunov_quadratic_penalty, 0)
+
+    #
+    # Quadratic penalty to satisfy assumptions of convergence
+    #
+    @expression(opfmodel, obj_quadratic_penalty, 0)
 
     # Generation cost
     if options.obj_gencost
@@ -106,6 +115,14 @@ function opf_fullmodel(opfdata::OPFData, rawdata::RawData, T::Int; options::Opti
             # consensus constraints
             @constraint(opfmodel, ramping_p[t=1:T,g=1:ngen], Pg_base[t,g] == Pg_ref[g])
 
+            # Add coupling constraints to the objective -- we will delete the constraints later
+            if compute_Lstar
+                lyapunov_quadratic_penalty +=
+                    sum(#=0.5params.ρ[t,g]*=#
+                        (Pg_base[t,g] - Pg_ref[g])^2 for t=1:T,g=1:ngen
+                    )
+            end
+
             #
             # Reformulated coupling constraints -- no longer coupling
             #
@@ -119,10 +136,27 @@ function opf_fullmodel(opfdata::OPFData, rawdata::RawData, T::Int; options::Opti
             if options.freq_ctrl
                 # primary frequency control under contingency
                 @constraint(opfmodel, ramping_p[t=2:T,g=1:ngen],  Pg[1,g] - Pg[t,g] + (generators[g].alpha*omega[t]) == 0)
+
+                # Add coupling constraints to the objective -- we will delete the constraints later
+                if compute_Lstar
+                    lyapunov_quadratic_penalty += 
+                        sum(#=0.5params.ρ[t,g]*=#
+                            (Pg[1,g] - Pg[t,g] + (generators[g].alpha*omega[t]))^2 for t=2:T,g=1:ngen
+                        )
+                end
             else
                 # power generation@(contingency - base case) <= bounded by ramp factor
                 @constraint(opfmodel, ramping_p[t=2:T,g=1:ngen],  Pg[1,g] - Pg[t,g] <= generators[g].scen_agc)
                 @constraint(opfmodel, ramping_n[t=2:T,g=1:ngen], -Pg[1,g] + Pg[t,g] <= generators[g].scen_agc)
+
+                # Add coupling constraints to the objective -- we will delete the constraints later
+                if compute_Lstar
+                    @variable(opfmodel, 0 <= Sl[2:T,g=1:ngen] <= 2generators[g].scen_agc, start = generators[g].scen_agc)
+                    lyapunov_quadratic_penalty += 
+                        sum(#=0.5params.ρ[t,g]*=#
+                            (Pg[1,g] - Pg[t,g] + Sl[t,g] - generators[g].scen_agc)^2 for t=2:T,g=1:ngen
+                        )
+                end
             end
         end
     
@@ -139,18 +173,44 @@ function opf_fullmodel(opfdata::OPFData, rawdata::RawData, T::Int; options::Opti
             # the actual ramping constraint with slacks
             @constraint(opfmodel, ramping_p[t=2:T,g=1:ngen],  Pg[t-1,g] - Pg[t,g] + Sl[t,g] + quad[t,g] == generators[g].ramp_agc)
 
+            # Add coupling constraints to the objective -- we will delete the constraints later
+            if compute_Lstar
+                lyapunov_quadratic_penalty +=
+                    sum(#=0.5params.ρ[t,g]*=#
+                        (Pg[t-1,g] - Pg[t,g] + Sl[t,g] + quad[t,g] - generators[g].ramp_agc)^2 for t=2:T,g=1:ngen
+                    )
+            end
+
             # drive quad to zero
-            @expression(opfmodel, obj_quadratic_penalty, 0.5*sum(quad[t,g]^2 for t=2:T,g=1:ngen))
+            obj_quadratic_penalty += 0.5*sum(quad[t,g]^2 for t=2:T,g=1:ngen)
         else
             @constraint(opfmodel, ramping_p[t=2:T,g=1:ngen],  Pg[t-1,g] - Pg[t,g] <= generators[g].ramp_agc)
             @constraint(opfmodel, ramping_n[t=2:T,g=1:ngen], -Pg[t-1,g] + Pg[t,g] <= generators[g].ramp_agc)
 
-            # ignore
-            @expression(opfmodel, obj_quadratic_penalty, 0)
+            # Add coupling constraints to the objective -- we will delete the constraints later
+            if compute_Lstar
+                @variable(opfmodel, 0 <= Sl[2:T,g=1:ngen] <= 2generators[g].ramp_agc, start = generators[g].ramp_agc)
+                lyapunov_quadratic_penalty +=
+                    sum(#=0.5params.ρ[t,g]*=#
+                        (Pg[1,g] - Pg[t,g] + Sl[t,g] - generators[g].ramp_agc)^2 for t=2:T,g=1:ngen
+                    )
+            end
         end
 
         # ignore
         @expression(opfmodel, obj_freq_ctrl, 0)
+    end
+
+    #
+    # delete coupling constraints when computing Lstar
+    #
+    if compute_Lstar
+        drop_zeros!(lyapunov_quadratic_penalty)
+        delete.(opfmodel, ramping_p)
+        if !(options.sc_constr && (options.freq_ctrl || options.two_block)) &&
+            !(options.has_ramping && options.quadratic_penalty)
+            delete.(opfmodel, ramping_n)
+        end
     end
 
     #
@@ -159,7 +219,8 @@ function opf_fullmodel(opfdata::OPFData, rawdata::RawData, T::Int; options::Opti
     @objective(opfmodel,Min, 1e-3*(obj_gencost +
                                   (options.weight_loadshed*obj_penalty) +
                                   (options.weight_freqctrl*obj_freq_ctrl) +
-                                  (options.weight_quadratic_penalty*obj_quadratic_penalty))
+                                  (options.weight_quadratic_penalty*obj_quadratic_penalty)) +
+                            (0.5maxρ*lyapunov_quadratic_penalty)
     )
 
 

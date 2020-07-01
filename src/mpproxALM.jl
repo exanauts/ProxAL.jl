@@ -60,6 +60,11 @@ function runProxALM(opfdata::OPFData, rawdata::RawData, T::Int;
     end
 
     
+    #
+    # compute lower bound on Lyapunov sequence
+    #
+    Lstar = solve_fullmodel(opfdata, rawdata, T; options = options, maxρ = maxρ, compute_Lstar = true)
+    (verbose_level > 0) && @printf("Lyapunov lower bound = %.2f\n", Lstar)
     lyapunovprev = Inf
     savedata = zeros(params.iterlim, 8)
     timeNLP = 0.0
@@ -311,7 +316,20 @@ function updateDualSolution(dual::mpDualSolution, x::mpPrimalSolution, opfdata::
     end
 end
 
-function solve_fullmodel(opfdata::OPFData, rawdata::RawData, T::Int; options::Option = Option())
+function solve_fullmodel(opfdata::OPFData, rawdata::RawData, T::Int; options::Option = Option(), maxρ::Float64 = 1.0, compute_Lstar::Bool = false)
+    if compute_Lstar
+        opfmodel = opf_fullmodel(opfdata, rawdata, T; options = options, maxρ = maxρ, compute_Lstar = true)
+        optimize!(opfmodel)
+        status = termination_status(opfmodel)
+        if  status != MOI.OPTIMAL &&
+            status != MOI.ALMOST_OPTIMAL &&
+            status != MOI.LOCALLY_SOLVED &&
+            status != MOI.ALMOST_LOCALLY_SOLVED
+            println("Quadratic penalty model status is not optimal: ", status)
+            return 0
+        end
+        return objective_value(opfmodel)
+    end
     opfmodel = opf_fullmodel(opfdata, rawdata, T; options = options)
     xstar, λstar = opf_solve_fullmodel(opfmodel, opfdata, rawdata, T; options = options)
     objvalue = computePrimalCost(xstar, opfdata; options = options)
