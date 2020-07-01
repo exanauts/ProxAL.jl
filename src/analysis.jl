@@ -1,33 +1,40 @@
 using Plots, Measures, DelimitedFiles
+using LaTeXStrings
 
 function optionsPlot(plt)
     plot!(plt,
             linewidth = 2.0,
-            linealpha = 0.7,
             yscale = :log10,
             framestyle = :box,
             ylim = [1e-6, 1e+2],
-            xtickfontsize = 12,
-            ytickfontsize = 12,
-            guidefontsize = 14,
-            titlefontsize = 14,
-            legendfontsize = 10,
-            size = (1000, 1000))
+            xtickfontsize = 18,
+            ytickfontsize = 18,
+            guidefontsize = 18,
+            titlefontsize = 18,
+            legendfontsize = 18,
+            size = (800, 800))
 end
 
 function initializePlot_iterative()
     gr()
-    plt = plot([Inf,Inf], Any[[1,1],[1,1],[1,1],[1,1]],
-                lab=["Distance to optimal"  "Primal infeasibility"  "Dual infeasibility" "Optimality gap"])
+    plt = plot([Inf,Inf], Any[[1,1],[1,1],[1,1],[1,1],[1,1]],
+                lab=reshape(
+                    [L"||x-x^*||/||x^*||"
+                     L"||\displaystyle\Sigma_t A_t x_t - b||"
+                     L"||\nabla_x \mathrm{Lagrangian}||"
+                     L"|f(x)-f(x^*)|/f(x^*)"
+                     L"L-L^*"], 1, 5),
+            )
     optionsPlot(plt)
     return plt
 end
 
-function updatePlot_iterative(plt, iter, distance, primviol, dualviol, optimgap, savefile = "")
+function updatePlot_iterative(plt, iter, distance, primviol, dualviol, optimgap, delta_lyapunov, savefile = "")
     push!(plt, 1, iter, max(distance, 1e-12))
     push!(plt, 2, iter, max(primviol, 1e-12))
     push!(plt, 3, iter, max(dualviol, 1e-12))
     push!(plt, 4, iter, max(optimgap, 1e-12))
+    push!(plt, 5, iter, (delta_lyapunov < 0) ? Inf : max(delta_lyapunov, 1e-12))
     if isempty(savefile)
         savefig("__dummy.png")
     else

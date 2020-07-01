@@ -168,16 +168,16 @@ function runProxALM(opfdata::OPFData, rawdata::RawData, T::Int;
         delta_lyapunov = lyapunovprev - lyapunov
         lyapunovprev = lyapunov
         if params.updateτ
-            #if delta_lyapunov <= 0.0  && params.τ < 10.0maxρ
+            #if delta_lyapunov <= 0.0  && params.τ < 3.0maxρ
             if iter%8 == 0 && params.τ < 3maxρ
                 params.τ += maxρ
-                println("increasing τ")
+                (verbose_level > 0) && @printf("increasing tau = %.3f (maxρ = %.3f)\n", params.τ, maxρ)
             end
         end
         dist = computeDistance(x, xstar; options = options, lnorm = Inf)
         gencost = computePrimalCost(x, opfdata; options = options)
         gap = abs((gencost - zstar)/zstar)
-        (verbose_level > 1) && updatePlot_iterative(plt, iter, dist, primviol, dualviol, gap, options.savefile)
+        (verbose_level > 1) && updatePlot_iterative(plt, iter, dist, primviol, dualviol, gap, delta_lyapunov, options.savefile)
 
 
         #
