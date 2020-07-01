@@ -1,2 +1,2 @@
 * linguist-vendored
-*.jl linguist-language=Julia
+*.jl linguist-vendored=false
