@@ -309,8 +309,8 @@ function computeDualViolation(x::mpPrimalSolution, xprev::mpPrimalSolution, λ::
     #
     # Zz in mp acopf/quadratic penalty
     #
-    if options.sc_constr && options.two_block
-        for t=2:size(λ.λp, 1), g=1:length(gen)
+    if options.has_ramping && options.quadratic_penalty
+        for g=1:length(gen), t=2:size(λ.λp, 1)
             kkt_zz = -(params.τ*(x.ZZ[t,g] - xprev.ZZ[t,g])) +
                         λ.λp[t,g]-λprev.λp[t,g]-(params.ρ[t,g]*(
                             +x.PG[t-1,g] - x.PG[t,g] + x.SL[t,g] + x.ZZ[t,g] - gen[g].ramp_agc
