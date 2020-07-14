@@ -1,27 +1,35 @@
-using Distributed, SharedArrays
-using Printf
-using LinearAlgebra
-using JuMP, Ipopt
-using Plots, Measures, DelimitedFiles
+using Distributed
+@everywhere using Pkg
+@everywhere Pkg.activate("..")
+@everywhere Pkg.instantiate()
+@everywhere begin
+    using SharedArrays
+    using Printf
+    using LinearAlgebra
+    using JuMP, Ipopt
+    using Plots, Measures, DelimitedFiles
 
-include("opfdata.jl")
-include("params.jl")
-include("mpsolution.jl")
-include("scacopf_model.jl")
-include("mpproxALM.jl")
-include("analysis.jl")
-include("rolling_horizon.jl")
+    include("opfdata.jl")
+    include("params.jl")
+    include("mpsolution.jl")
+    include("scacopf_model.jl")
+    include("mpproxALM.jl")
+    include("analysis.jl")
+    include("rolling_horizon.jl")
+end
 
 ENV["GKSwstype"]="nul"
 
 for ramp_scale in [0.001]
     case = ARGS[1]
     T = parse(Int, ARGS[2])
-    scen = "./data/mp_demand/"*basename(case)*"_onehour_60"
+    scen = "../data/mp_demand/"*basename(case)*"_onehour_60"
     rawdata = RawData(case, scen)
     opfdata = opf_loaddata(rawdata; time_horizon_start = 1, time_horizon_end = T, load_scale = 1.0, ramp_scale = ramp_scale)
     opt = Option()
     opt.has_ramping = true
+    opt.quadratic_penalty = true
+    opt.weight_quadratic_penalty = 100
     opt.weight_loadshed = 0
     opt.weight_scencost = 1.0
     opt.weight_freqctrl = 0
