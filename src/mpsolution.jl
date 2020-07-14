@@ -9,6 +9,7 @@ mutable struct mpPrimalSolution
     QG::Array{Float64,2} #[t,g] := Qg of gen g in scenario/time period t
     VM::Array{Float64,2} #[t,b] := Vm of bus b in scenario/time period t
     VA::Array{Float64,2} #[t,b] := Va of bus b in scenario/time period t
+    ZZ::Array{Float64, 2}#[t,g] := (mp acopf/quadratic penalty)  Slack for Pg[t-t,g] - Pg[t,g] + Sl[t,g] == r
     SL::Array{Float64}   #[t,g] := (mp acopf)  Slack for Pg[t-1,g] - Pg[t,g] <= r
                          #[t,g] := (sc acopf)  Slack for Pg[1,g] - Pg[t,g] <= r
                          #[t]   := (freq_ctrl) Frequency change variable: Pg[t,g] == Pg[1,g] + alpha*Sl[t]
@@ -51,6 +52,7 @@ function initializePrimalSolution(opfdata::OPFData, T::Int; options::Option = Op
     Pg_base = deepcopy(Pg)
     Pg_ref = deepcopy(Pg[1,:])
 
+    Zz = zeros(T, num_gens)
     if options.sc_constr && options.freq_ctrl
         Sl = zeros(T)
     else
@@ -60,7 +62,7 @@ function initializePrimalSolution(opfdata::OPFData, T::Int; options::Option = Op
         end
     end
 
-    return mpPrimalSolution(Pg_base, Pg_ref, Pg, Qg, Vm, Va, Sl)
+    return mpPrimalSolution(Pg_base, Pg_ref, Pg, Qg, Vm, Va, Zz, Sl)
 end
 
 function perturb(primal::mpPrimalSolution, factor::Number)
@@ -70,6 +72,7 @@ function perturb(primal::mpPrimalSolution, factor::Number)
     primal.QG *= (1.0 + factor)
     primal.VM *= (1.0 + factor)
     primal.VA *= (1.0 + factor)
+    primal.ZZ *= (1.0 + factor)
     primal.SL *= (1.0 + factor)
 end
 
@@ -84,6 +87,7 @@ function shiftBackward(primal::mpPrimalSolution)
         primal.QG[t,:] .= primal.QG[t+1,:]
         primal.VM[t,:] .= primal.VM[t+1,:]
         primal.VA[t,:] .= primal.VA[t+1,:]
+        primal.ZZ[t,:] .= primal.ZZ[t+1,:]
         if length(size(primal.SL)) > 1
             primal.SL[t,:] .= primal.SL[t+1,:]
         else
@@ -103,14 +107,18 @@ function computeDistance(x1::mpPrimalSolution, x2::mpPrimalSolution; options::Op
     if options.sc_constr
         if options.two_block
             xd = x1.PR .- x2.PR
+            denom = norm(vcat(x2.PR...), lnorm)
             #xd = [vcat(xd...); x1.PR - x2.PR]
         elseif options.freq_ctrl
             xd = [x1.PG[1,:] - x2.PG[1,:]; x1.SL - x2.SL]
+            denom = norm(vcat([x2.PG[1,:]; x2.SL]...), lnorm)
         else
             xd = x1.PG[1,:] - x2.PG[1,:]
+            denom = norm(vcat(x2.PG...), lnorm)
         end
     else
         xd = x1.PG .- x2.PG
+        denom = norm(vcat(x2.PG...), lnorm)
         #=
         xd = [[ x1.PG[t,:] - x2.PG[t,:];
                 x1.QG[t,:] - x2.QG[t,:];
@@ -118,7 +126,7 @@ function computeDistance(x1::mpPrimalSolution, x2::mpPrimalSolution; options::Op
                 x1.VA[t,:] - x2.VA[t,:]] for t=1:size(x1.PG, 1)]
         =#
     end
-    return norm(vcat(xd...), lnorm)
+    return norm(vcat(xd...), lnorm)/denom
 end
 
 function computeDistance(x1::mpDualSolution, x2::mpDualSolution; lnorm = 1)
@@ -212,6 +220,25 @@ function computeDualViolation(x::mpPrimalSolution, xprev::mpPrimalSolution, λ::
                     end
 
                 # multiperiod
+                elseif options.has_ramping && options.quadratic_penalty
+                    idx_sl = nlpdata.colIndex["Sl[" * string(g) * "]"]
+                    if t > 1
+                        kkt[idx_pg] += -λ.λp[t,g]
+                        kkt[idx_sl] +=  λ.λp[t,g]
+                        temp = -λprev.λp[t,g] - params.ρ[t,g]*(
+                                    (params.jacobi ? xprev.PG[t-1,g] : x.PG[t-1,g]) -
+                                        x.PG[t,g] + x.SL[t,g] + xprev.ZZ[t,g] - gen[g].ramp_agc
+                                    )
+                        kkt[idx_pg] -= temp
+                        kkt[idx_sl] += temp
+                    end
+                    if t < length(nlpdata.nlpmodel)
+                        kkt[idx_pg] += +λ.λp[t+1,g]
+                        kkt[idx_pg] -= +λprev.λp[t+1,g] + params.ρ[t+1,g]*(
+                                        x.PG[t,g] - xprev.PG[t+1,g] + xprev.SL[t+1,g] + xprev.ZZ[t+1,g] -
+                                        gen[g].ramp_agc
+                                    )
+                    end
                 elseif options.has_ramping
                     idx_sl = nlpdata.colIndex["Sl[" * string(g) * "]"]
                     if t > 1
@@ -279,6 +306,19 @@ function computeDualViolation(x::mpPrimalSolution, xprev::mpPrimalSolution, λ::
         end
     end
 
+    #
+    # Zz in mp acopf/quadratic penalty
+    #
+    if options.has_ramping && options.quadratic_penalty
+        for g=1:length(gen), t=2:size(λ.λp, 1)
+            kkt_zz = -(params.τ*(x.ZZ[t,g] - xprev.ZZ[t,g])) +
+                        λ.λp[t,g]-λprev.λp[t,g]-(params.ρ[t,g]*(
+                            +x.PG[t-1,g] - x.PG[t,g] + x.SL[t,g] + x.ZZ[t,g] - gen[g].ramp_agc
+                        ))
+            dualviol = [dualviol; kkt_zz]
+        end
+    end
+
     return norm(dualviol, lnorm), norm(dualviol, 1)/length(dualviol)
 end
 
@@ -298,6 +338,9 @@ function computePrimalViolation(primal::mpPrimalSolution, opfdata::OPFData; opti
         errn = [max(-primal.PG[1,g] + primal.PG[t,g] - gen[g].scen_agc, 0) for t=2:T for g=1:num_gens]
     elseif options.sc_constr && options.freq_ctrl
         errp = [abs(+primal.PG[1,g] - primal.PG[t,g] + (gen[g].alpha*primal.SL[t])) for t=2:T for g=1:num_gens]
+        errn = zeros(0)
+    elseif options.has_ramping && options.quadratic_penalty
+        errp = [abs(+primal.PG[t-1,g] - primal.PG[t,g] + primal.SL[t,g] + primal.ZZ[t,g] - gen[g].ramp_agc) for t=2:T for g=1:num_gens]
         errn = zeros(0)
     elseif options.has_ramping
         errp = [max(+primal.PG[t-1,g] - primal.PG[t,g] - gen[g].ramp_agc, 0) for t=2:T for g=1:num_gens]
@@ -332,8 +375,14 @@ function computePrimalCost(primal::mpPrimalSolution, opfdata::OPFData; options::
         end
     end
 
-    totalcost = gencost + (options.weight_loadshed*penalty) + (options.weight_freqctrl*freqctrl)
-    return totalcost
+    ## quadratic penalty costs
+    quad = 0.0
+    if options.has_ramping && options.quadratic_penalty
+        quad += 0.5*norm(primal.ZZ)^2
+    end
+
+    totalcost = gencost + (options.weight_loadshed*penalty) + (options.weight_freqctrl*freqctrl) + (options.weight_quadratic_penalty*quad)
+    return 1e-3totalcost
 end
 
 function computeGenerationCost(primal::mpPrimalSolution, opfdata::OPFData; options::Option = Option())

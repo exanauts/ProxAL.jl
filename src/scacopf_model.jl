@@ -1,5 +1,5 @@
 
-function opf_fullmodel(opfdata::OPFData, rawdata::RawData, T::Int; options::Option = Option())
+function opf_fullmodel(opfdata::OPFData, rawdata::RawData, T::Int; options::Option = Option(), maxρ::Float64 = 1.0, compute_Lstar::Bool = false)
 
     # security-constrained OPF: explicitly add the "base case"
     if options.sc_constr
@@ -31,6 +31,15 @@ function opf_fullmodel(opfdata::OPFData, rawdata::RawData, T::Int; options::Opti
         fix(Va[t,opfdata.bus_ref], buses[opfdata.bus_ref].Va)
     end
 
+    #
+    # Quadratic penalty for computing lower bound on lyapunov sequence
+    #
+    @expression(opfmodel, lyapunov_quadratic_penalty, 0)
+
+    #
+    # Quadratic penalty to satisfy assumptions of convergence
+    #
+    @expression(opfmodel, obj_quadratic_penalty, 0)
 
     # Generation cost
     if options.obj_gencost
@@ -106,6 +115,14 @@ function opf_fullmodel(opfdata::OPFData, rawdata::RawData, T::Int; options::Opti
             # consensus constraints
             @constraint(opfmodel, ramping_p[t=1:T,g=1:ngen], Pg_base[t,g] == Pg_ref[g])
 
+            # Add coupling constraints to the objective -- we will delete the constraints later
+            if compute_Lstar
+                lyapunov_quadratic_penalty +=
+                    sum(#=0.5params.ρ[t,g]*=#
+                        (Pg_base[t,g] - Pg_ref[g])^2 for t=1:T,g=1:ngen
+                    )
+            end
+
             #
             # Reformulated coupling constraints -- no longer coupling
             #
@@ -119,21 +136,81 @@ function opf_fullmodel(opfdata::OPFData, rawdata::RawData, T::Int; options::Opti
             if options.freq_ctrl
                 # primary frequency control under contingency
                 @constraint(opfmodel, ramping_p[t=2:T,g=1:ngen],  Pg[1,g] - Pg[t,g] + (generators[g].alpha*omega[t]) == 0)
+
+                # Add coupling constraints to the objective -- we will delete the constraints later
+                if compute_Lstar
+                    lyapunov_quadratic_penalty += 
+                        sum(#=0.5params.ρ[t,g]*=#
+                            (Pg[1,g] - Pg[t,g] + (generators[g].alpha*omega[t]))^2 for t=2:T,g=1:ngen
+                        )
+                end
             else
                 # power generation@(contingency - base case) <= bounded by ramp factor
                 @constraint(opfmodel, ramping_p[t=2:T,g=1:ngen],  Pg[1,g] - Pg[t,g] <= generators[g].scen_agc)
                 @constraint(opfmodel, ramping_n[t=2:T,g=1:ngen], -Pg[1,g] + Pg[t,g] <= generators[g].scen_agc)
+
+                # Add coupling constraints to the objective -- we will delete the constraints later
+                if compute_Lstar
+                    @variable(opfmodel, 0 <= Sl[2:T,g=1:ngen] <= 2generators[g].scen_agc, start = generators[g].scen_agc)
+                    lyapunov_quadratic_penalty += 
+                        sum(#=0.5params.ρ[t,g]*=#
+                            (Pg[1,g] - Pg[t,g] + Sl[t,g] - generators[g].scen_agc)^2 for t=2:T,g=1:ngen
+                        )
+                end
             end
         end
     
     # multi-period opf
     elseif options.has_ramping
         # Ramping up/down constraints
-        @constraint(opfmodel, ramping_p[t=2:T,g=1:ngen],  Pg[t-1,g] - Pg[t,g] <= generators[g].ramp_agc)
-        @constraint(opfmodel, ramping_n[t=2:T,g=1:ngen], -Pg[t-1,g] + Pg[t,g] <= generators[g].ramp_agc)
+        if options.quadratic_penalty
+            # Slack for ramping constraints
+            @variable(opfmodel, 0 <= Sl[2:T,g=1:ngen] <= 2generators[g].ramp_agc, start = generators[g].ramp_agc)
+
+            # Slack to satisfy assumptions for convergence
+            @variable(opfmodel, quad[2:T,g=1:ngen], start = 0)
+
+            # the actual ramping constraint with slacks
+            @constraint(opfmodel, ramping_p[t=2:T,g=1:ngen],  Pg[t-1,g] - Pg[t,g] + Sl[t,g] + quad[t,g] == generators[g].ramp_agc)
+
+            # Add coupling constraints to the objective -- we will delete the constraints later
+            if compute_Lstar
+                lyapunov_quadratic_penalty +=
+                    sum(#=0.5params.ρ[t,g]*=#
+                        (Pg[t-1,g] - Pg[t,g] + Sl[t,g] + quad[t,g] - generators[g].ramp_agc)^2 for t=2:T,g=1:ngen
+                    )
+            end
+
+            # drive quad to zero
+            obj_quadratic_penalty += 0.5*sum(quad[t,g]^2 for t=2:T,g=1:ngen)
+        else
+            @constraint(opfmodel, ramping_p[t=2:T,g=1:ngen],  Pg[t-1,g] - Pg[t,g] <= generators[g].ramp_agc)
+            @constraint(opfmodel, ramping_n[t=2:T,g=1:ngen], -Pg[t-1,g] + Pg[t,g] <= generators[g].ramp_agc)
+
+            # Add coupling constraints to the objective -- we will delete the constraints later
+            if compute_Lstar
+                @variable(opfmodel, 0 <= Sl[2:T,g=1:ngen] <= 2generators[g].ramp_agc, start = generators[g].ramp_agc)
+                lyapunov_quadratic_penalty +=
+                    sum(#=0.5params.ρ[t,g]*=#
+                        (Pg[1,g] - Pg[t,g] + Sl[t,g] - generators[g].ramp_agc)^2 for t=2:T,g=1:ngen
+                    )
+            end
+        end
 
         # ignore
         @expression(opfmodel, obj_freq_ctrl, 0)
+    end
+
+    #
+    # delete coupling constraints when computing Lstar
+    #
+    if compute_Lstar
+        drop_zeros!(lyapunov_quadratic_penalty)
+        delete.(opfmodel, ramping_p)
+        if !(options.sc_constr && (options.freq_ctrl || options.two_block)) &&
+            !(options.has_ramping && options.quadratic_penalty)
+            delete.(opfmodel, ramping_n)
+        end
     end
 
     #
@@ -141,7 +218,9 @@ function opf_fullmodel(opfdata::OPFData, rawdata::RawData, T::Int; options::Opti
     #
     @objective(opfmodel,Min, 1e-3*(obj_gencost +
                                   (options.weight_loadshed*obj_penalty) +
-                                  (options.weight_freqctrl*obj_freq_ctrl))
+                                  (options.weight_freqctrl*obj_freq_ctrl) +
+                                  (options.weight_quadratic_penalty*obj_quadratic_penalty)) +
+                            (0.5maxρ*lyapunov_quadratic_penalty)
     )
 
 
@@ -266,8 +345,13 @@ function opf_solve_fullmodel(opfmodel::JuMP.Model, opfdata::OPFData, rawdata::Ra
                         primal.SL[t,g] = min(2rhs, max(0, rhs - primal.PG[1,g] + primal.PG[t,g]))
                     end
                 elseif options.has_ramping
-                    rhs = opfdata.generators[g].ramp_agc
-                    primal.SL[t,g] = min(2rhs, max(0, rhs - primal.PG[t-1,g] + primal.PG[t,g]))
+                    if options.quadratic_penalty
+                        primal.ZZ[t,g] = value(opfmodel[:quad][t,g])
+                        primal.SL[t,g] = value(opfmodel[:Sl][t,g])
+                    else
+                        rhs = opfdata.generators[g].ramp_agc
+                        primal.SL[t,g] = min(2rhs, max(0, rhs - primal.PG[t-1,g] + primal.PG[t,g]))
+                    end
                 end
             end
         end
@@ -297,6 +381,10 @@ function opf_solve_fullmodel(opfmodel::JuMP.Model, opfdata::OPFData, rawdata::Ra
         for g=1:ngen
             dual.λp[t,g] = JuMP.dual(opfmodel[:ramping_p][t,g])
             if options.sc_constr && (options.freq_ctrl || options.two_block)
+                # coupling equality constraint
+                continue
+            end
+            if options.has_ramping && options.quadratic_penalty
                 # coupling equality constraint
                 continue
             end
@@ -597,6 +685,15 @@ function opf_model_get_proxAL_expr(opfmodel::JuMP.Model, opfdata::OPFData, t::In
                 end
 
             # multi-period opf
+            elseif options.has_ramping && options.quadratic_penalty
+                if t > 1
+                    penalty +=     dual.λp[t,g]*(+primal.PG[t-1,g] - Pg[g] + Sl[g] + primal.ZZ[t,g] - gen[g].ramp_agc)
+                    penalty += 0.5params.ρ[t,g]*(+primal.PG[t-1,g] - Pg[g] + Sl[g] + primal.ZZ[t,g] - gen[g].ramp_agc)^2
+                end
+                if t < size(opfdata.Pd, 2)
+                    penalty +=     dual.λp[t+1,g]*(+Pg[g] - primal.PG[t+1,g] + primal.SL[t+1,g] + primal.ZZ[t+1,g] - gen[g].ramp_agc)
+                    penalty += 0.5params.ρ[t+1,g]*(+Pg[g] - primal.PG[t+1,g] + primal.SL[t+1,g] + primal.ZZ[t+1,g] - gen[g].ramp_agc)^2
+                end
             elseif options.has_ramping
                 if t > 1
                     penalty +=     dual.λp[t,g]*(+primal.PG[t-1,g] - Pg[g] - gen[g].ramp_agc)
@@ -624,7 +721,7 @@ function opf_model_get_proxAL_expr(opfmodel::JuMP.Model, opfdata::OPFData, t::In
             else
                 Pg_base = opfmodel[:Pg_base]
                 for g=1:length(gen)
-                    penalty += 0.5*params.τ*(Pg_base[g] - primal.PG_BASE[t,g])^2
+                    penalty += 0.5*params.τ*(Pg_base[g] - primal.PB[t,g])^2
                 end
             end
         else
@@ -731,4 +828,83 @@ function opf_solve_model(opfmodel::JuMP.Model, opfdata::OPFData, t::Int;
     end
 
     return x
+end
+
+function computeLyapunovFunction(x::mpPrimalSolution, dual::mpDualSolution, xprev::mpPrimalSolution, opfdata::OPFData, T::Int; options::Option = Option(), params::AlgParams)
+    gen = opfdata.generators
+
+    # compute the primal cost
+    primalcost = computePrimalCost(x, opfdata; options = options)
+
+    # compute the AL part
+    penalty = 0
+    for t=1:T, g=1:length(gen)
+        # two-block reformulation of security-constrained opf
+        if options.sc_constr && options.two_block
+            penalty +=     dual.λp[t,g]*(x.PB[t,g] - x.PR[g])
+            penalty += 0.5params.ρ[t,g]*(x.PB[t,g] - x.PR[g])^2
+
+        # classical security-constrained opf
+        elseif options.sc_constr && !options.freq_ctrl
+            if t > 1
+                penalty +=     dual.λp[t,g]*(+x.PG[1,g] - x.PG[t,g] - gen[g].scen_agc)
+                penalty +=     dual.λn[t,g]*(-x.PG[1,g] + x.PG[t,g] - gen[g].scen_agc)
+                penalty += 0.5params.ρ[t,g]*(+x.PG[1,g] - x.PG[t,g] + x.SL[t,g] - gen[g].scen_agc)^2
+            end
+
+        # frequency control security-constrained opf
+        elseif options.sc_constr && options.freq_ctrl
+            if t > 1
+                penalty +=     dual.λp[t,g]*(+x.PG[1,g] - x.PG[t,g] + (gen[g].alpha*x.SL[t]))
+                penalty += 0.5params.ρ[t,g]*(+x.PG[1,g] - x.PG[t,g] + (gen[g].alpha*x.SL[t]))^2
+            end
+
+        # multi-period opf
+        elseif options.has_ramping && options.quadratic_penalty
+            if t > 1
+                penalty +=     dual.λp[t,g]*(+x.PG[t-1,g] - x.PG[t,g] + x.SL[t,g] + x.ZZ[t,g] - gen[g].ramp_agc)
+                penalty += 0.5params.ρ[t,g]*(+x.PG[t-1,g] - x.PG[t,g] + x.SL[t,g] + x.ZZ[t,g] - gen[g].ramp_agc)^2
+            end
+        elseif options.has_ramping
+            if t > 1
+                penalty +=     dual.λp[t,g]*(+x.PG[t-1,g] - x.PG[t,g] - gen[g].ramp_agc)
+                penalty +=     dual.λn[t,g]*(-x.PG[t-1,g] + x.PG[t,g] - gen[g].ramp_agc)
+                penalty += 0.5params.ρ[t,g]*(+x.PG[t-1,g] - x.PG[t,g] + x.SL[t,g] - gen[g].ramp_agc)^2
+            end
+        end
+    end
+
+    # compute the proximal part
+    proximal = 0
+    if options.sc_constr && options.two_block
+        for g=1:length(gen)
+            proximal += 0.5*params.τ*(x.PG[1,g] - xprev.PG[1,g])^2
+            for t=2:T
+                proximal += 0.5*params.τ*(x.PB[t,g] - xprev.PB[t,g])^2
+            end
+        end
+    else
+        for t=1:T, g=1:length(gen)
+            proximal += 0.5*params.τ*(x.PG[t,g] - xprev.PG[t,g])^2
+        end
+        if params.jacobi && options.sc_constr && options.freq_ctrl
+            for t=2:T
+                proximal += 0.5*params.τ*(x.SL[t] - xprev.SL[t])^2
+            end
+        end
+    end
+    # prox from PgRef
+    if options.sc_constr && options.two_block
+        for g=1:length(gen)
+            proximal += 0.5*params.τ*(x.PR[g] - xprev.PR[g])^2
+        end
+    end
+    # prox from quadratic penalty
+    if options.has_ramping && options.quadratic_penalty
+        for t=2:T, g=1:length(gen)
+            proximal += 0.5*params.τ*(x.ZZ[t,g] - xprev.ZZ[t,g])^2
+        end
+    end
+
+    return primalcost, penalty, (0.5*proximal)
 end

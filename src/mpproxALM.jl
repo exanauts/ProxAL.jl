@@ -60,6 +60,12 @@ function runProxALM(opfdata::OPFData, rawdata::RawData, T::Int;
     end
 
     
+    #
+    # compute lower bound on Lyapunov sequence
+    #
+    Lstar = solve_fullmodel(opfdata, rawdata, T; options = options, maxρ = maxρ, compute_Lstar = true)
+    (verbose_level > 0) && @printf("Lyapunov lower bound = %.2f\n", Lstar)
+    lyapunovprev = Inf
     savedata = zeros(params.iterlim, 8)
     timeNLP = 0.0
     iter = 0
@@ -133,6 +139,13 @@ function runProxALM(opfdata::OPFData, rawdata::RawData, T::Int;
         end
 
         #
+        # Update quadratic penalty slacks
+        #
+        if options.has_ramping && options.quadratic_penalty
+            updatePrimalSolutionQuadSlacks(x, xprev, λ, opfdata; options = options, params = params)
+        end
+
+        #
         # update the λ
         #
         updateDualSolution(λ, x, opfdata, tol; options = options, params = params)
@@ -155,10 +168,21 @@ function runProxALM(opfdata::OPFData, rawdata::RawData, T::Int;
         #
         # Compute convergence metrics
         #
+        primalcost, penalty, proximal = computeLyapunovFunction(x, λ, xprev, opfdata, T; options = options, params = params)
+        lyapunov = primalcost + penalty + proximal
+        delta_lyapunov = lyapunovprev - lyapunov
+        lyapunovprev = lyapunov
+        if params.updateτ
+            #if delta_lyapunov <= 0.0  && params.τ < 3.0maxρ
+            if iter%8 == 0 && params.τ < 3maxρ
+                params.τ += maxρ
+                (verbose_level > 0) && @printf("increasing tau = %.3f (maxρ = %.3f)\n", params.τ, maxρ)
+            end
+        end
         dist = computeDistance(x, xstar; options = options, lnorm = Inf)
         gencost = computePrimalCost(x, opfdata; options = options)
         gap = abs((gencost - zstar)/zstar)
-        (verbose_level > 1) && updatePlot_iterative(plt, iter, dist, primviol, dualviol, gap, options.savefile)
+        (verbose_level > 1) && updatePlot_iterative(plt, iter, dist, primviol, dualviol, gap, delta_lyapunov, options.savefile)
 
 
         #
@@ -166,8 +190,8 @@ function runProxALM(opfdata::OPFData, rawdata::RawData, T::Int;
         #
         converged = min(dist, max(primviol, dualviol)) <= params.tol
         if verbose_level > 0 || converged
-            @printf("iter %d: primviol = %.3f, dualviol = %.3f, gap = %.3f%%, distance = %.3f\n",
-                            iter, primviol, dualviol, 100gap, dist)
+            @printf("iter %d: primviol = %.3f, dualviol = %.3f, gap = %.3f%%, distance = %.3f, delta = %.3f\n",
+                            iter, primviol, dualviol, 100gap, dist, delta_lyapunov)
         end
 
         savedata[iter,:] = [dist, gencost, primviol, dualviol, primviolavg, dualviolavg, timeNLP, tfullmodel]
@@ -226,6 +250,20 @@ function updatePrimalSolutionPgRef(x::mpPrimalSolution, xprev::mpPrimalSolution,
     end
 end
 
+function updatePrimalSolutionQuadSlacks(x::mpPrimalSolution, xprev::mpPrimalSolution, λ::mpDualSolution, opfdata::OPFData;
+                                        options::Option = Option(), params::AlgParams)
+    gen = opfdata.generators
+    for t=2:size(x.ZZ, 1), g=1:length(gen)
+        denom = params.τ + params.ρ[t,g] + options.weight_quadratic_penalty
+        if !iszero(denom)
+            x.ZZ[t,g] = (1.0/denom)*(
+                            (params.τ*xprev.ZZ[t,g]) - λ.λp[t,g] -
+                            (params.ρ[t,g]*(x.PG[t-1,g] - x.PG[t,g] + x.SL[t,g] - gen[g].ramp_agc))
+                          )
+        end
+    end
+end
+
 function updateDualSolution(dual::mpDualSolution, x::mpPrimalSolution, opfdata::OPFData, tol::Array{Float64, 2};
                             options::Option = Option(), params::AlgParams)
     for t=1:size(dual.λp, 1), g=1:size(dual.λp, 2)
@@ -247,6 +285,10 @@ function updateDualSolution(dual::mpDualSolution, x::mpPrimalSolution, opfdata::
                 errn = -x.PG[1,g] + x.PG[t,g] - opfdata.generators[g].scen_agc
                 viol = max(errp, errn, 0)
             end
+        elseif options.has_ramping && options.quadratic_penalty
+            errp = +x.PG[t-1,g] - x.PG[t,g] + x.SL[t,g] + x.ZZ[t,g] - opfdata.generators[g].ramp_agc
+            errn = 0
+            viol = abs(errp)
         elseif options.has_ramping
             errp = +x.PG[t-1,g] - x.PG[t,g] - opfdata.generators[g].ramp_agc
             errn = -x.PG[t-1,g] + x.PG[t,g] - opfdata.generators[g].ramp_agc
@@ -262,15 +304,32 @@ function updateDualSolution(dual::mpDualSolution, x::mpPrimalSolution, opfdata::
             end
         end
         dual.λp[t,g] += params.θ*params.ρ[t,g]*errp
-        if !options.sc_constr || !options.freq_ctrl && !options.two_block
-            dual.λn[t,g] += params.θ*params.ρ[t,g]*errn
-            dual.λp[t,g] = max(dual.λp[t,g], 0)
-            dual.λn[t,g] = max(dual.λn[t,g], 0)
+        if options.sc_constr && (options.freq_ctrl || options.two_block)
+            continue
         end
+        if options.has_ramping && options.quadratic_penalty
+            continue
+        end
+        dual.λn[t,g] += params.θ*params.ρ[t,g]*errn
+        dual.λp[t,g] = max(dual.λp[t,g], 0)
+        dual.λn[t,g] = max(dual.λn[t,g], 0)
     end
 end
 
-function solve_fullmodel(opfdata::OPFData, rawdata::RawData, T::Int; options::Option = Option())
+function solve_fullmodel(opfdata::OPFData, rawdata::RawData, T::Int; options::Option = Option(), maxρ::Float64 = 1.0, compute_Lstar::Bool = false)
+    if compute_Lstar
+        opfmodel = opf_fullmodel(opfdata, rawdata, T; options = options, maxρ = maxρ, compute_Lstar = true)
+        optimize!(opfmodel)
+        status = termination_status(opfmodel)
+        if  status != MOI.OPTIMAL &&
+            status != MOI.ALMOST_OPTIMAL &&
+            status != MOI.LOCALLY_SOLVED &&
+            status != MOI.ALMOST_LOCALLY_SOLVED
+            println("Quadratic penalty model status is not optimal: ", status)
+            return 0
+        end
+        return objective_value(opfmodel)
+    end
     opfmodel = opf_fullmodel(opfdata, rawdata, T; options = options)
     xstar, λstar = opf_solve_fullmodel(opfmodel, opfdata, rawdata, T; options = options)
     objvalue = computePrimalCost(xstar, opfdata; options = options)
@@ -382,6 +441,14 @@ function initializeProxALM(opfdata::OPFData, rawdata::RawData, T::Int;
             # update Pg_ref
             if options.sc_constr && options.two_block
                 x.PR .= x.PG[1,:]
+            end
+        end
+        if t == T
+            # update ZZ
+            if options.has_ramping && options.quadratic_penalty
+                for s = 2:T, g=1:size(x.ZZ, 2)
+                    x.ZZ[s,g] = -(+x.PG[s-1,g] - x.PG[s,g] + x.SL[s,g] - opfdata.generators[g].ramp_agc)
+                end
             end
         end
     end
