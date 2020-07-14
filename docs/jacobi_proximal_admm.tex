@@ -1,0 +1,334 @@
+\documentclass[11pt]{article}
+
+\usepackage{amsmath, amsfonts, amsthm, amssymb, mathtools}
+\usepackage{authblk, color, bm, graphicx, epstopdf, url}
+\usepackage[font = small, labelfont = bf, labelsep = period]{caption}
+\usepackage{subcaption}
+\usepackage{xspace}
+\usepackage{enumitem,hyperref}
+\usepackage{accents}
+\newcommand{\ubar}[1]{\underaccent{\bar}{#1}}
+
+\usepackage{booktabs, tabularx, multirow}
+\newcolumntype{C}{>{\centering\arraybackslash}X}
+\newcolumntype{R}{>{\raggedleft\arraybackslash}X}
+\newcolumntype{L}{>{\raggedright\arraybackslash}X}
+
+\newtheorem{prop}{Proposition}
+\newtheorem{obs}{Observation}
+\newtheorem{rem}{Remark}
+\newtheorem{ques}{Question}
+
+\newcommand{\comment}[1]{{\color{red}#1}}
+\newcommand{\Image}[1]{\mathop{\text{Im}}\left(#1\right)}
+\newcommand{\norm}[1]{\left\lVert #1 \right\rVert}
+
+\usepackage{fullpage}[2cm]
+\linespread{1.5}
+
+\allowdisplaybreaks
+
+\title{Jacobi decomposition of the proximal augmented lagrangian}
+\author{Anirudh Subramanyam, Youngdae Kim, Mihai Anitescu}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\section{Formulation}
+We are interested in solving the following class of nonlinear programming problems.
+\begin{equation}\label{eq:nlp}
+\begin{array}{r@{\;\;}l}
+\displaystyle\mathop{\text{minimize}}_{x_1, \ldots, x_N, z} & \displaystyle \sum_{i = 1}^N f_i(x_i) + \phi(z) \\
+\text{subject to} & \displaystyle z \in \mathbb{R}^{n_z}, \;\; x_i \in \mathbb{R}^{n_i} \;\; i \in [N] \coloneqq \{1, \ldots, N\}, \\
+& \displaystyle h_i(x_i) \leq 0 \;\; i \in [N], \\
+& \displaystyle \sum_{i = 1}^N A_i x_i + z = b
+\end{array}
+\end{equation}
+where $A_i \in \mathbb{R}^{m \times n_i}$ are matrices, and $\phi : \mathbb{R}^{n_z} \mapsto \mathbb{R}$, $f_i: \mathbb{R}^{n_i} \mapsto \mathbb{R}$ and $h_i :\mathbb{R}^{n_i} \mapsto \mathbb{R}^{c_i}$ are continuously differentiable functions. %For convenience, we denote by $x$ to mean all the decision variables $(x_1, \ldots, x_N)$.
+We shall assume that $\nabla \phi$ is Lipschitz continuous with constant $L$.
+Observe that the variable block $z$ is unconstrained except for the linear coupling constraints, where it appears in a very specific manner.
+
+We can accommodate a slightly more general form of the coupling constraints:
+\[
+\sum_{i = 1}^N A_i x_i + B z = b
+\]
+with the additional assumption that the linear system (in variables $v$): $B v = b - \sum_{i = 1}^{N} A_i y_i$ is always solvable for any $y_i$; i.e., $b - \sum_{i = 1}^{N} A_i y_i \in \Image{B}$ for all $y_i \in \mathbb{R}^{n_i}$,  $i = 1, \ldots, N$.
+However, we do not present this generalization for ease of exposition (analysis can be deferred to the Appendix).
+
+The next subsection proposes a remedy if the general block-constrained problem we're interested in solving is not already in either of the above two forms.
+
+\subsection{Bringing problem to desired form using quadratic penalty}
+
+Consider the following problem formulation which does not satisfy the aforementioned requirements.
+\begin{equation}\label{eq:nlp_general}
+\begin{array}{r@{\;\;}l}
+\displaystyle\mathop{\text{minimize}}_{x_1, \ldots, x_N} & \displaystyle \sum_{i = 1}^N f_i(x_i) \\
+\text{subject to} & \displaystyle x_i \in \mathbb{R}^{n_i} \;\; i \in [N] \coloneqq \{1, \ldots, N\}, \\
+& \displaystyle h_i(x_i) \leq 0 \;\; i \in [N], \\
+& \displaystyle \sum_{i = 1}^N A_i x_i = b
+\end{array}
+\end{equation}
+We assume, without loss of generality, that the matrix $[A_1 \ldots A_N]$ has full row rank.
+We note that any linear \textit{inequality} constrained problem can be converted into the above \textit{equality} constrained form by introducing slack variables.
+
+Consider the following quadratic penalty formulation parameterized by $\theta > 0$.
+\begin{equation}\label{eq:nlp_general_quadratic_penalty}
+\begin{array}{r@{\;\;}l}
+\displaystyle\mathop{\text{minimize}}_{x_1, \ldots, x_N, z} & \displaystyle \sum_{i = 1}^N f_i(x_i) + \frac{\theta}{2} \norm{z}^2 \\
+\text{subject to} & \displaystyle z \in \mathbb{R}^{n_z}, \;\; x_i \in \mathbb{R}^{n_i} \;\; i \in [N] \coloneqq \{1, \ldots, N\}, \\
+& \displaystyle h_i(x_i) \leq 0 \;\; i \in [N], \\
+& \displaystyle \sum_{i = 1}^N A_i x_i + z = b
+\end{array}
+\end{equation}
+Instead of solving~\eqref{eq:nlp_general}, we propose to solve~\eqref{eq:nlp_general_quadratic_penalty}.
+Note that $z$ satisfies all the requirements mentioned previously.
+Specifically,
+\begin{itemize}
+    \item The variables $z$ are unconstrained, except for the linear coupling constraints.
+    \item $\nabla \phi(z) = \theta z$ is Lipschitz continuous.
+\end{itemize}
+Solving~\eqref{eq:nlp_general_quadratic_penalty} instead of~\eqref{eq:nlp_general} is supported by the following proposition, which states that local minimizers of~\eqref{eq:nlp_general_quadratic_penalty} are KKT points of~\eqref{eq:nlp_general} as $\theta \to \infty$.
+The proof follows using arguments similar to~\cite[Theorem~17.2]{nocedal2006numerical}.
+In practice, we note that we typically do not need $\theta$ to be very large.
+\begin{prop}
+    Suppose that $(x^{(\theta)}, z^{(\theta)}, \lambda^{(\theta)}, \mu^{(\theta)})$ is a local minimizer of~\eqref{eq:nlp_general_quadratic_penalty} where LICQ holds, i.e., it satisfies the KKT conditions of~\eqref{eq:nlp_general_quadratic_penalty}:
+    \begin{subequations}\label{eq:kkt_penalty}
+        \begin{align}
+        & h_i(x_i^{(\theta)}) \leq 0, \;\; && i \in [N] \label{eq:kkt_penalty:primal}\\
+        & \nabla f_i(x_i^{(\theta)}) + \frac{\partial h_i(x_i^{(\theta)})}{\partial x_i}^\top \mu_i^{(\theta)} + A_i^\top \lambda^{(\theta)} = 0, \;\; && i \in [N]\label{eq:kkt_penalty:lagrangian_x} \\
+        & \mathrm{diag}(h_i(x_i^{(\theta)})) \mu_i^{(\theta)} = 0, \;\;\mu_i^{(\theta)} \in \mathbb{R}^{c_i}_{+}, \;\; && i \in [N]\label{eq:kkt_penalty:complementarity} \\
+        & \sum_{i = 1}^N A_i x_i^{(\theta)} + z^{(\theta)} = b \label{eq:kkt_penalty:coupling_primal}\\
+        & \theta z_i^{(\theta)} + \lambda^{(\theta)} = 0, \;\; && i \in [m] \label{eq:kkt_penalty:lagrangian_z}
+        \end{align}
+    \end{subequations}
+    Then, as $\theta \to \infty$, every limit point of the sequence $(x^{(\theta)}, z^{(\theta)}, \lambda^{(\theta)}, \mu^{(\theta)})$ is a KKT point of~\eqref{eq:nlp}.
+\end{prop}
+
+We note that an alternative strategy to deal with the $z$ variables has been recently proposed in~\cite{sun2019two} based on an ``outer loop Augmented Lagrangian method''.
+The advantage of this method is that it does not require any parameters $\to \infty$, unlike our method.
+The disadvantage, however, is that it involves multiple calls to an ADMM-like scheme within an Augmented Lagrangian framework, so it is likely going to be very computationally expensive compared to our method.
+
+
+
+\section{Algorithm}
+Choose values for the following parameters.
+\begin{itemize}
+    \item $\rho > 0$: the augmented Lagrangian coefficient
+    \item $w_1, \ldots, w_N, w_z > 0$: the proximal coefficients
+    \item $x^0, z^0$: initial guess for primal variables that satisfies $h_i(x^0_i) \leq 0$, for all $i \in [N]$.
+    \item $\lambda^0 \in \mathbb{R}^{m}$: initial guess for the dual variable corresponding to $\sum_{i = 1}^N A_i x_i + z = b$.
+\end{itemize}
+
+The algorithm iterates as follows, starting with $k = 1$.
+\begin{enumerate}
+    \item For each $i \in [N]$: compute a local solution $x_i^k$ of problem~\eqref{eq:primalstep_x}, initializing with $x_i^{k-1}$.
+    \begin{equation}\label{eq:primalstep_x}
+    \begin{array}{r@{\;\;}l}
+    \displaystyle\mathop{\text{min}}_{x_i} & \displaystyle f_i(x_i) + (\lambda^{k-1})^\top \left[ A_ix_i + \sum_{j \neq i}^N A_j x_j^{k-1} + z^{k-1} - b\right] + \frac{\rho}{2} \norm{A_ix_i + \sum_{j \neq i}^N A_j x_j^{k-1} + z^{k-1} - b}^2  \\
+    &\displaystyle + \frac{w_i}{2} \norm{x_i - x_i^{k-1}}^2\\
+    \text{s.t.} & \displaystyle  h_i(x_i) \leq 0.
+    \end{array}
+    \end{equation}
+    
+    \item Compute a local solution $z^k$ of problem~\eqref{eq:primalstep_z}, initializing with $z^{k-1}$.
+    \begin{equation}\label{eq:primalstep_z}
+    \begin{array}{r@{\;\;}l}
+    \displaystyle\mathop{\text{min}}_{z} & \displaystyle \phi(z) + (\lambda^{k-1})^\top \left[z + \sum_{i=1}^N A_i x_i^{k} - b\right] + \frac{\rho}{2} \norm{z + \sum_{i = 1}^N A_ix_i^k - b}^2  \displaystyle  + \frac{w_z}{2} \norm{z - z^{k-1}}^2.
+    \end{array}
+        \end{equation}
+    
+    \item Set
+    \begin{equation}\label{eq:dualstep}
+    \lambda^k = \lambda^{k - 1} + \rho \left[\sum_{i = 1}^N A_i x_i^k + z^k - b\right]
+    \end{equation}
+    Set $k = k + 1$ and to step~1.
+\end{enumerate}
+
+In this algorithm, the optimization problems in Step~1 can be solved completely in parallel, but Step~2 is solved sequentially after Step~1.
+However, we note that we can also prove convergence using a variant of the algorithm where problem~\eqref{eq:primalstep_z} only requires information about $x^{k-1}$, and hence, Step~2 can also be solved in parallel along with the optimization problems in Step~1.
+We omit this variant of the algorithm for ease of exposition (analysis can be deferred to the appendix).
+
+
+\section{Convergence analysis}
+Throughout, we shall assume that the local minimizers $x_i^k$ computed in Step~1 of the algorithm satisfy LICQ.
+Therefore, any local solution $(x^*, z^*)$ of~\eqref{eq:nlp} satisfies the KKT conditions: there exist $\mu_i^* \in \mathbb{R}^{c_i}$ and $\lambda^* \in \mathbb{R}^m$ such that the following holds.
+\begin{subequations}\label{eq:kkt_nlp}
+    \begin{align}
+    & h_i(x_i^*) \leq 0, \;\; i \in [N], \label{eq:kkt_nlp:primalfeas}\\
+    & \mathrm{diag}(h_i(x_i^*)) \mu_i^* = 0, \;\;\mu_i^* \in \mathbb{R}^{c_i}_{+}, \;\; i \in [N],\label{eq:kkt_nlp:complementarity} \\
+    & \sum_{i = 1}^N A_i x_i^* + z^* = b, \label{eq:kkt_nlp:coupling}\\
+    & \nabla f_i(x_i^*) + \frac{\partial h_i(x_i^*)}{\partial x_i}^\top \mu_i^* + A_i^\top \lambda^* = 0, \;\; i \in [N],\label{eq:kkt_nlp:stationarity_x} \\
+    & \nabla \phi(z^*) + \lambda^* = 0.\label{eq:kkt_nlp:stationarity_z}
+    \end{align}
+\end{subequations}
+Equations~\eqref{eq:kkt_nlp:primalfeas} and~\eqref{eq:kkt_nlp:complementarity} are always satisfied by the solutions generated by the Algorithm. The following proposition claims that the other three equations are also satisfied, in the limit $k \to \infty$.
+
+\begin{prop}
+    Let $(x^k, z^k, \lambda^k)$ be the sequence of solutions generated by the Algorithm. Let $\mu^k$ be the Lagrange multipliers corresponding to $h_i(x_i) \leq 0$ in Step~1 of the Algorithm. Then, we have
+    \begin{subequations}\label{eq:kkt_lim}
+        \begin{align}
+        & \lim_{k \to \infty} \norm{\sum_{i = 1}^N A_i x_i^k + z^k - b} = 0 \label{eq:kkt_lim:coupling}\\
+        & \lim_{k \to \infty} \norm{\nabla f_i(x_i^k) + \frac{\partial h_i(x_i^k)}{\partial x_i}^\top \mu_i^k + A_i^\top \lambda^k} = 0\label{eq:kkt_lim:dualfeas_x}\\
+        & \lim_{k \to \infty} \norm{\nabla \phi (z^k) + \lambda^k} = 0\label{eq:kkt_lim:dualfeas_z}
+        \end{align}
+    \end{subequations}
+\end{prop}
+
+
+\section{Proof sketch}
+The analysis presented here closely follows the analysis in~\cite{melo2017iteration,wang2019global} with minor variations.
+
+By the LICQ assumption, $x_i^k$ and $z^k$ generated in Steps~1 and~2 must satisfy the KKT conditions:
+\begin{gather*}
+\nabla f_i(x_i^k) + \frac{\partial h_i(x_i^k)}{\partial x_i}^\top \mu_i^k + A_i^\top \lambda^{k - 1} + \rho A_i^\top \left[ A_ix_i^k + \sum_{j \neq i}^N A_j x_j^{k-1} + z^{k-1} - b\right] + w_i [x_i^k - x_i^{k-1}] = 0 \\
+\nabla \phi(z^k) + \lambda^{k - 1} + \rho \left[z^k + \sum_{i = 1}^N A_i x_i^k - b\right] + w_z [z^k - z^{k-1}] = 0
+\end{gather*}
+Substitute for $\lambda^{k-1}$ in the above equations, using~\eqref{eq:dualstep}. We get:
+\begin{gather}
+\nabla f_i(x_i^k) + \frac{\partial h_i(x_i^k)}{\partial x_i}^\top \mu_i^k + A_i^\top \lambda^k \underset{\text{\normalsize $\coloneqq R_i^k$}}{\underbrace{- \rho A_i^\top \sum_{j \neq i}^N A_j (x_j^k - x_j^{k - 1}) - \rho A_i^\top (z^k - z^{k - 1}) + w_i(x_i^k - x_i^{k-1})}} = 0 \label{eq:kkt_primalstep_x} \\
+\nabla \phi(z^k) + \lambda^{k} + \underset{\text{\normalsize $\coloneqq R_z^k$}}{\underbrace{w_z [z^k - z^{k-1}]}} = 0 \label{eq:kkt_primalstep_z}
+\end{gather}
+
+Denote $\Delta x_i^k \coloneqq x_i^k - x_i^{k - 1}$ and $\Delta z^k \coloneqq z^k - z^{k-1}$ for all $i$ and $k$.
+Then, observe that the triangle and Cauchy-Schwarz inequalities imply
+\begin{gather*}
+\norm{R_i^k} \leq  \sum_{j \neq i}^N \rho \norm{A_i^\top A_j} \norm{\Delta x_j^k} + \rho \norm{A_i} \norm{\Delta z^k} + w_i\norm{\Delta x_i^k} \\
+\norm{R_z^k} \leq  w_z\norm{\Delta z^k}.
+\end{gather*}
+If we can ensure $\Delta x_i^k \to 0$ for all $i \in [N]$ and $\Delta z^k \to 0$, then we will have $\norm{R_i^k}, \norm{R_z^k} \to 0$, satisfying conditions~\eqref{eq:kkt_lim:dualfeas_x} and~\eqref{eq:kkt_lim:dualfeas_z}.
+Therefore, our goal will be to show that $\Delta x_i^k \to 0$ and $\Delta z^k \to 0$.
+
+Similarly, if we can ensure $\norm{\Delta \lambda^k} \to 0$, where $\Delta \lambda^k \coloneqq \lambda^k - \lambda^{k-1}$ (this quantity is equal to $\rho \big[\sum_{i = 1}^N A_i x_i^k + z^k - b\big]$ because of Step~2 of the algorithm), then we will satisfy condition~\eqref{eq:kkt_lim:coupling}.
+In Section~\ref{sec:proof:lambda_to_x}, we reduce this condition to be equivalent to $\Delta z^k \to 0$.
+In Section~\ref{sec:proof:lyapunov}, we exhibit a Lyapunov sequence that decreases by fixed positive multiples of $\norm{\Delta x_i^k}$ and $\norm{\Delta z^k}$ in each step, and furthermore, is bounded from below.
+Therefore, we must have $\Delta x_i^k \to 0$ and $\Delta z^k \to 0$ as $k \to \infty$, thus proving Proposition~1.
+
+\subsection{Showing $\Delta \lambda^k \to 0$ is equivalent to showing $\Delta z^k \to 0$}\label{sec:proof:lambda_to_x}
+%From~\eqref{eq:dualstep}, we have:
+%\begin{align}
+%\Delta \lambda^k = \rho\left[\underset{\in \Image{A_N}}{\underbrace{\sum_{i = 1}^{N-1} A_ix_i^k - b}} + \underset{\in \Image{A_N}}{\underbrace{A_N x_N^k}}\right] \in \Image{A_N}
+%&\implies \text{Proj}_{\text{Ker}(A_N^\top)} \Delta \lambda^k = 0 \notag \\
+%&\implies \norm{A_N^\top \Delta \lambda^k} \geq \sigma^{+}_{\text{min}}(A_N^\top) \norm{\Delta \lambda^k} \coloneqq S^{-1} \norm{\Delta \lambda^k}. \tag{*} \label{eq:temp1}
+%\end{align}
+%where $S^{-1} \coloneqq \sigma^{+}_{\text{min}}(A_N^\top) > 0$ denotes the smallest positive singular value of $A_N^\top$.
+%Next, 
+From~\eqref{eq:kkt_primalstep_z}, and by definition of $\Delta \lambda^k \coloneqq \lambda^k - \lambda^{k-1}$, we have:
+\begin{equation*}
+-\Delta \lambda^k =
+\big[\nabla \phi(z^k) - \nabla \phi(z^{k-1})\big] + \big[R_z^k - R_z^{k-1}\big]
+\end{equation*}
+Using the triangle inequality, definition of $R_z^k$ and from the Lipschitz continuity of $\nabla \phi$, we have:
+\begin{equation}\label{eq:delta_lambda}
+\norm{\Delta^k} \leq L \norm{\Delta z^k} + w_z\left(\norm{\Delta z^k} + \norm{\Delta z^{k-1}}\right)
+\end{equation}
+
+
+
+
+\subsection{Bounded Lyapunov sequence that decreases by $\norm{\Delta x^k}$ in each step}\label{sec:proof:lyapunov}
+Define $L(x, z, \lambda) : \mathbb{R}^{n_1 + \ldots + n_N} \times \mathbb{R}^m \times \mathbb{R}^m \mapsto \mathbb{R}$ to be the Augmented Lagrangian function:
+\begin{equation}\label{eq:L_def}
+L(x, z, \lambda)
+\; = \;
+\sum_{i = 1}^N f_i(x_i) + \phi(z) + \lambda^\top \left[ \sum_{i = 1}^N A_ix_i + z - b\right] + \frac{\rho}{2} \norm{\sum_{i=1}^N A_ix_i + z - b}^2
+\end{equation}
+
+Similar to existing ADMM analyses, we now define the following Lyapunov sequence:
+\begin{equation}\label{eq:lyapunov_sequence_definition}
+\mathcal{L}^k \coloneqq L(x^k, z^k, \lambda^k) + \sum_{i=1}^N \frac{w_i}{4} \norm{\Delta x_i^k}^2 + \frac{w_z}{4} \norm{\Delta z^k}^2
+\end{equation}
+In subsection~\ref{sec:lyapunov_monotone}, we shall prove that this sequence decreases monotonically at least by some positive factor proportional to $\norm{\Delta x_i^k}$ and $\norm{\Delta z^k}$.
+In subsection~\ref{sec:lyapunov_bounded}, we shall prove that the sequence is bounded from below.
+
+\subsubsection{Monotonicity}\label{sec:lyapunov_monotone}
+We study $\mathcal{L}^k - \mathcal{L}^{k-1}$. For that, first consider
+\begin{align*}
+L(x^k, z^k, \lambda^k) - L(x^{k-1}, z^{k-1}, \lambda^{k-1})
+=
+\underset{1^\text{st} \text{ term}}{\underbrace{\big[L(x^k, z^k, \lambda^k) - L(x^k, z^k, \lambda^{k-1})\big]}}
++
+\underset{2^\text{nd} \text{ term}}{\underbrace{\big[L(x^k, z^k, \lambda^{k-1}) - L(x^{k-1}, z^{k-1}, \lambda^{k-1})\big]}}
+\end{align*}
+
+The dual update step~\eqref{eq:dualstep} and inequality~\eqref{eq:delta_lambda} implies that:
+\begin{align*}
+1^\text{st} \text{ term} &= \frac{1}{\rho}\norm{\Delta \lambda^k}^2 \\
+&\leq \frac{2}{\rho} \left[L^2 \norm{\Delta z^k}^2 + w_z^2\left(\norm{\Delta z^k} + \norm{\Delta z^{k-1}}\right)^2 \right] \\
+&\leq \frac{2(L^2 + w_z^2)}{\rho} \left(\norm{\Delta z^k} + \norm{\Delta z^{k-1}}\right)^2 \\
+&\leq \frac{4(L^2 + w_z^2)}{\rho} \left(\norm{\Delta z^k}^2 + \norm{\Delta z^{k-1}}^2\right).
+\end{align*}
+where the first and third inequalities were obtained by using $(a_1 + \ldots + a_N)^2 \leq N (a_1^2 + \ldots a_N^2)$ and the second inequality was obtained by using $L^2 \norm{\Delta z^k}^2 \leq L^2 \left(\norm{\Delta z^k} + \norm{\Delta z^{k-1}}\right)^2$.
+
+\begin{align*}
+2^\text{nd} \text{ term} &= \qquad\left[L(x_1^k, \ldots, x_{N-1}^k, x_N^k, z^k, \lambda^{k-1}) - L(x_1^k, \ldots, x_N^{k}, z^{k-1}, \lambda^{k-1}) \right] \\
+&\;\qquad+\left[L(x_1^k, \ldots, x_{N-1}^k, x_N^k, z^{k-1}, \lambda^{k-1}) - L(x_1^k, \ldots, x_{N-1}^k, x_N^{k-1}, z^{k-1}, \lambda^{k-1}) \right] \\
+&\;\qquad +\left[L(x_1^k, \ldots, x_{N-1}^k, x_N^{k-1}, z^{k-1}, \lambda^{k-1}) - L(x_1^k, \ldots, x_{N-1}^{k-1}, x_N^{k-1}, z^{k-1}, \lambda^{k-1})\right] \\
+&\;+\ldots + \left[L(x_1^k, x_2^{k-1},\ldots, x_N^{k-1} z^{k-1}, \lambda^{k-1}) - L(x_1^{k-1}, x_2^{k-1}, \ldots, x_N^{k-1}, z^{k-1}, \lambda^{k-1})\right] \\
+&= \left[L(x^k, z^k, \lambda^{k-1}) - L(x^k, z^{k-1}, \lambda^{k-1})\right] \\
+&\;\qquad+ \sum_{i=1}^N \left[L(x_{<i}^k, x_i^k, x_{>i}^{k-1}, z^{k-1}, \lambda^{k-1}) - L(x_{<i}^k, x_i^{k-1}, x_{>i}^{k-1}, z^{k-1}, \lambda^{k-1})\right] \\
+&= \left[L(x^k, z^k, \lambda^{k-1}) - L(x^k, z^{k-1}, \lambda^{k-1})\right] \\
+&\;\qquad+ \sum_{i=1}^N
+\left[
+L(x_{<i}^{k-1}, x_i^k, x_{>i}^{k-1}, z^{k-1}, \lambda^{k-1}) - L(x_{<i}^{k-1}, x_i^{k-1}, x_{>i}^{k-1}, z^{k-1}, \lambda^{k-1})
++\rho \sum_{j=1}^{i-1} (A_i \Delta x_i^k)^\top (A_j \Delta x_j^k)
+\right] \\
+&\underset{(a)}{\leq} -\frac{w_z}{2} \norm{\Delta z^k}^2 -\sum_{i=1}^N \frac{w_i}{2} \norm{\Delta x_i^k}^2  + \sum_{i=1}^N \sum_{j=1}^{i-1} \rho (A_i \Delta x_i^k)^\top (A_j \Delta x_j^k) \\
+&\underset{(b)}{\leq} -\frac{w_z}{2} \norm{\Delta z^k}^2 -\sum_{i=1}^N \frac{w_i}{2} \norm{\Delta x_i^k}^2  + \sum_{i=1}^{N} \sum_{j=1}^{i-1} \frac{\rho}{2} \left(\norm{A_i \Delta x_i^k}^2 + \norm{A_j \Delta x_j^k}^2 \right) \\
+&\underset{(c)}{\leq} -\frac{w_z}{2} \norm{\Delta z^k}^2 -\sum_{i=1}^N \frac{w_i}{2} \norm{\Delta x_i^k}^2 + \sum_{i=1}^{N} \underset{\coloneqq \gamma_i > 0}{\underbrace{\frac12 (N-1)\rho\norm{A_i}^2}} \norm{\Delta x_i^k}^2 \\
+&\underset{(d)}{\leq} -\frac{w_z}{2} \norm{\Delta z^k}^2 -\sum_{i=1}^N \frac{w_i}{2} \norm{\Delta x_i^k}^2 + \sum_{i=1}^{N} \gamma_i \left(\norm{\Delta x_i^k}^2 + \norm{\Delta x_i^{k-1}}^2\right)
+\end{align*}
+where inequality~(a) is obtained by exploiting the fact that $z^k$ is locally optimal with a better objective value than $z^{k-1}$ in problem~\eqref{eq:primalstep_z} and similarly for each $i =1, \ldots, N$, $x_i^k$ is locally optimal with a better objective value than $x_i^{k-1}$ in problem~\eqref{eq:primalstep_x}.
+Inequality~(b) is obtained by using $a_1 a_2 \leq \frac12 (a_1^2 + a_2^2)$.
+The third inequality~(c) is due to Cauchy-Schwarz and the fourth inequality~(d) is obtained using $\gamma_i \norm{\Delta x_i^k}^2 \leq \gamma_i (\norm{\Delta x_i^k}^2 + \norm{\Delta x_i^{k-1}}^2)$.
+
+
+Combining the previous two bounds on the 1st and 2nd terms, we have:
+\begin{align*}
+\mathcal{L}^k - \mathcal{L}^{k-1} &= \left[ L(x^k, z^k, \lambda^k) - L(x^{k-1}, z^{k-1}, \lambda^{k-1}) \right] + \sum_{i=1}^N \frac{w_i}{4} \left[\norm{\Delta x_i^k}^2 - \norm{\Delta x_i^{k-1}}^2 \right] + \frac{w_z}{4} \left[\norm{\Delta z^k}^2 - \norm{\Delta z^{k-1}}^2 \right] \\
+&\leq -\underset{\coloneqq \eta_z}{\underbrace{\left(\frac{w_z}{4} - \frac{4(L^2 + w_z^2)}{\rho}\right)}}\left(\norm{\Delta z^k}^2 + \norm{\Delta z^{k-1}}^2\right) -\sum_{i=1}^N \underset{\coloneqq \eta_i}{\underbrace{\left(\frac{w_i}{4} - \gamma_i\right)}}\left(\norm{\Delta x_i^k}^2 + \norm{\Delta x_i^{k-1}}^2\right) \\
+&= -\eta_z \left(\norm{\Delta z^k}^2 + \norm{\Delta z^{k-1}}^2\right) - \sum_{i=1}^N \eta_i\left(\norm{\Delta x_i^k}^2 + \norm{\Delta x_i^{k-1}}^2\right)
+\end{align*}
+Observe that for $i =1, \ldots, N$, $\gamma_i \coloneqq \frac12 (N-1)\rho\norm{A_i}^2$ is independent of $w_i$.
+Therefore, we can ensure $\eta_i > 0$ by setting a very large value for $w_i$ for $i = 1, \ldots, N-1$.
+Similarly, we can ensure that $\eta_z > 0$ by setting a sufficiently large value for $\rho$.
+In short, we have shown that, by choosing appropriate values of the augmented Lagrangian parameter $\rho$ and the proximal weights $w_1, \ldots, w_N, w_z$, we can ensure that $\{\mathcal{L}^k\}$ decreases by at least $\eta_z\left(\norm{\Delta z^k}^2 + \norm{\Delta z^{k-1}}^2\right) + \sum_{i=1}^N \eta_i \left(\norm{\Delta x_i^k}^2 + \norm{\Delta x_i^{k-1}}^2\right)$ in each step, where $\eta_z > 0$ and $\eta_i > 0$ for all $i = 1, \ldots, N$.
+
+\subsubsection{Boundedness}\label{sec:lyapunov_bounded}
+We now show that $\left\{\mathcal{L}^k\right\}$ is bounded below.
+For this, we shall assume that $\rho$ is chosen large enough that the following quadratic penalty formulation associated with the coupling constraints in~\eqref{eq:nlp} is bounded from below. Denote its optimal value by $L^\star > -\infty$.
+    \[
+    \begin{array}{r@{\;\;}l}
+    \displaystyle\mathop{\text{minimize}}_{x_1, \ldots, x_N, z} & \displaystyle \sum_{i = 1}^N f_i(x_i) + \phi(z) + \frac{\rho}{2} \norm{\sum_{i=1}^N A_ix_i + z - b}^2  \\
+    \text{subject to} & \displaystyle  h_i(x_i) \leq 0, \;\;\; i \in [N].
+    \end{array}
+    \]
+
+Now, observe that:
+\begin{align*}
+\frac{1}{k}\sum_{j=1}^{k} \mathcal{L}^j & \geq \frac{1}{k}\sum_{j=1}^k L(x^j, z^j, \lambda^j) \\
+&\geq \frac{1}{k}\sum_{j=1}^k \left[L^\star + (\lambda^j)^\top \left(\sum_{i=1}^N A_i x_i^j + z^j - b\right) \right] \\
+&\geq L^\star + \frac{1}{k\rho}\sum_{j=1}^k \left[(\lambda^j)^\top \left(\lambda^j - \lambda^{j-1}\right)\right] \quad \text{from~\eqref{eq:dualstep}}\\
+&\geq L^\star + \frac{1}{2k\rho}\sum_{j=1}^k \left[\norm{\lambda^j}^2  - \norm{\lambda^{j-1}}^2\right] \\
+&\geq L^\star - \frac{1}{2k\rho}\norm{\lambda^{0}}^2.
+\end{align*}
+Re-arranging the above inequality, we have
+\begin{equation*}
+\sum_{j=1}^k (\mathcal{L}^j - L^\star) \geq -\frac{1}{2\rho}\norm{\lambda^{0}}^2.
+\end{equation*}
+
+Suppose now that $\left\{\mathcal{L}^k\right\}$ is unbounded from below. Then, there exists an index $k_0$ such that $\mathcal{L}^{k_0} < L^\star$ for all $k \geq k_0$.
+Since the sequence $\left\{\mathcal{L}^k\right\}$ is monotone, we have:
+\begin{equation*}
+\sum_{j=1}^k (\mathcal{L}^j - L^\star) \leq \sum_{j=1}^{k_0} (\mathcal{L}^j - L^\star) + (k - k_0) (\mathcal{L}^{k_0} - L^\star) = \text{constant} - (k - k_0) \cdot (\text{positive constant}), \; \forall k \geq k_0.
+\end{equation*}
+
+Combing the last two inequalities, we have:
+\begin{equation*}
+-\frac{1}{2\rho}\norm{\lambda^{0}}^2 \leq \text{constant} - (k - k_0) \cdot (\text{positive constant}), \; \forall k \geq k_0
+\end{equation*}
+which results in a contradiction as $k \to \infty$.
+
+\bibliographystyle{plain}
+\bibliography{jacobi_proximal_admm_refs}
+\end{document}
