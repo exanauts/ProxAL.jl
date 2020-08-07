@@ -254,7 +254,7 @@ function updatePrimalSolutionQuadSlacks(x::mpPrimalSolution, xprev::mpPrimalSolu
                                         options::Option = Option(), params::AlgParams)
     gen = opfdata.generators
     for t=2:size(x.ZZ, 1), g=1:length(gen)
-        denom = params.τ + params.ρ[t,g] + options.weight_quadratic_penalty
+        denom = params.τ + params.ρ[t,g] + 1e-3options.weight_quadratic_penalty
         if !iszero(denom)
             x.ZZ[t,g] = (1.0/denom)*(
                             (params.τ*xprev.ZZ[t,g]) - λ.λp[t,g] -
@@ -443,19 +443,11 @@ function initializeProxALM(opfdata::OPFData, rawdata::RawData, T::Int;
                 x.PR .= x.PG[1,:]
             end
         end
-        if t == T
-            # update ZZ
-            if options.has_ramping && options.quadratic_penalty
-                for s = 2:T, g=1:size(x.ZZ, 2)
-                    x.ZZ[s,g] = -(+x.PG[s-1,g] - x.PG[s,g] + x.SL[s,g] - opfdata.generators[g].ramp_agc)
-                end
-            end
-        end
     end
 
     if parallel && sequential_solve
         optimalvector = SharedArray{Float64, 2}(colCount, T)
-        params.ρ = 1e-3ones(size(λ.λp))
+        params.ρ = ones(size(λ.λp))
         @sync for t=2:T
             function xstep()
                 opfmodel = opf_model(opfdata, rawdata, t; options = options)
@@ -469,6 +461,13 @@ function initializeProxALM(opfdata::OPFData, rawdata::RawData, T::Int;
         for t=2:T
             colValue[:,t] .= optimalvector[:,t]
             updatePrimalSolution(x, colValue[:,t], colIndex, t; options = options)
+        end
+    end
+
+    # update ZZ
+    if options.has_ramping && options.quadratic_penalty
+        for s = 2:T, g=1:size(x.ZZ, 2)
+            x.ZZ[s,g] = -(+x.PG[s-1,g] - x.PG[s,g] + x.SL[s,g] - opfdata.generators[g].ramp_agc)
         end
     end
 
