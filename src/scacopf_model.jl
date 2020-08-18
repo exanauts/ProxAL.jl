@@ -154,7 +154,7 @@ function opf_fullmodel(opfdata::OPFData, rawdata::RawData, T::Int; options::Opti
     # multi-period opf
     elseif options.has_ramping
         # Ramping up/down constraints
-        if options.quadratic_penalty
+        if options.quadratic_penalty && T > 1
             # Slack for ramping constraints
             @variable(opfmodel, 0 <= Sl[2:T,g=1:ngen] <= 2generators[g].ramp_agc, start = generators[g].ramp_agc)
 
@@ -173,8 +173,10 @@ function opf_fullmodel(opfdata::OPFData, rawdata::RawData, T::Int; options::Opti
             end
 
             # drive quad to zero
-            obj_quadratic_penalty += 0.5*sum(quad[t,g]^2 for t=2:T,g=1:ngen)
-        else
+            if T > 1
+                obj_quadratic_penalty += 0.5*sum(quad[t,g]^2 for t=2:T,g=1:ngen)
+            end
+        elseif T > 1
             @constraint(opfmodel, ramping_p[t=2:T,g=1:ngen],  Pg[t-1,g] - Pg[t,g] <= generators[g].ramp_agc)
             @constraint(opfmodel, ramping_n[t=2:T,g=1:ngen], -Pg[t-1,g] + Pg[t,g] <= generators[g].ramp_agc)
 
@@ -238,6 +240,9 @@ function opf_fullmodel(opfdata::OPFData, rawdata::RawData, T::Int; options::Opti
 
         # Line flow limits
         add_line_power_constraints(opfmodel, opfdata_c, Vm[t,:], Va[t,:], sigma_lineFrom[t,:], sigma_lineTo[t,:])
+
+        # security constraints
+        add_security_variables_and_constraints(opfmodel, opfdata_c, rawdata, Pg[t,:], Pd, Qd)
     end
     return opfmodel
 end
@@ -291,6 +296,33 @@ function opf_solve_fullmodel(opfmodel::JuMP.Model, opfdata::OPFData, rawdata::Ra
             primal.VA[t,b] = value(opfmodel[:Va][t,b])
         end
     end
+    #=
+    if options.has_ramping && options.quadratic_penalty
+        maxviol = -Inf
+        maxviolZ = -Inf
+        gencount = Vector{Int}(undef, ngen); gencount .= 0
+        timecount = Vector{Int}(undef, T); timecount .= 0 
+        for t=2:T,g=1:ngen
+            viol = abs(primal.PG[t-1,g] - primal.PG[t,g]) - opfdata.generators[g].ramp_agc
+            violZ = abs(primal.ZZ[t,g])
+            if viol > 0
+                gencount[g] = 1
+                timecount[t - 1] = 1
+                timecount[t] = 1
+            end
+            if viol > maxviol
+                maxviol = viol
+            end
+            if violZ > maxviolZ
+                maxviolZ = violZ
+            end
+        end
+        @show(maxviol)
+        @show(maxviolZ)
+        println("# binding generators = ", sum(gencount), "/", ngen)
+        println("# binding time periods = ", sum(timecount), "/", T)
+    end
+    =#
     if options.sc_constr && options.two_block
         for t=1:T, g=1:ngen
             primal.PB[t,g] = value(opfmodel[:Pg_base][t,g])
@@ -426,6 +458,9 @@ function opf_model(opfdata::OPFData, rawdata::RawData, t::Int; options::Option =
 
     # Line flow limits
     add_line_power_constraints(opfmodel, opfdata_c, Vm, Va, sigma_lineFrom, sigma_lineTo)
+
+    # security constraints
+    add_security_variables_and_constraints(opfmodel, opfdata_c, rawdata, Pg, Pd, Qd)
 
     return opfmodel
 end
@@ -637,68 +672,7 @@ function opf_solve_model(opfmodel::JuMP.Model, t::Int)
     #
     # Return optimal solution vector
     #
-    all_vars = all_variables(opfmodel)
-    x = zeros(num_variables(opfmodel))
-    for var in all_vars
-        x[JuMP.optimizer_index(var).value] = value(var)
-    end
-
-    return x
-end
-
-function opf_solve_model(opfmodel::JuMP.Model, opfdata::OPFData, t::Int;
-                         options::Option = Option(), initial_x::mpPrimalSolution, initial_λ::mpDualSolution, params::AlgParams)
-    #
-    # Initialize from given solution
-    #
-    set_start_value.(opfmodel[:Pg], initial_x.PG[t,:])
-    set_start_value.(opfmodel[:Qg], initial_x.QG[t,:])
-    set_start_value.(opfmodel[:Vm], initial_x.VM[t,:])
-    set_start_value.(opfmodel[:Va], initial_x.VA[t,:])
-    if options.sc_constr
-        if options.freq_ctrl
-            set_start_value(opfmodel[:Sl], initial_x.SL[t])
-        end
-        if options.two_block
-            set_start_value.(opfmodel[:Pg_base], initial_x.PB[t,:])
-        end
-    end
-    if !options.freq_ctrl && !options.two_block && t > 1
-        for g=1:length(opfdata.generators)
-            xp = (options.sc_constr ? initial_x.PG[1,g] : initial_x.PG[t-1,g]) - initial_x.PG[t,g]
-            dp = (options.sc_constr ? opfdata.generators[g].scen_agc : opfdata.generators[g].ramp_agc)
-            set_start_value(opfmodel[:Sl][g], min(max(0, -xp + dp), 2dp))
-        end
-    end
-
-
-    #
-    # Solve model
-    #
-    optimize!(opfmodel)
-    status = termination_status(opfmodel)
-    if  status != MOI.OPTIMAL &&
-        status != MOI.ALMOST_OPTIMAL &&
-        status != MOI.LOCALLY_SOLVED &&
-        status != MOI.ALMOST_LOCALLY_SOLVED &&
-        status != MOI.ITERATION_LIMIT
-        println("something went wrong in subproblem ", t, " with status ", status)
-    end
-    if !has_values(opfmodel)
-        error("no solution vector available in subproblem ", t)
-    end
-
-
-    #
-    # Return optimal solution vector
-    #
-    all_vars = all_variables(opfmodel)
-    x = zeros(num_variables(opfmodel))
-    for var in all_vars
-        x[JuMP.optimizer_index(var).value] = value(var)
-    end
-
-    return x
+    return value.(all_variables(opfmodel))
 end
 
 function computeLyapunovFunction(x::mpPrimalSolution, dual::mpDualSolution, xprev::mpPrimalSolution, opfdata::OPFData, T::Int; options::Option = Option(), params::AlgParams)
@@ -872,5 +846,53 @@ function add_imag_power_balance_constraints(opfmodel::JuMP.Model, opfdata::OPFDa
             - ( sum(baseMVA*Qg[g] for g in BusGeners[b]) - Qd[b] + sigma_Q1[b] - sigma_Q2[b]) / baseMVA      #Sbus part
             ==0
         )
+    end
+end
+
+function add_security_variables_and_constraints(opfmodel::JuMP.Model, opfdata::OPFData, rawdata::RawData, Pg, Pd, Qd)
+    buses = opfdata.buses
+    generators = opfdata.generators
+    ngen  = length(generators)
+    nbus  = length(buses)
+    for c in rawdata.ctgs_arr
+        opfdata_c = opf_loaddata(rawdata; lineOff = opfdata.lines[c])
+
+        Pg_c = @variable(opfmodel, [1:ngen])
+        Qg_c = @variable(opfmodel, [1:ngen])
+
+        # corrective mode
+        # @constraint(opfmodel, [g=1:ngen], -0.1generators[g].ramp_agc <= Pg[g] - Pg_c[g] <= 0.1generators[g].ramp_agc)
+
+        # preventive mode
+        @constraint(opfmodel, [g=1:ngen], Pg[g] == Pg_c[g])
+        for i=1:ngen
+            set_start_value(Pg_c[i], 0.5*(generators[i].Pmax + generators[i].Pmin))
+            set_start_value(Pg_c[i], 0.5*(generators[i].Qmax + generators[i].Qmin))
+        end
+
+        Vm_c = @variable(opfmodel, [1:nbus])
+        Va_c = @variable(opfmodel, [1:nbus])
+        for i=1:nbus
+            set_lower_bound(Vm_c[i], buses[i].Vmin)
+            set_upper_bound(Vm_c[i], buses[i].Vmax)
+            set_start_value(Vm_c[i], 0.5*(buses[i].Vmax + buses[i].Vmin))
+            set_start_value(Va_c[i], buses[opfdata.bus_ref].Va)
+        end
+
+        sigma_P1 = zeros(nbus)
+        sigma_P2 = zeros(nbus)
+        sigma_Q1 = zeros(nbus)
+        sigma_Q2 = zeros(nbus)
+        sigma_lineFrom = zeros(length(opfdata_c.lines))
+        sigma_lineTo = zeros(length(opfdata_c.lines))
+
+        # Power Balance Equations
+        # add_real_power_balance_constraints(opfmodel, opfdata_c,   Pg, Pd, Vm_c, Va_c, sigma_P1, sigma_P2)
+        # add_imag_power_balance_constraints(opfmodel, opfdata_c, Qg_c, Qd, Vm_c, Va_c, sigma_Q1, sigma_Q2)
+        add_real_power_balance_constraints(opfmodel, opfdata_c, Pg_c, Pd, Vm_c, Va_c, sigma_P1, sigma_P2)
+        add_imag_power_balance_constraints(opfmodel, opfdata_c, Qg_c, Qd, Vm_c, Va_c, sigma_Q1, sigma_Q2)
+
+        # Line flow limits
+        add_line_power_constraints(opfmodel, opfdata_c, Vm_c, Va_c, sigma_lineFrom, sigma_lineTo)
     end
 end
