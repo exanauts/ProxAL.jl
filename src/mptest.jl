@@ -1,6 +1,7 @@
+const current_dir = @__DIR__
 using Distributed
 @everywhere using Pkg
-@everywhere Pkg.activate("..")
+@everywhere Pkg.activate(current_dir * "/..")
 @everywhere Pkg.instantiate()
 @everywhere begin
     using SharedArrays
@@ -30,9 +31,9 @@ for ramp_scale in [parse(Float64, ARGS[3])]
     maxρ = parse(Float64, ARGS[7])
     mode = ARGS[8]
     if T > 50
-        scen = "../data/mp_demand/"*basename(case)*"_onehour_60"
+        scen = current_dir * "/../data/mp_demand/"*basename(case)*"_onehour_60"
     else
-        scen = "../data/mp_demand/"*basename(case)*"_oneweek_168"
+        scen = current_dir * "/../data/mp_demand/"*basename(case)*"_oneweek_168"
     end
     rawdata = RawData(case, scen)
     rawdata.ctgs_arr = rawdata.ctgs_arr[1:K]
@@ -47,8 +48,8 @@ for ramp_scale in [parse(Float64, ARGS[3])]
     opt.obj_penalty = false
     opt.obj_gencost = true
 
-    optfile_x = getDataFilename("./optimalvalues/xstar_", case, "proxALM", T, opt.sc_constr, true, ramp_scale)
-    optfile_L = getDataFilename("./optimalvalues/Lstar_rho_" * string(maxρ) * "_", case, "proxALM", T, opt.sc_constr, true, ramp_scale)
+    optfile_x = getDataFilename(current_dir * "/optimalvalues/xstar_", case, "proxALM", T, opt.sc_constr, true, ramp_scale)
+    optfile_L = getDataFilename(current_dir * "/optimalvalues/Lstar_rho_" * string(maxρ) * "_", case, "proxALM", T, opt.sc_constr, true, ramp_scale)
     optfile_x = optfile_x[1:end-3] * "jld"
     optfile_L = optfile_L[1:end-3] * "jld"
 
@@ -79,7 +80,7 @@ for ramp_scale in [parse(Float64, ARGS[3])]
     # Solve proximal ALM from cold-start
     #
     if mode == "coldstart"
-        opt.savefile = getDataFilename("./coldstart/rho_" * string(maxρ) * "_", case, "proxALM", T, opt.sc_constr, true, ramp_scale)
+        opt.savefile = getDataFilename(current_dir * "/coldstart/rho_" * string(maxρ) * "_", case, "proxALM", T, opt.sc_constr, true, ramp_scale)
         @time x, λ, savedata = runProxALM(opfdata, rawdata, T; options = opt, verbose_level = 2, fullmodel = false, parallel = true, maxρ = maxρ, optfile_x = optfile_x, optfile_L = optfile_L)
     end
 

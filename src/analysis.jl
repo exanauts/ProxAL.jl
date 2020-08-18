@@ -70,7 +70,7 @@ function updatePlot_iterative(plt, iter, distance, primviol, dualviol, optimgap,
     push!(plt, 4, iter, max(optimgap, 1e-12))
     push!(plt, 5, iter, (delta_lyapunov < 0) ? Inf : max(delta_lyapunov, 1e-12))
     if isempty(savefile)
-        savefig("__dummy.png")
+        savefig(@__DIR__ * "/__dummy.png")
     else
         savefig(savefile * ".png")
     end
