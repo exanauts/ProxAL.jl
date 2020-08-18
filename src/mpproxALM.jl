@@ -9,13 +9,21 @@ function runProxALM(opfdata::OPFData, rawdata::RawData, T::Int;
                     fullmodel::Bool = true,
                     maxρ::Float64 = 1.0,
                     initial_x = nothing,
-                    initial_λ = nothing)
+                    initial_λ = nothing,
+                    optfile_x = nothing,
+                    optfile_L = nothing)
     #
     # Compute optimal solution using Ipopt
     #
     if fullmodel
         xstar, λstar, zstar, tfullmodel = solve_fullmodel(opfdata, rawdata, T; options = options)
         (verbose_level > 0) && @printf("Optimal generation cost = %.2f\n", zstar)
+    elseif optfile_x !== nothing && isfile(optfile_x)
+        result = JLD.load(optfile_x)
+        xstar = result["xstar"]
+        λstar = result["λstar"]
+        zstar = result["zstar"]
+        tfullmodel = result["tfullmodel"]
     else
         xstar = initializePrimalSolution(opfdata, T; options = options)
         λstar = initializeDualSolution(opfdata, T; options = options)
@@ -28,6 +36,9 @@ function runProxALM(opfdata::OPFData, rawdata::RawData, T::Int;
     #
     x, λ, base = initializeProxALM(opfdata, rawdata, T;
                         options = options, parallel = parallel, initial_x = initial_x, initial_λ = initial_λ)
+    savefile = options.savefile[1:end-4] * "_iter_" * string(0) * ".jld"
+    result = Dict(); result["x"] = x; result["λ"] = λ
+    JLD.save(savefile, result)
 
 
     #
@@ -49,6 +60,7 @@ function runProxALM(opfdata::OPFData, rawdata::RawData, T::Int;
     parallel_indices = []
     if parallel
         optimalvector = SharedArray{Float64, 2}(base.colCount, T)
+        optimalvector .= base.colValue
         soltimesParallel = SharedVector{Float64}(T)
         if params.jacobi || options.two_block
             serial_indices = []
@@ -63,7 +75,14 @@ function runProxALM(opfdata::OPFData, rawdata::RawData, T::Int;
     #
     # compute lower bound on Lyapunov sequence
     #
-    Lstar = solve_fullmodel(opfdata, rawdata, T; options = options, maxρ = maxρ, compute_Lstar = true)
+    if fullmodel
+        Lstar = solve_fullmodel(opfdata, rawdata, T; options = options, maxρ = maxρ, compute_Lstar = true)
+    elseif optfile_L !== nothing && isfile(optfile_L)
+        result = JLD.load(optfile_L)
+        Lstar = result["Lstar"]
+    else
+        Lstar = 1.0
+    end
     (verbose_level > 0) && @printf("Lyapunov lower bound = %.2f\n", Lstar)
     lyapunovprev = Inf
     savedata = zeros(params.iterlim, 8)
@@ -106,7 +125,9 @@ function runProxALM(opfdata::OPFData, rawdata::RawData, T::Int;
                 function xstep()
                     opfmodel = opf_model(opfdata, rawdata, t; options = options)
                     opf_model_set_objective(opfmodel, opfdata, t; options = options, params = params, primal = x, dual = λ)
-                    optimalvector[:,t] = opf_solve_model(opfmodel, opfdata, t; options = options, params = params, initial_x = x, initial_λ = λ)
+                    set_start_value.(all_variables(opfmodel), optimalvector[:,t])
+                    optimalvector[:,t] = opf_solve_model(opfmodel, t)
+                    #optimalvector[:,t] = opf_solve_model(opfmodel, opfdata, t; options = options, params = params, initial_x = x, initial_λ = λ)
                 end
                 @async @spawn begin
                     soltimesParallel[t] = @elapsed xstep()
@@ -171,6 +192,7 @@ function runProxALM(opfdata::OPFData, rawdata::RawData, T::Int;
         primalcost, penalty, proximal = computeLyapunovFunction(x, λ, xprev, opfdata, T; options = options, params = params)
         lyapunov = primalcost + penalty + proximal
         delta_lyapunov = lyapunovprev - lyapunov
+        lyapunov_gap = (lyapunov - Lstar)/Lstar
         lyapunovprev = lyapunov
         if params.updateτ
             #if delta_lyapunov <= 0.0  && params.τ < 3.0maxρ
@@ -182,7 +204,7 @@ function runProxALM(opfdata::OPFData, rawdata::RawData, T::Int;
         dist = computeDistance(x, xstar; options = options, lnorm = Inf)
         gencost = computePrimalCost(x, opfdata; options = options)
         gap = abs((gencost - zstar)/zstar)
-        (verbose_level > 1) && updatePlot_iterative(plt, iter, dist, primviol, dualviol, gap, delta_lyapunov, options.savefile)
+        (verbose_level > 1) && updatePlot_iterative(plt, iter, dist, primviol, dualviol, gap, lyapunov_gap, options.savefile)
 
 
         #
@@ -190,13 +212,16 @@ function runProxALM(opfdata::OPFData, rawdata::RawData, T::Int;
         #
         converged = min(dist, max(primviol, dualviol)) <= params.tol
         if verbose_level > 0 || converged
-            @printf("iter %d: primviol = %.3f, dualviol = %.3f, gap = %.3f%%, distance = %.3f, delta = %.3f\n",
-                            iter, primviol, dualviol, 100gap, dist, delta_lyapunov)
+            @printf("iter %d: primviol = %.3f, dualviol = %.3f, gap = %.3f%%, distance = %.3f, delta = %.3f, L - L* = %.3f\n",
+                            iter, primviol, dualviol, 100gap, dist, delta_lyapunov, lyapunov - Lstar)
         end
 
-        savedata[iter,:] = [dist, gencost, primviol, dualviol, primviolavg, dualviolavg, timeNLP, tfullmodel]
+        savedata[iter,:] = [lyapunov, gencost, primviol, dualviol, primviolavg, dualviolavg, timeNLP, penalty]
         if !isempty(options.savefile)
             writedlm(options.savefile, savedata)
+            savefile = options.savefile[1:end-4] * "_iter_" * string(iter) * ".jld"
+            result = Dict(); result["x"] = x; result["λ"] = λ
+            JLD.save(savefile, result)
         end
     end
 
