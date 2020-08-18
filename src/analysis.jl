@@ -6,7 +6,7 @@ function optionsPlot(plt)
             linewidth = 2.0,
             yscale = :log10,
             framestyle = :box,
-            ylim = [1e-6, 1e+2],
+            ylim = [1e-4, 2e+1],
             xtickfontsize = 18,
             ytickfontsize = 18,
             guidefontsize = 18,
@@ -29,6 +29,40 @@ function initializePlot_iterative()
     return plt
 end
 
+function initializePlot_iterative_new(plotmode)
+    gr()
+    if plotmode == 1
+        plt = plot([Inf,Inf], Any[[1,1],[1,1],[1,1],[1,1],[1,1]],
+                    lab=reshape(
+                        [L"||x-x^*||/||x^*||"
+                        L"||\displaystyle\Sigma_t A_t x_t + z - b||"
+                        L"||\mathrm{KKT\,error}||"
+                        L"|c(x)-c(x^*)|/c(x^*)"
+                        L"(L-L^*)/L^*"], 1, 5),
+                )
+    elseif plotmode == 2
+        plt = plot([Inf,Inf], Any[[1,1],[1,1],[1,1],[1,1],[1,1]],
+                lab=reshape(
+                    [L"||x-x^*||/||x^*||"
+                     L"|p_{gt} - p_{g,t-1}| - r_g"
+                     L"||\mathrm{KKT\,error\,} p_{gt}||"
+                     L"|c(x)-c(x^*)|/c(x^*)"
+                     L"(L-L^*)/L^*"], 1, 5),
+            )
+    else
+        C = get_color_palette(:auto, plot_color(:white), 5)
+        plt = plot([Inf,Inf], Any[[1,1],[1,1]],
+                lab=reshape(
+                    [L"|p_{gt} - p_{g,t-1}| - r_g"
+                     L"||\mathrm{KKT\,error\,} p_{gt}||"], 1, 2),
+                color = reshape([C[2] C[3]], 1, 2)
+            )
+    end
+    optionsPlot(plt)
+    plot!(plt, xlabel=L"\mathrm{Iteration}")
+    return plt
+end
+
 function updatePlot_iterative(plt, iter, distance, primviol, dualviol, optimgap, delta_lyapunov, savefile = "")
     push!(plt, 1, iter, max(distance, 1e-12))
     push!(plt, 2, iter, max(primviol, 1e-12))
@@ -40,6 +74,13 @@ function updatePlot_iterative(plt, iter, distance, primviol, dualviol, optimgap,
     else
         savefig(savefile * ".png")
     end
+    #gui()
+end
+
+function updatePlot_iterative(plt, iter, primviol, dualviol, savefile)
+    push!(plt, 1, iter, max(primviol, 1e-12))
+    push!(plt, 2, iter, max(dualviol, 1e-12))
+    savefig(savefile * ".png")
     #gui()
 end
 

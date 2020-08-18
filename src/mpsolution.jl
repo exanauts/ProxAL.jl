@@ -277,6 +277,7 @@ function computeDualViolation(x::mpPrimalSolution, xprev::mpPrimalSolution, λ::
             end
         end
 
+        #=
         for j = 1:length(kkt)
             if (abs(nlpdata.colLower[j, t] - nlpdata.colUpper[j, t]) <= params.zero)
                 kkt[j] = 0.0 # ignore
@@ -288,6 +289,7 @@ function computeDualViolation(x::mpPrimalSolution, xprev::mpPrimalSolution, λ::
                 kkt[j] = abs(kkt[j])
             end
         end
+        =#
         dualviol = [dualviol; kkt]
     end
 
@@ -322,6 +324,70 @@ function computeDualViolation(x::mpPrimalSolution, xprev::mpPrimalSolution, λ::
     return norm(dualviol, lnorm), norm(dualviol, 1)/length(dualviol)
 end
 
+function computeDualViolation_2(x::mpPrimalSolution, xprev::mpPrimalSolution, λ::mpDualSolution, λprev::mpDualSolution, opfdata::OPFData;
+                              options::Option = Option(), params::AlgParams, lnorm = 1, mode = 1)
+    @assert options.has_ramping && options.quadratic_penalty
+    gen = opfdata.generators
+    dualviol = []
+    for t = 1:size(λ.λp, 1), g=1:length(gen)
+        kkt_pg = -params.τ*(x.PG[t,g] - xprev.PG[t,g])
+        kkt_sl = 0
+        kkt_zz = 0
+
+
+        if t > 1
+            kkt_pg += -λ.λp[t,g]
+            kkt_sl +=  λ.λp[t,g]
+            temp = -λprev.λp[t,g] - params.ρ[t,g]*(
+                        (params.jacobi ? xprev.PG[t-1,g] : x.PG[t-1,g]) -
+                            x.PG[t,g] + x.SL[t,g] + xprev.ZZ[t,g] - gen[g].ramp_agc
+                        )
+            kkt_pg -= temp
+            kkt_sl += temp
+        end
+        if t < size(λ.λp, 1)
+            kkt_pg += +λ.λp[t+1,g]
+            kkt_pg -= +λprev.λp[t+1,g] + params.ρ[t+1,g]*(
+                            x.PG[t,g] - xprev.PG[t+1,g] + xprev.SL[t+1,g] + xprev.ZZ[t+1,g] -
+                            gen[g].ramp_agc
+                        )
+        end
+
+        if (abs(gen[g].Pmin - gen[g].Pmax) <= params.zero)
+            kkt_pg = 0.0 # ignore
+        elseif abs(x.PG[t,g] - gen[g].Pmin) <= params.zero
+            kkt_pg = max(0, -kkt_pg)
+        elseif abs(x.PG[t,g] - gen[g].Pmax) <= params.zero
+            kkt_pg = max(0, +kkt_pg)
+        else
+            kkt_pg = abs(kkt_pg)
+        end
+
+        if t > 1
+            if abs(x.SL[t,g]) <= params.zero
+                kkt_sl = max(0, -kkt_sl)
+            elseif abs(x.SL[t,g] - 2gen[g].ramp_agc) <= params.zero
+                kkt_sl = max(0, +kkt_sl)
+            else
+                kkt_sl = abs(kkt_sl)
+            end
+
+
+            if mode == 1
+                kkt_zz = -(params.τ*(x.ZZ[t,g] - xprev.ZZ[t,g])) +
+                            λ.λp[t,g]-λprev.λp[t,g]-(params.ρ[t,g]*(
+                                +x.PG[t-1,g] - x.PG[t,g] + x.SL[t,g] + x.ZZ[t,g] - gen[g].ramp_agc
+                            ))
+                kkt_zz = abs(kkt_zz)
+            end
+        end
+
+        dualviol = [dualviol; kkt_pg; kkt_sl; kkt_zz]
+    end
+
+    return norm(dualviol, lnorm), norm(dualviol, 1)/length(dualviol)
+end
+
 function computePrimalViolation(primal::mpPrimalSolution, opfdata::OPFData; options::Option = Option(), lnorm = 1)
     T = size(primal.PG, 1)
     gen = opfdata.generators
@@ -341,12 +407,32 @@ function computePrimalViolation(primal::mpPrimalSolution, opfdata::OPFData; opti
         errn = zeros(0)
     elseif options.has_ramping && options.quadratic_penalty
         errp = [abs(+primal.PG[t-1,g] - primal.PG[t,g] + primal.SL[t,g] + primal.ZZ[t,g] - gen[g].ramp_agc) for t=2:T for g=1:num_gens]
+        #errp = [max(abs(+primal.PG[t-1,g] - primal.PG[t,g]) - gen[g].ramp_agc, 0) for t=2:T for g=1:num_gens]
         errn = zeros(0)
     elseif options.has_ramping
         errp = [max(+primal.PG[t-1,g] - primal.PG[t,g] - gen[g].ramp_agc, 0) for t=2:T for g=1:num_gens]
         errn = [max(-primal.PG[t-1,g] + primal.PG[t,g] - gen[g].ramp_agc, 0) for t=2:T for g=1:num_gens]
     end
     err  = [errp; errn]
+
+    if (T <= 1 || num_gens < 1)
+        return 0.0, 0.0
+    end
+    return norm(err, lnorm), norm(err, 1)/((T-1)*num_gens)
+end
+
+function computePrimalViolation_2(primal::mpPrimalSolution, opfdata::OPFData; options::Option = Option(), lnorm = 1, mode = 1)
+    T = size(primal.PG, 1)
+    gen = opfdata.generators
+    num_gens = length(gen)
+
+    @assert options.has_ramping && options.quadratic_penalty
+
+    if mode == 1
+        err = [abs(+primal.PG[t-1,g] - primal.PG[t,g] + primal.SL[t,g] + primal.ZZ[t,g] - gen[g].ramp_agc) for t=2:T for g=1:num_gens]
+    else
+        err = [max(abs(+primal.PG[t-1,g] - primal.PG[t,g]) - gen[g].ramp_agc, 0) for t=2:T for g=1:num_gens]
+    end
 
     if (T <= 1 || num_gens < 1)
         return 0.0, 0.0

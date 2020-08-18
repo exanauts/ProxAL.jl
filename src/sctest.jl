@@ -30,14 +30,14 @@ for case in [ARGS[1]]
     opfdata = opf_loaddata(rawdata)
     opt = Option()
     opt.sc_constr = true
-    opt.freq_ctrl = false
-    opt.two_block = false
+    opt.freq_ctrl = true
+    opt.two_block = true
     opt.obj_penalty = false
     opt.weight_scencost = 1/length(rawdata.ctgs_arr)
     opt.weight_loadshed = 2500.0
     opt.weight_freqctrl = 0
     ramp_scale = Float64(opt.freq_ctrl) + 0.1Float64(opt.two_block)
-    maxρ = 10.0
+    maxρ = 0.1
 
     # include base case
     T = length(rawdata.ctgs_arr) + 1
@@ -48,7 +48,7 @@ for case in [ARGS[1]]
     #=
     begin
         opt.savefile = getDataFilename("sc_coldstart", case, "proxALM", T, opt.sc_constr, true, ramp_scale)
-        @time x, λ, savedata = runProxALM(opfdata, rawdata, T; options = opt, verbose_level = 2, fullmodel = false, parallel = true)
+        @time x, λ, savedata = runProxALM(opfdata, rawdata, T; maxρ = maxρ, options = opt, verbose_level = 2, fullmodel = true, parallel = true)
     end
     =#
 
