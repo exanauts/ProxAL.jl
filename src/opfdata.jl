@@ -77,50 +77,6 @@ struct OPFData
 end
 
 
-mutable struct Option
-    obj_gencost::Bool
-    obj_penalty::Bool
-    has_ramping::Bool
-    phase1::Bool
-    freq_ctrl::Bool
-    load_shed::Bool
-    sc_constr::Bool
-    piecewise::Bool
-    two_block::Bool
-    quadratic_penalty::Bool
-    powerflow_solve::Bool
-    weight_quadratic_penalty::Float64
-    weight_scencost::Float64
-    weight_loadshed::Float64
-    weight_freqctrl::Float64
-    savefile::String
-    prev_val::Vector{Float64}
-    neg_g::Vector{Int}
-
-    function Option()
-        new(true,  # obj_gencost
-            false, # obj_penalty
-            false, # has_ramping
-            false, # phase1
-            false, # freq_ctrl
-            false, # load_shed
-            false, # sc_constr
-            false, # piecewise
-            false, # two_block
-            false, # quadratic_penalty
-            false, # powerflow_solve
-            1.0,   # weight_quadratic_penalty
-            1.0,   # weight_scencost
-            1.0,   # weight_loadshed
-            1.0,   # weight_freqctrl
-            "",    # savefile
-            Vector{Float64}(), # prev_val
-            Vector{Int}()      # neg_g
-        )
-    end
-end
-
-
 mutable struct RawData
     bus_arr
     branch_arr
@@ -255,7 +211,7 @@ function opf_loaddata(raw::RawData; time_horizon_start::Int=1, time_horizon_end:
         generators[i].Qc2min   = gen_arr[git,15]
         generators[i].Qc2max   = gen_arr[git,16]
         generators[i].ramp_agc = gen_arr[git,9] * ramp_scale  / baseMVA
-        generators[i].scen_agc = gen_arr[git,9] * 0.1  / baseMVA
+        generators[i].scen_agc = gen_arr[git,9] * ramp_scale * 0.1  / baseMVA
         generators[i].gentype  = costgen_arr[git,1]
         generators[i].startup  = costgen_arr[git,2]
         generators[i].shutdown = costgen_arr[git,3]
