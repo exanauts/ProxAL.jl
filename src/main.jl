@@ -81,7 +81,7 @@ function main()
     opt.allow_load_shed = false
     opt.add_quadratic_penalty = true
     opt.weight_quadratic_penalty = weight_quadratic_penalty
-    opt.weight_scencost = 1.0
+    opt.weight_scencost = 1.0 # 1/length(rawdata.ctgs_arr)
     opt.weight_loadshed = 0
     opt.weight_freqctrl = 0
     opt.ctgs_link_constr_type = ctgs_model
@@ -93,7 +93,7 @@ function main()
     ##
     params = AlgParams()
     params.ρ = maxρ
-    params.maxρ = maxρ
+    params.maxρ = maxρ # consider maxρ = 0.1 for pure sc_constr && freqctrl?
     params.τ = params.jacobi ? 3params.ρ : 0.0
     params.updateρ = (opt.num_time_periods > 1) ? !opt.add_quadratic_penalty : (opt.ctgs_link_constr_type == "corrective")
     params.mode = mode
