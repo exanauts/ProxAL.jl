@@ -1,4 +1,5 @@
 [deps]
+ArgParse = "c7e460c6-2fb9-53a9-8c5b-16f535851c63"
 Cairo = "159f3aea-2a34-519c-b102-8c37f9878175"
 Compose = "a81c6b42-2e10-5240-aca2-a61377ecd94b"
 Fontconfig = "186bb1d3-e1f7-5a2c-a377-96d770f13627"
