@@ -27,7 +27,7 @@ mutable struct AlgParams
         new(false,  # decompCtgs
             true,   # jacobi
             true,   # parallel
-            10,     # iterlim
+            100,    # iterlim
             100,    # nlpiterlim
             1e-4,   # tol
             1e-8,   # zero
@@ -117,7 +117,7 @@ function set_rho!(algparams::AlgParams;
     end
     algparams.maxρ_t = maxρ_t
     algparams.maxρ_c = maxρ_c
-    algparams.τ = algparams.jacobi ? ((algparams.decompCtgs && K > 1) ?
+    algparams.τ = algparams.jacobi ? ((algparams.decompCtgs && modelinfo.num_ctgs > 0) ?
                             3max(maxρ_t, maxρ_c) : 3maxρ_t) : 0.0
     return nothing
 end
