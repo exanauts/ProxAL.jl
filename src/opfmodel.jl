@@ -682,13 +682,12 @@ function compute_dual_error(x::PrimalSolution, xprev::PrimalSolution, λ::DualSo
             penalty_pg_ctgs_err .= -algparams.ρ_c[:,2:K,:].*penalty_pg_ctgs_err
             #----------------------------------------------------------------------------
 
-
-            err_pg[:,1,:] += sum(-true_pg_ctgs_dual .+ lagrangian_pg_ctgs_err .- penalty_pg_base_err; dims = 2)
+            err_pg[:,1,:] += dropdims(sum(-true_pg_ctgs_dual .+ lagrangian_pg_ctgs_err .- penalty_pg_base_err; dims = 2); dims = 2)
             err_pg[:,2:K,:] += true_pg_ctgs_dual .- lagrangian_pg_ctgs_err .- penalty_pg_ctgs_err .- prox_pg_err
             if modelinfo.ctgs_link_constr_type == :frequency_ctrl
                 for g=1:ngen
                     err_ωt[2:K,:] += opfdata.generators[g].alpha*(
-                                        -true_pg_ctgs_dual[g,2:K,:].+lagrangian_pg_ctgs_err[g,2:K,:].-
+                                        -true_pg_ctgs_dual[g,:,:].+lagrangian_pg_ctgs_err[g,:,:].-
                                         (algparams.ρ_c[g,2:K,:].*(
                                             pg_base[g,2:K,:] .- x.Pg[g,2:K,:] .+ (opfdata.generators[g].alpha*x.ωt[2:K,:])
                                         ))

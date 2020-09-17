@@ -115,9 +115,9 @@ function main()
     ##  Solve the model
     ##
     if algparams.mode ∈ [:nondecomposed, :lyapunov_bound]
-        result = solve_fullmodel(opfdata, rawdata; modelinfo = modelinfo, algparams = algparams)
+        solve_fullmodel(opfdata, rawdata; modelinfo = modelinfo, algparams = algparams)
     elseif algparams.mode == :coldstart
-        result = run_proxALM(opfdata, rawdata; modelinfo = modelinfo, algparams = algparams)
+        run_proxALM(opfdata, rawdata; modelinfo = modelinfo, algparams = algparams)
     end
 
     return nothing
