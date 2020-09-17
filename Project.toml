@@ -1,6 +1,7 @@
 [deps]
 ArgParse = "c7e460c6-2fb9-53a9-8c5b-16f535851c63"
 Cairo = "159f3aea-2a34-519c-b102-8c37f9878175"
+CatViews = "81a5f4ea-a946-549a-aa7e-2a7f63a27d31"
 Compose = "a81c6b42-2e10-5240-aca2-a61377ecd94b"
 Fontconfig = "186bb1d3-e1f7-5a2c-a377-96d770f13627"
 ForwardDiff = "f6369f11-7733-5829-9624-2563aa707210"
