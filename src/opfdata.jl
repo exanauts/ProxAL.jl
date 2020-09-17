@@ -87,6 +87,13 @@ mutable struct RawData
     ctgs_arr
 end
 
+##
+## Consider hard-coding a multiperiod load profile:
+## multiplier_hourly = [1.0, 1.08199882, 1.11509159, 1.13441867, 1.14755413, 1.15744821, 1.15517453, 1.15771819, 1.15604058, 1.15952428, 1.18587814, 1.22488686, 1.24967452, 1.22919352, 1.16712273, 1.08527516, 0.98558458, 0.89784627, 0.88171420, 0.86553416, 0.8489768, 0.84243794, 0.84521173, 0.90866251]
+## multiplier_minute = [1.0, 0.99961029, 0.99930348, 0.99907022, 0.99890119, 0.99878704, 0.99871845, 0.99868608, 0.99868059, 0.99869265, 0.99871293, 0.99873216, 0.99874886, 0.99877571, 0.99882691, 0.99891664, 0.9990591, 0.99926107, 0.99949027, 0.99970169, 0.99985026, 0.99989093, 0.99978076, 0.99951609, 0.99912816, 0.99864944, 0.99811239, 0.99754946, 0.99698767, 0.99644131, 0.99592287, 0.99544481, 0.99501961, 0.99465395, 0.99431417, 0.9939494, 0.99350871, 0.99294118, 0.99219837, 0.99130363, 0.99036111, 0.98947927, 0.98876657, 0.98833145, 0.98823171, 0.98837066, 0.98862223, 0.98886034, 0.98895895, 0.98880304, 0.9883816, 0.9877406, 0.98692657, 0.98598606, 0.98496561, 0.98391176, 0.98287107, 0.98189006, 0.98101529, 0.9802933]
+## Can cyclically repeat the multiplier_hourly profile
+##
+
 function RawData(case_name, scen_file::String="")
     bus_arr = readdlm(case_name * ".bus")
     branch_arr = readdlm(case_name * ".branch")
@@ -111,7 +118,12 @@ function ctgs_loaddata(raw::RawData, n)
     return raw.ctgs_arr[1:n]
 end
 
-function opf_loaddata(raw::RawData; time_horizon_start::Int=1, time_horizon_end::Int=0, load_scale::Float64=1.0, ramp_scale::Float64=0.0, lineOff=Line(), demand_from_rawdata::Int = 0)
+function opf_loaddata(raw::RawData;
+                      time_horizon_start::Int=1,
+                      time_horizon_end::Int=0,
+                      load_scale::Float64=1.0,
+                      ramp_scale::Float64=0.0,
+                      lineOff=Line())
     #
     # load buses
     #
@@ -122,10 +134,6 @@ function opf_loaddata(raw::RawData; time_horizon_start::Int=1, time_horizon_end:
     for i in 1:num_buses
         @assert bus_arr[i,1]>0  #don't support nonpositive bus ids
         bus_arr[i,9] *= pi/180 # ANIRUDH: Bus is an immutable struct. Modify bus_arr itself
-        if demand_from_rawdata > 0
-            bus_arr[i,3] = raw.pd_arr[i,demand_from_rawdata]
-            bus_arr[i,4] = raw.qd_arr[i,demand_from_rawdata]
-        end
         buses[i] = Bus(bus_arr[i,1:13]...)
         # buses[i].Va *= pi/180 # ANIRUDH: See previous comment
         if buses[i].bustype==3
