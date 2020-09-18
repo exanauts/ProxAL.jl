@@ -5,11 +5,9 @@ This is a Julia implementation of a parallel <ins>Prox</ins>imal <ins>A</ins>ugm
 
 ## Formulation
 The package is designed to solve ACOPF formulations over multiple time periods. The different time periods may have different active and reactive demands, and are linked together via active power ramping constraints: 
-```math
-\begin{aligned}
--r_g \leq p^0_{g,t-1} - p^0_{g,t} \leq r_g &\qquad \forall g \in G, \; \forall t \in T \setminus \{1\}.
-\end{aligned}
-```
+$$
+-r_g \leq p^0_{g,t-1} - p^0_{g,t} \leq r_g \qquad \forall g \in G, \; \forall t \in T \setminus \{1\}.
+$$
 Here, $p^0_{gt}$ denotes the 'base-case' active power generation level of generator $g \in G$ in time period $t \in T$, and $r_g$ denotes its ramping capacity (per unit of time in which $T$ is defined).
 
 Each single-period ACOPF problem may itself be constrained further by a set of transmission line contingencies, denoted by $K$. The active and reactive power generations, and bus voltages must satisfy the following constraints in each time period and each contingency: (i) the power flow equations, (ii) bounds on active and reactive generation and voltage magnitudes, and (iii) line power flow limits. The package allows constraint infeasibility (except variable bounds) by penalizing them in the objective function.
@@ -20,17 +18,13 @@ $$
 p_{gt}^k = p_{gt}^0 \qquad \forall g \in G, \; \forall k \in K, \; \forall t \in T.
 $$
 * Corrective mode: active power generation is allowed to deviate from base case.
-```math
-\begin{aligned}
-0.1\times r_g \leq p_{gt}^k - p_{gt}^0 \leq 0.1 \times r_g &\qquad \forall g \in G, \; \forall k \in K, \; \forall t \in T.
-\end{aligned}
-```
+$$
+0.1\times r_g \leq p_{gt}^k - p_{gt}^0 \leq 0.1 \times r_g \qquad \forall g \in G, \; \forall k \in K, \; \forall t \in T.
+$$
 * Frequency control mode: $\omega_{kt}$ is the (deviation from nominal) system frequency in contingency $k$ of time period $t$, and $\alpha_g$ is the droop control parameter of generator $g$. Note that $\omega_{kt}$ are additional decision variables in this case.
-```math
-\begin{aligned}
-p_{gt}^k = p_{gt}^0 + \alpha_g \omega_{kt} &\qquad \forall g \in G, \; \forall k \in K, \; \forall t \in T.
-\end{aligned}
-```
+$$
+p_{gt}^k = p_{gt}^0 + \alpha_g \omega_{kt} \qquad \forall g \in G, \; \forall k \in K, \; \forall t \in T.
+$$
 
 #### Overview of solution procedure
 The model is decomposed into smaller optimization blocks. The pacakge supports decomposition into (A) single-period multiple-contingency ACOPF problems, and (B) single-period single-contingency ACOPF problems.
