@@ -1,6 +1,3 @@
-## Texify files
-./tex/
-
 ## Core latex/pdflatex auxiliary files:
 *.aux
 *.lof
