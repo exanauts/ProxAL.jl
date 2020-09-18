@@ -1,6 +1,6 @@
 
 # ProxAL.jl
----
+
 This is a Julia implementation of a parallel <ins>Prox</ins>imal <ins>A</ins>ugmented <ins>L</ins>agrangian solver for solving multiperiod contingency-constrained ACOPF problems.
 
 ## Formulation
@@ -21,12 +21,12 @@ The contingencies in each time period are linked together via their active power
 * Frequency control mode: <img src="/tex/8f5f9043f2a55b3cbaaf5b1b8f638daf.svg?invert_in_darkmode&sanitize=true" align=middle width=22.463953049999994pt height=14.15524440000002pt/> is the (deviation from nominal) system frequency in contingency <img src="/tex/63bb9849783d01d91403bc9a5fea12a2.svg?invert_in_darkmode&sanitize=true" align=middle width=9.075367949999992pt height=22.831056599999986pt/> of time period <img src="/tex/4f4f4e395762a3af4575de74c019ebb5.svg?invert_in_darkmode&sanitize=true" align=middle width=5.936097749999991pt height=20.221802699999984pt/>, and <img src="/tex/f91ee1a747e7ea280b801a19c170e6ba.svg?invert_in_darkmode&sanitize=true" align=middle width=17.34161714999999pt height=14.15524440000002pt/> is the droop control parameter of generator <img src="/tex/3cf4fbd05970446973fc3d9fa3fe3c41.svg?invert_in_darkmode&sanitize=true" align=middle width=8.430376349999989pt height=14.15524440000002pt/>. Note that <img src="/tex/8f5f9043f2a55b3cbaaf5b1b8f638daf.svg?invert_in_darkmode&sanitize=true" align=middle width=22.463953049999994pt height=14.15524440000002pt/> are additional decision variables in this case.
 <p align="center"><img src="/tex/8dd0d6e9dea59f66a404b9288ab8989c.svg?invert_in_darkmode&sanitize=true" align=middle width=335.65056855pt height=21.07942155pt/></p>
 
-#### Overview of solution procedure
+#### Algorithm
 The model is decomposed into smaller optimization blocks. The pacakge supports decomposition into (A) single-period multiple-contingency ACOPF problems, and (B) single-period single-contingency ACOPF problems.
 
 This decomposition is achieved by formulating an Augmented Lagrangian with respect to the coupling constraints: in decomposition mode (A), these are the ramping constraints; and in mode (B), these are the ramping as well as contingency-linking constraints.
 
-The formulation is then solved using an iterative ADMM-like Jacobi scheme with a particular choice of proximal weights, by updating first the primal variables (e.g., power generations and voltages) and then the dual variables of the coupling constraints. The Jacobi nature of the update implies that the single-block optimization problems can be solved in parallel. The package allows for the parallel solution of these problems using Julia's `Distributed` computing package.
+The decomposed formulation is solved using an iterative ADMM-like Jacobi scheme with a particular choice of proximal weights, by updating first the primal variables (e.g., power generations and voltages) and then the dual variables of the coupling constraints. The Jacobi nature of the update implies that the single-block optimization problems can be solved in parallel. The package allows for the parallel solution of these problems using Julia's `Distributed` computing package.
 
 
 ## Usage
