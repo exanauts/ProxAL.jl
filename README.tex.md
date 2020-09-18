@@ -17,9 +17,7 @@ Each single-period ACOPF problem may itself be constrained further by a set of t
 The contingencies in each time period are linked together via their active power generations in one of several ways:
 * Preventive mode: active power generation in contingency $k$ must be equal to the base case value.
 $$
-\begin{aligned}
-p_{gt}^k = p_{gt}^0 &\qquad \forall g \in G, \; \forall k \in K, \; \forall t \in T.
-\end{aligned}
+p_{gt}^k = p_{gt}^0 \qquad \forall g \in G, \; \forall k \in K, \; \forall t \in T.
 $$
 * Corrective mode: active power generation is allowed to deviate from base case.
 ```math
