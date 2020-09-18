@@ -1,6 +1,6 @@
 
 # ProxAL.jl
----
+
 This is a Julia implementation of a parallel <ins>Prox</ins>imal <ins>A</ins>ugmented <ins>L</ins>agrangian solver for solving multiperiod contingency-constrained ACOPF problems.
 
 ## Formulation
@@ -29,12 +29,12 @@ $$
 p_{gt}^k = p_{gt}^0 + \alpha_g \omega_{kt} \qquad \forall g \in G, \; \forall k \in K, \; \forall t \in T.
 $$
 
-#### Overview of solution procedure
+#### Algorithm
 The model is decomposed into smaller optimization blocks. The pacakge supports decomposition into (A) single-period multiple-contingency ACOPF problems, and (B) single-period single-contingency ACOPF problems.
 
 This decomposition is achieved by formulating an Augmented Lagrangian with respect to the coupling constraints: in decomposition mode (A), these are the ramping constraints; and in mode (B), these are the ramping as well as contingency-linking constraints.
 
-The formulation is then solved using an iterative ADMM-like Jacobi scheme with a particular choice of proximal weights, by updating first the primal variables (e.g., power generations and voltages) and then the dual variables of the coupling constraints. The Jacobi nature of the update implies that the single-block optimization problems can be solved in parallel. The package allows for the parallel solution of these problems using Julia's `Distributed` computing package.
+The decomposed formulation is solved using an iterative ADMM-like Jacobi scheme with a particular choice of proximal weights, by updating first the primal variables (e.g., power generations and voltages) and then the dual variables of the coupling constraints. The Jacobi nature of the update implies that the single-block optimization problems can be solved in parallel. The package allows for the parallel solution of these problems using Julia's `Distributed` computing package.
 
 
 ## Usage
