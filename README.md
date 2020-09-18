@@ -5,9 +5,7 @@ This is a Julia implementation of a parallel <ins>Prox</ins>imal <ins>A</ins>ugm
 
 ## Formulation
 The package is designed to solve ACOPF formulations over multiple time periods. The different time periods may have different active and reactive demands, and are linked together via active power ramping constraints: 
-```math
-<p align="center"><img src="/tex/9ac0b6eb3c993e1889a33ddefbaab6de.svg?invert_in_darkmode&sanitize=true" align=middle width=360.36845295pt height=20.50407645pt/></p>
-```
+<p align="center"><img src="/tex/dab070c129794de37ee7b4d14f8c98e3.svg?invert_in_darkmode&sanitize=true" align=middle width=360.36855855pt height=20.50407645pt/></p>
 Here, <img src="/tex/b7f7e41df22c4f37982c13f9954f1269.svg?invert_in_darkmode&sanitize=true" align=middle width=20.06232689999999pt height=26.76175259999998pt/> denotes the 'base-case' active power generation level of generator <img src="/tex/934f5567293e2a26bf35336e0fd652dd.svg?invert_in_darkmode&sanitize=true" align=middle width=41.44613879999999pt height=22.465723500000017pt/> in time period <img src="/tex/2b2595d381c04d836f219b7837ded4c2.svg?invert_in_darkmode&sanitize=true" align=middle width=37.916549549999985pt height=22.465723500000017pt/>, and <img src="/tex/4364b58caba8ae1923651f1ca93c1515.svg?invert_in_darkmode&sanitize=true" align=middle width=14.24229014999999pt height=14.15524440000002pt/> denotes its ramping capacity (per unit of time in which <img src="/tex/2f118ee06d05f3c2d98361d9c30e38ce.svg?invert_in_darkmode&sanitize=true" align=middle width=11.889314249999991pt height=22.465723500000017pt/> is defined).
 
 Each single-period ACOPF problem may itself be constrained further by a set of transmission line contingencies, denoted by <img src="/tex/d6328eaebbcd5c358f426dbea4bdbf70.svg?invert_in_darkmode&sanitize=true" align=middle width=15.13700594999999pt height=22.465723500000017pt/>. The active and reactive power generations, and bus voltages must satisfy the following constraints in each time period and each contingency: (i) the power flow equations, (ii) bounds on active and reactive generation and voltage magnitudes, and (iii) line power flow limits. The package allows constraint infeasibility (except variable bounds) by penalizing them in the objective function.
@@ -16,13 +14,9 @@ The contingencies in each time period are linked together via their active power
 * Preventive mode: active power generation in contingency <img src="/tex/63bb9849783d01d91403bc9a5fea12a2.svg?invert_in_darkmode&sanitize=true" align=middle width=9.075367949999992pt height=22.831056599999986pt/> must be equal to the base case value.
 <p align="center"><img src="/tex/e66380417fa5ee8b54371ab112c1c7a2.svg?invert_in_darkmode&sanitize=true" align=middle width=274.1100219pt height=21.07942155pt/></p>
 * Corrective mode: active power generation is allowed to deviate from base case.
-```math
-<p align="center"><img src="/tex/6d11b26a7afd8c07222c68c1aaccce06.svg?invert_in_darkmode&sanitize=true" align=middle width=428.43874095pt height=21.07942155pt/></p>
-```
+<p align="center"><img src="/tex/4e513d0a529fee5cb6a55043c6f99ccd.svg?invert_in_darkmode&sanitize=true" align=middle width=428.43887954999997pt height=21.07942155pt/></p>
 * Frequency control mode: <img src="/tex/8f5f9043f2a55b3cbaaf5b1b8f638daf.svg?invert_in_darkmode&sanitize=true" align=middle width=22.463953049999994pt height=14.15524440000002pt/> is the (deviation from nominal) system frequency in contingency <img src="/tex/63bb9849783d01d91403bc9a5fea12a2.svg?invert_in_darkmode&sanitize=true" align=middle width=9.075367949999992pt height=22.831056599999986pt/> of time period <img src="/tex/4f4f4e395762a3af4575de74c019ebb5.svg?invert_in_darkmode&sanitize=true" align=middle width=5.936097749999991pt height=20.221802699999984pt/>, and <img src="/tex/f91ee1a747e7ea280b801a19c170e6ba.svg?invert_in_darkmode&sanitize=true" align=middle width=17.34161714999999pt height=14.15524440000002pt/> is the droop control parameter of generator <img src="/tex/3cf4fbd05970446973fc3d9fa3fe3c41.svg?invert_in_darkmode&sanitize=true" align=middle width=8.430376349999989pt height=14.15524440000002pt/>. Note that <img src="/tex/8f5f9043f2a55b3cbaaf5b1b8f638daf.svg?invert_in_darkmode&sanitize=true" align=middle width=22.463953049999994pt height=14.15524440000002pt/> are additional decision variables in this case.
-```math
-<p align="center"><img src="/tex/ce3abef00d04e8cd329f0b9959cfbccc.svg?invert_in_darkmode&sanitize=true" align=middle width=335.6504976pt height=21.07942155pt/></p>
-```
+<p align="center"><img src="/tex/8dd0d6e9dea59f66a404b9288ab8989c.svg?invert_in_darkmode&sanitize=true" align=middle width=335.65056855pt height=21.07942155pt/></p>
 
 #### Overview of solution procedure
 The model is decomposed into smaller optimization blocks. The pacakge supports decomposition into (A) single-period multiple-contingency ACOPF problems, and (B) single-period single-contingency ACOPF problems.
