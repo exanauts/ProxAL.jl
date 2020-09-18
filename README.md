@@ -14,7 +14,7 @@ Each single-period ACOPF problem may itself be constrained further by a set of t
 
 The contingencies in each time period are linked together via their active power generations in one of several ways:
 * Preventive mode: active power generation in contingency <img src="/tex/63bb9849783d01d91403bc9a5fea12a2.svg?invert_in_darkmode&sanitize=true" align=middle width=9.075367949999992pt height=22.831056599999986pt/> must be equal to the base case value.
-<p align="center"><img src="/tex/630409f9ca989f2f082382369f8afe8a.svg?invert_in_darkmode&sanitize=true" align=middle width=274.10997735pt height=21.07942155pt/></p>
+<p align="center"><img src="/tex/e66380417fa5ee8b54371ab112c1c7a2.svg?invert_in_darkmode&sanitize=true" align=middle width=274.1100219pt height=21.07942155pt/></p>
 * Corrective mode: active power generation is allowed to deviate from base case.
 ```math
 <p align="center"><img src="/tex/6d11b26a7afd8c07222c68c1aaccce06.svg?invert_in_darkmode&sanitize=true" align=middle width=428.43874095pt height=21.07942155pt/></p>
