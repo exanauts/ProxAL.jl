@@ -8,6 +8,7 @@ The package is designed to solve ACOPF formulations over multiple time periods. 
 $$
 -r_g \leq p^0_{g,t-1} - p^0_{g,t} \leq r_g \qquad \forall g \in G, \; \forall t \in T \setminus \{1\}.
 $$
+
 Here, $p^0_{gt}$ denotes the 'base-case' active power generation level of generator $g \in G$ in time period $t \in T$, and $r_g$ denotes its ramping capacity (per unit of time in which $T$ is defined).
 
 Each single-period ACOPF problem may itself be constrained further by a set of transmission line contingencies, denoted by $K$. The active and reactive power generations, and bus voltages must satisfy the following constraints in each time period and each contingency: (i) the power flow equations, (ii) bounds on active and reactive generation and voltage magnitudes, and (iii) line power flow limits. The package allows constraint infeasibility (except variable bounds) by penalizing them in the objective function.
