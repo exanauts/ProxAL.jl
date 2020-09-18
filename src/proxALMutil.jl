@@ -1,4 +1,4 @@
-using Plots, Measures, LaTeXStrings
+using Plots, LaTeXStrings
 
 mutable struct ProxALMData
     opfBlockData::OPFBlockData
@@ -190,16 +190,17 @@ function print_runinfo(runinfo::ProxALMData, opfdata::OPFData;
 end
 
 function options_plot(plt)
+    fsz = 20
     plot!(plt,
-          linewidth = 2.0,
+          fontfamily = "Computer-Modern",
           yscale = :log10,
           framestyle = :box,
-          ylim = [1e-4, 2e+1],
-          xtickfontsize = 18,
-          ytickfontsize = 18,
-          guidefontsize = 18,
-          titlefontsize = 18,
-          legendfontsize = 18,
+          ylim = [1e-4, 1e+1],
+          xtickfontsize = fsz,
+          ytickfontsize = fsz,
+          guidefontsize = fsz,
+          titlefontsize = fsz,
+          legendfontsize = fsz,
           size = (800, 800)
     )
 end
@@ -208,7 +209,7 @@ function initialize_plot()
     gr()
     label = [L"|p^0_{gt} - p^0_{g,t-1}| - r_g"
              L"|p^k_{gt} - p^0_{gt} - \alpha_g \omega^k_t|"
-             L"|\mathrm{KKT}|"
+             L"|\textrm{\sffamily KKT}|"
              L"|x-x^*|"
              L"|\lambda-\lambda^*|"
              L"|c(x)-c(x^*)|/c(x^*)"
@@ -217,7 +218,10 @@ function initialize_plot()
     any .= Any[[1,1]]
     plt = plot([Inf, Inf], any,
                 lab = reshape(label, 1, length(label)),
-                xlabel=L"\mathrm{Iteration}")
+                lw = 2.5,
+                # markersize = 2.5,
+                # markershape = :auto,
+                xlabel=L"\textrm{\sffamily Iteration}")
     options_plot(plt)
     return plt
 end
