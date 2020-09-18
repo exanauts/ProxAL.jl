@@ -18,10 +18,12 @@ The contingencies in each time period are linked together via their active power
 $$
 p_{gt}^k = p_{gt}^0 \qquad \forall g \in G, \; \forall k \in K, \; \forall t \in T.
 $$
+
 * Corrective mode: active power generation is allowed to deviate from base case.
 $$
 0.1\times r_g \leq p_{gt}^k - p_{gt}^0 \leq 0.1 \times r_g \qquad \forall g \in G, \; \forall k \in K, \; \forall t \in T.
 $$
+
 * Frequency control mode: $\omega_{kt}$ is the (deviation from nominal) system frequency in contingency $k$ of time period $t$, and $\alpha_g$ is the droop control parameter of generator $g$. Note that $\omega_{kt}$ are additional decision variables in this case.
 $$
 p_{gt}^k = p_{gt}^0 + \alpha_g \omega_{kt} \qquad \forall g \in G, \; \forall k \in K, \; \forall t \in T.
