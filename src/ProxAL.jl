@@ -1,7 +1,22 @@
 #
 # proximal ALM implementation
 #
+module ProxAL
 
+using JuMP, Ipopt
+using Printf, CatViews
+using Distributed, SharedArrays
+using LinearAlgebra
+
+include("../src/params.jl")
+include("../src/opfdata.jl")
+include("../src/opfsolution.jl")
+include("../src/opfmodel.jl")
+include("../src/opfblocks.jl")
+include("../src/proxALMutil.jl")
+
+export RawData, ModelParams, AlgParams
+export opf_loaddata, solve_fullmodel, run_proxALM, set_rho!
 
 function run_proxALM(opfdata::OPFData, rawdata::RawData;
                      modelinfo::ModelParams = ModelParams(),
@@ -262,3 +277,5 @@ function update_dual_vars(λ::DualSolution, opfdata::OPFData;
 
     return maxviol_t, maxviol_c
 end
+
+end # module

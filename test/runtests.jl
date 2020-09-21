@@ -1,23 +1,11 @@
-import Pkg
-Pkg.activate("..")
-Pkg.instantiate()
-
 using Test
+using ProxAL
 using DelimitedFiles, Printf
 using Distributed
 using SharedArrays, LinearAlgebra, JuMP, Ipopt
 using CatViews
 
 ENV["GKSwstype"]="nul"
-
-include("../src/params.jl")
-include("../src/opfdata.jl")
-include("../src/opfsolution.jl")
-include("../src/opfmodel.jl")
-include("../src/opfblocks.jl")
-include("../src/proxALMutil.jl")
-include("../src/proxALM.jl")
-
 
 case = "case9"
 T = 2
@@ -28,8 +16,8 @@ quad_penalty = 0.1
 rtol = 1e-4
 
 # Load case
-case_file = joinpath("../data/", case)
-load_file = joinpath("../data/mp_demand/", case*"_oneweek_168")
+case_file = joinpath(dirname(@__FILE__), "../data/$case")
+load_file = joinpath(dirname(@__FILE__), "../data/mp_demand/$(case)_oneweek_168")
 rawdata = RawData(case_file, load_file)
 ctgs_arr = deepcopy(rawdata.ctgs_arr)
 
