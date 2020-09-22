@@ -1,29 +1,14 @@
 using Distributed
-@everywhere const current_dir = @__DIR__
 
-include(joinpath(current_dir, "usage.jl"))
-
-PARSED_ARGS = parse_commandline()
+@everywhere using Pkg
+@everywhere Pkg.activate(joinpath(dirname(@__FILE__), ".."))
+@everywhere Pkg.instantiate()
+@everywhere using ProxAL
 
 ENV["GKSwstype"]="nul"
 
-@everywhere using Pkg
-@everywhere Pkg.activate(joinpath(current_dir, ".."))
-@everywhere Pkg.instantiate()
-@everywhere begin
-    using DelimitedFiles, Printf
-    using SharedArrays, LinearAlgebra, JuMP, Ipopt
-    using CatViews
-
-    include(joinpath(current_dir, "params.jl"))
-    include(joinpath(current_dir, "opfdata.jl"))
-    include(joinpath(current_dir, "opfsolution.jl"))
-    include(joinpath(current_dir, "opfmodel.jl"))
-    include(joinpath(current_dir, "opfblocks.jl"))
-end
-
-include(joinpath(current_dir, "proxALMutil.jl"))
-include(joinpath(current_dir, "proxALM.jl"))
+include(joinpath(dirname(@__FILE__), "usage.jl"))
+PARSED_ARGS = parse_commandline()
 
 function main()
     case = PARSED_ARGS["case"]
@@ -42,10 +27,10 @@ function main()
 
     if unit == "minute"
         tlim = 60
-        load_file = joinpath(current_dir, "../data/mp_demand/", case*"_onehour_60")
+        load_file = joinpath(dirname(@__FILE__), "../data/mp_demand/$(case)_onehour_60")
     elseif unit == "hour"
         tlim = 168
-        load_file = joinpath(current_dir, "../data/mp_demand/", case*"_oneweek_168")
+        load_file = joinpath(dirname(@__FILE__), "../data/mp_demand/$(case)_oneweek_168")
     end
     if T > tlim
         T = tlim
@@ -56,7 +41,7 @@ function main()
     ##
     ## Load the case data
     ##
-    case_file = joinpath(current_dir, "../data/", case)
+    case_file = joinpath(dirname(@__FILE__), "../data/$(case)")
     rawdata = RawData(case_file, load_file)
     if K > length(rawdata.ctgs_arr)
         K = length(rawdata.ctgs_arr)
@@ -102,9 +87,9 @@ function main()
              maxρ_t = maxρ,
              maxρ_c = maxρ)
     algparams.mode = mode
-    algparams.verbose = 2
+    algparams.verbose = 1 # level of output: 0 (none), 1 (stdout), 2 (+plots), 3 (+outfiles)
     if algparams.verbose > 1
-        outdir = joinpath(current_dir, "./outfiles/")
+        outdir = joinpath(dirname(@__FILE__), "./outfiles/")
         if !ispath(outdir)
             mkdir(outdir)
         end
