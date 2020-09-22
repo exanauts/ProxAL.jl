@@ -3,7 +3,7 @@
 #
 module ProxAL
 
-using JuMP, Ipopt
+using JuMP
 using Printf, CatViews
 using Distributed, SharedArrays
 using LinearAlgebra
