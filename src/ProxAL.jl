@@ -87,7 +87,9 @@ function run_proxALM(opfdata::OPFData, rawdata::RawData;
     #------------------------------------------------------------------------------------
     function dual_update()
         elapsed_t = @elapsed begin
-            runinfo.maxviol_t, runinfo.maxviol_c = update_dual_vars(λ, opfdata; primal = x, modelinfo = modelinfo, algparams = algparams)
+            maxviol_t, maxviol_c = update_dual_vars(λ, opfdata; primal = x, modelinfo = modelinfo, algparams = algparams)
+            push!(runinfo.maxviol_t, maxviol_t)
+            push!(runinfo.maxviol_c, maxviol_c)
         end
         runinfo.wall_time_elapsed_actual += elapsed_t
         runinfo.wall_time_elapsed_ideal += elapsed_t
@@ -140,13 +142,13 @@ function run_proxALM(opfdata::OPFData, rawdata::RawData;
         # Prox update
         proximal_update()
 
-        # Write output
-        print_runinfo(runinfo, opfdata;
-                      modelinfo = modelinfo,
-                      algparams = algparams)
+        # Update counters and write output
+        update_runinfo(runinfo, opfdata;
+                       modelinfo = modelinfo,
+                       algparams = algparams)
 
         # Check convergence
-        if max(runinfo.maxviol_t, runinfo.maxviol_c, runinfo.maxviol_d) <= algparams.tol
+        if max(runinfo.maxviol_t[end], runinfo.maxviol_c[end], runinfo.maxviol_d[end]) <= algparams.tol
             break
         end
     end
