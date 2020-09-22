@@ -32,6 +32,55 @@ The decomposed formulation is solved using an iterative ADMM-like Jacobi scheme 
 ## Usage
 The package can be used from the terminal or from within an existing Julia code or REPL.
 
+### Julia REPL
+The package can also be called from existing Julia code. An example follows. First, install `ProxAL` via the Julia package manager (type `]`):
+```julia
+pkg> add git@github.com:exanauts/ProxAL.jl.git
+pkg> test ProxAL
+```
+Next, set up and solve the problem as follows. Note that all case files are stored in the `data/` subdirectory. For a full list of model and algorithmic options, see `src/proxALMutil.jl`.
+```julia
+using ProxAL
+
+# Model/formulation settings
+modelinfo = ModelParams()
+modelinfo.case_name = "case9"
+modelinfo.num_time_periods = 2
+modelinfo.num_ctgs = 1
+modelinfo.weight_quadratic_penalty_time = 0.1
+modelinfo.weight_freq_ctrl = 0.1
+modelinfo.time_link_constr_type = :penalty
+modelinfo.ctgs_link_constr_type = :frequency_ctrl
+
+# Load case
+case_file = "data/<img src="/tex/bcb6330a597a0a637eb668bf57050a3b.svg?invert_in_darkmode&sanitize=true" align=middle width=389.13546045pt height=24.65753399999998pt/>(modelinfo.case_name)_oneweek_168"
+rawdata = RawData(case_file, load_file)
+opfdata = opf_loaddata(rawdata;
+                       time_horizon_start = 1,
+                       time_horizon_end = modelinfo.num_time_periods,
+                       load_scale = modelinfo.load_scale,
+                       ramp_scale = modelinfo.ramp_scale)
+
+# Algorithm settings
+algparams = AlgParams()
+algparams.parallel = false
+algparams.decompCtgs = false
+algparams.verbose = 0
+maxρ = 0.1
+set_rho!(algparams;
+         ngen = length(opfdata.generators),
+         modelinfo = modelinfo,
+         maxρ_t = maxρ,
+         maxρ_c = maxρ)
+algparams.mode = :coldstart
+
+if algparams.mode ∈ [:nondecomposed, :lyapunov_bound]
+    solve_fullmodel(opfdata, rawdata; modelinfo = modelinfo, algparams = algparams)
+elseif algparams.mode == :coldstart
+    run_proxALM(opfdata, rawdata; modelinfo = modelinfo, algparams = algparams)
+end
+```
+
 ### Terminal
 Enter `julia src/main.jl --help` to get a help message:
 ```
@@ -79,48 +128,5 @@ A typical call might look as follows:
 ```julia
 julia src/main.jl case9 --T=2 --Ctgs=1 --time_unit=hour --ramp_value=0.5 --load_scale=1.0 --ramp_constr=penalty --Ctgs_constr=frequency_ctrl --auglag_rho=0.1 --quad_penalty=0.1 --compute_mode=coldstart
 ```
-All case files are stored in the `data/` subdirectory and pulled from there. To use multiple processes (say 2 processes), modify the `julia` call to `julia -p 2`.
+To use multiple processes (say 2 processes), modify the `julia` call to `julia -p 2`.
 
-### Julia REPL
-The package can also be called from existing Julia code. An example follows.
-```julia
-
-# Model/formulation settings
-modelinfo = ModelParams()
-modelinfo.case_name = "case9"
-modelinfo.num_time_periods = 2
-modelinfo.num_ctgs = 1
-modelinfo.weight_quadratic_penalty_time = 0.1
-modelinfo.weight_freq_ctrl = 0.1
-modelinfo.time_link_constr_type = :penalty
-modelinfo.ctgs_link_constr_type = :frequency_ctrl
-
-# Load case
-case_file = joinpath("data/case9", modelinfo.case_name)
-load_file = joinpath("data/mp_demand/", modelinfo.case_name * "case9_oneweek_168")
-rawdata = RawData(case_file, load_file)
-opfdata = opf_loaddata(rawdata;
-                       time_horizon_start = 1,
-                       time_horizon_end = modelinfo.num_time_periods,
-                       load_scale = modelinfo.load_scale,
-                       ramp_scale = modelinfo.ramp_scale)
-
-# Algorithm settings
-algparams = AlgParams()
-algparams.parallel = false
-algparams.decompCtgs = false
-algparams.verbose = 0
-maxρ = 0.1
-set_rho!(algparams;
-         ngen = length(opfdata.generators),
-         modelinfo = modelinfo,
-         maxρ_t = maxρ,
-         maxρ_c = maxρ)
-algparams.mode = :coldstart
-
-if algparams.mode ∈ [:nondecomposed, :lyapunov_bound]
-    solve_fullmodel(opfdata, rawdata; modelinfo = modelinfo, algparams = algparams)
-elseif algparams.mode == :coldstart
-    run_proxALM(opfdata, rawdata; modelinfo = modelinfo, algparams = algparams)
-end
-```
