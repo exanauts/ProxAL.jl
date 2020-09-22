@@ -41,7 +41,7 @@ The decomposed formulation is solved using an iterative ADMM-like Jacobi scheme 
 The package can be used from the terminal or from within an existing Julia code or REPL.
 
 ### Julia REPL
-The package can also be called from existing Julia code. An example follows. First, install `ProxAL` via the Julia package manager (type `]`):
+Install `ProxAL` via the Julia package manager (type `]`):
 ```julia
 pkg> add git@github.com:exanauts/ProxAL.jl.git
 pkg> test ProxAL
@@ -61,8 +61,8 @@ modelinfo.time_link_constr_type = :penalty
 modelinfo.ctgs_link_constr_type = :frequency_ctrl
 
 # Load case
-case_file = "data/$(modelinfo.case_name)"
-load_file = "data/mp_demand/$(modelinfo.case_name)_oneweek_168"
+case_file = "data/" * modelinfo.case_name
+load_file = "data/mp_demand/" * modelinfo.case_name * "_oneweek_168"
 rawdata = RawData(case_file, load_file)
 opfdata = opf_loaddata(rawdata;
                        time_horizon_start = 1,
