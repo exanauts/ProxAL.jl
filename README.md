@@ -1,11 +1,6 @@
 
 # ProxAL.jl
 
-| **Build Status**                                              |
-|:-------------------------------------------------------------:|
-| ![Run tests](https://github.com/exanauts/ProxAL.jl/workflows/Run%20tests/badge.svg?branch=master) | 
-
-
 This is a Julia implementation of a parallel <ins>Prox</ins>imal <ins>A</ins>ugmented <ins>L</ins>agrangian solver for solving multiperiod contingency-constrained ACOPF problems.
 
 ## Formulation
