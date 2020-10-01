@@ -4,29 +4,27 @@ This is a Julia implementation of a parallel <ins>Prox</ins>imal <ins>A</ins>ugm
 
 ## Formulation
 The package is designed to solve ACOPF formulations over multiple time periods. The different time periods may have different active and reactive demands, and are linked together via active power ramping constraints: 
-$$
--r_g \leq p^0_{g,t-1} - p^0_{g,t} \leq r_g \qquad \forall g \in G, \; \forall t \in T \setminus \{1\}.
-$$
 
-Here, $p^0_{gt}$ denotes the 'base-case' active power generation level of generator $g \in G$ in time period $t \in T$, and $r_g$ denotes its ramping capacity (per unit of time in which $T$ is defined).
+``-r_g \leq p^0_{g,t-1} - p^0_{g,t} \leq r_g \qquad \forall g \in G, \; \forall t \in T \setminus \{1\}.``
 
-Each single-period ACOPF problem may itself be constrained further by a set of transmission line contingencies, denoted by $K$. The active and reactive power generations, and bus voltages must satisfy the following constraints in each time period and each contingency: (i) the power flow equations, (ii) bounds on active and reactive generation and voltage magnitudes, and (iii) line power flow limits. The package allows constraint infeasibility (except variable bounds) by penalizing them in the objective function.
+Here, ``p^0_{gt}`` denotes the 'base-case' active power generation level of generator ``g \in G`` in time period ``t \in T``, and ``r_g`` denotes its ramping capacity (per unit of time in which ``T`` is defined).
+
+Here, ``p^0_{gt}`` denotes the 'base-case' active power generation level of generator ``g \in G`` in time period ``t \in T``, and ``r_g`` denotes its ramping capacity (per unit of time in which ``T`` is defined).
+
+Each single-period ACOPF problem may itself be constrained further by a set of transmission line contingencies, denoted by ``K``. The active and reactive power generations, and bus voltages must satisfy the following constraints in each time period and each contingency: (i) the power flow equations, (ii) bounds on active and reactive generation and voltage magnitudes, and (iii) line power flow limits. The package allows constraint infeasibility (except variable bounds) by penalizing them in the objective function.
 
 The contingencies in each time period are linked together via their active power generations in one of several ways:
 * Preventive mode: active power generation in contingency $k$ must be equal to the base case value.
-$$
-p_{gt}^k = p_{gt}^0 \qquad \forall g \in G, \; \forall k \in K, \; \forall t \in T.
-$$
+
+  ``p_{gt}^k = p_{gt}^0 \qquad \forall g \in G, \; \forall k \in K, \; \forall t \in T.``
 
 * Corrective mode: active power generation is allowed to deviate from base case.
-$$
-0.1\times r_g \leq p_{gt}^k - p_{gt}^0 \leq 0.1 \times r_g \qquad \forall g \in G, \; \forall k \in K, \; \forall t \in T.
-$$
+
+  ``0.1\times r_g \leq p_{gt}^k - p_{gt}^0 \leq 0.1 \times r_g \qquad \forall g \in G, \; \forall k \in K, \; \forall t \in T``
 
 * Frequency control mode: $\omega_{kt}$ is the (deviation from nominal) system frequency in contingency $k$ of time period $t$, and $\alpha_g$ is the droop control parameter of generator $g$. Note that $\omega_{kt}$ are additional decision variables in this case.
-$$
-p_{gt}^k = p_{gt}^0 + \alpha_g \omega_{kt} \qquad \forall g \in G, \; \forall k \in K, \; \forall t \in T.
-$$
+
+  ``p_{gt}^k = p_{gt}^0 + \alpha_g \omega_{kt} \qquad \forall g \in G, \; \forall k \in K, \; \forall t \in T.``
 
 #### Algorithm
 The model is decomposed into smaller optimization blocks. The pacakge supports decomposition into (A) single-period multiple-contingency ACOPF problems, and (B) single-period single-contingency ACOPF problems.
@@ -125,12 +123,12 @@ optional arguments:
 ```
 
 
-> **NOTE:** The `--ramp_constr=equality` and `--ramp_constr=penalty` options convert the inequality form of the ramping constraints (see above) into equality constraints by introducing additional slack variables $0 \leq s_{gt} \leq 2r_g$.
->
-> * In the case of `--ramp_constr=equality`, the ramping constraints are then converted to: $p^0_{g,t-1} - p^0_{gt} + s_{gt} = r_g$.
-> * In the case of `--ramp_constr=penalty`, further additional (unconstrained) variables $z_{gt}$ are introduced, and the ramping constraints are converted to: $p^0_{g,t-1} - p^0_{gt} + s_{gt} + z_{gt} = r_g$. An additional term QPEN$\cdot\Vert z \rVert^2$ is added to the objective function, where QPEN is set using the `--quad_penalty=...` option to the program.
->
-> An analogous comment applies to the `--Ctgs_constr={corrective_equality, corrective_penalty, preventive_penalty}` options.
+!!! note 
+    The `--ramp_constr=equality` and `--ramp_constr=penalty` options convert the inequality form of the ramping constraints (see above) into equality constraints by introducing additional slack variables $0 \leq s_{gt} \leq 2r_g$.
+    * In the case of `--ramp_constr=equality`, the ramping constraints are then converted to: $p^0_{g,t-1} - p^0_{gt} + s_{gt} = r_g$.
+    * In the case of `--ramp_constr=penalty`, further additional (unconstrained) variables $z_{gt}$ are introduced, and the ramping constraints are converted to: $p^0_{g,t-1} - p^0_{gt} + s_{gt} + z_{gt} = r_g$. An additional term QPEN$\cdot\Vert z \rVert^2$ is added to the objective function, where QPEN is set using the `--quad_penalty=...` option to the program.
+
+    An analogous comment applies to the `--Ctgs_constr={corrective_equality, corrective_penalty, preventive_penalty}` options.
 
 A typical call might look as follows:
 ```julia
