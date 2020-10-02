@@ -2,13 +2,12 @@ using Test
 using ProxAL
 using DelimitedFiles, Printf
 using Distributed
-using SharedArrays, LinearAlgebra, JuMP, Ipopt
+using SharedArrays, LinearAlgebra, JuMP
 using CatViews
 
 ENV["GKSwstype"]="nul"
 DATA_DIR = joinpath(dirname(@__FILE__), "..", "data")
 case = "case9"
-
 @testset "Test ProxAL on $(case)" begin
     T = 2
     ramp_scale = 0.5
