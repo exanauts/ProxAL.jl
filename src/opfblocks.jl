@@ -5,12 +5,13 @@ mutable struct OPFBlockData
     blkCount::Int64
     blkIndex::CartesianIndices
     blkModel::Vector{JuMP.Model}
+    blkOptimizer
     blkOpfdt::Vector{OPFData}
     blkMInfo::Vector{ModelParams}
     colCount::Int64
     colValue::Array{Float64,2}
 
-    function OPFBlockData(opfdata::OPFData, rawdata::RawData;
+    function OPFBlockData(opfdata::OPFData, rawdata::RawData, optimizer;
                           modelinfo::ModelParams = ModelParams(),
                           algparams::AlgParams = AlgParams())
         ngen  = length(opfdata.generators)
@@ -58,7 +59,7 @@ mutable struct OPFBlockData
         end
 
 
-        new(blkCount,blkIndex,blkModel,blkOpfdt,blkMInfo,colCount,colValue)
+        new(blkCount,blkIndex,blkModel,optimizer,blkOpfdt,blkMInfo,colCount,colValue)
     end
 end
 
@@ -66,9 +67,7 @@ function opf_block_model_initialize(blk::Int, opfblocks::OPFBlockData, rawdata::
                                     algparams::AlgParams)
     @assert blk >= 1 && blk <= opfblocks.blkCount
 
-    opfmodel = JuMP.Model(optimizer_with_attributes(Ipopt.Optimizer,
-                                                    "print_level" => Int64(algparams.verbose > 0)*2,
-                                                    "max_iter" => algparams.nlpiterlim))
+    opfmodel = JuMP.Model(opfblocks.blkOptimizer)
     opfdata = opfblocks.blkOpfdt[blk]
     modelinfo = opfblocks.blkMInfo[blk]
     Kblock = modelinfo.num_ctgs + 1
