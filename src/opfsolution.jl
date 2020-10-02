@@ -16,7 +16,7 @@ mutable struct PrimalSolution
     sigma_lineFr
     sigma_lineTo
 
-    function PrimalSolution(opfdata::OPFData; modelinfo::ModelParams = ModelParams())
+    function PrimalSolution(opfdata::OPFData, modelinfo::ModelParams) 
         buses = opfdata.buses
         gens  = opfdata.generators
         ngen  = length(gens)
@@ -79,7 +79,7 @@ mutable struct DualSolution
     ctgs_p
     ctgs_n
 
-    function DualSolution(opfdata::OPFData; modelinfo::ModelParams = ModelParams())
+    function DualSolution(opfdata::OPFData, modelinfo::ModelParams) 
         ngen = length(opfdata.generators)
         T = modelinfo.num_time_periods
         K = modelinfo.num_ctgs + 1 # base case counted separately
@@ -97,7 +97,7 @@ mutable struct DualSolution
     end
 end
 
-function get_block_view(x::PrimalSolution, block::CartesianIndex;
+function get_block_view(x::PrimalSolution, block::CartesianIndex,
                         modelinfo::ModelParams,
                         algparams::AlgParams)
     k = block[1]
@@ -126,7 +126,7 @@ function get_block_view(x::PrimalSolution, block::CartesianIndex;
     return solution
 end
 
-function get_coupling_view(x::PrimalSolution;
+function get_coupling_view(x::PrimalSolution,
                            modelinfo::ModelParams,
                            algparams::AlgParams)
     Pg = @view x.Pg[:]
@@ -164,7 +164,7 @@ function get_coupling_view(x::PrimalSolution;
     =#
 end
 
-function get_coupling_view(λ::DualSolution;
+function get_coupling_view(λ::DualSolution,
                            modelinfo::ModelParams,
                            algparams::AlgParams)
     ramping = @view λ.ramping[:]
@@ -197,20 +197,20 @@ function get_coupling_view(λ::DualSolution;
     end
 end
 
-function dist(x1::PrimalSolution, x2::PrimalSolution;
+function dist(x1::PrimalSolution, x2::PrimalSolution,
               modelinfo::ModelParams,
               algparams::AlgParams,
               lnorm = Inf)
-    x1vec = get_coupling_view(x1; modelinfo = modelinfo, algparams = algparams)
-    x2vec = get_coupling_view(x2; modelinfo = modelinfo, algparams = algparams)
+    x1vec = get_coupling_view(x1, modelinfo, algparams)
+    x2vec = get_coupling_view(x2, modelinfo, algparams)
     return norm(x1vec .- x2vec, lnorm) #/(1e-16 + norm(x2vec, lnorm))
 end
 
-function dist(λ1::DualSolution, λ2::DualSolution;
+function dist(λ1::DualSolution, λ2::DualSolution,
               modelinfo::ModelParams,
               algparams::AlgParams,
               lnorm = Inf)
-    λ1vec = get_coupling_view(λ1; modelinfo = modelinfo, algparams = algparams)
-    λ2vec = get_coupling_view(λ2; modelinfo = modelinfo, algparams = algparams)
+    λ1vec = get_coupling_view(λ1, modelinfo, algparams)
+    λ2vec = get_coupling_view(λ2, modelinfo, algparams)
     return norm(λ1vec .- λ2vec, lnorm) #/(1e-16 + norm(λ2vec, lnorm))
 end
