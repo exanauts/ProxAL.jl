@@ -29,7 +29,7 @@ mutable struct ProxALMData
     par_order
     plt
 
-    function ProxALMData(opfdata::OPFData, rawdata::RawData, optimizer;     
+    function ProxALMData(opfdata::OPFData, rawdata::RawData;
                          modelinfo::ModelParams,
                          algparams::AlgParams,
                          fullmodel::Bool = false,
@@ -41,9 +41,9 @@ mutable struct ProxALMData
         if fullmodel
             mode_oldval = algparams.mode
             algparams.mode = :nondecomposed
-            opt_sol = solve_fullmodel(opfdata, rawdata, optimizer; modelinfo = modelinfo, algparams = algparams)
+            opt_sol = solve_fullmodel(opfdata, rawdata; modelinfo = modelinfo, algparams = algparams)
             algparams.mode = :lyapunov_bound
-            lyapunov_sol = solve_fullmodel(opfdata, rawdata, optimizer; modelinfo = modelinfo, algparams = algparams)
+            lyapunov_sol = solve_fullmodel(opfdata, rawdata; modelinfo = modelinfo, algparams = algparams)
             algparams.mode = mode_oldval
 
             if algparams.verbose > 2
@@ -78,7 +78,7 @@ mutable struct ProxALMData
                 DualSolution(opfdata; modelinfo = modelinfo) :
                 deepcopy(initial_dual)
         # NLP blocks
-        opfBlockData = OPFBlockData(opfdata, rawdata, optimizer; modelinfo = modelinfo, algparams = algparams)
+        opfBlockData = OPFBlockData(opfdata, rawdata; modelinfo = modelinfo, algparams = algparams)
         blkLinIndex = LinearIndices(opfBlockData.blkIndex)
         for blk in blkLinIndex
             opfBlockData.blkModel[blk] = opf_block_model_initialize(blk, opfBlockData, rawdata; algparams = algparams)

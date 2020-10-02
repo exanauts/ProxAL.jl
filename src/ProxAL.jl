@@ -18,10 +18,10 @@ include("proxALMutil.jl")
 export RawData, ModelParams, AlgParams
 export opf_loaddata, solve_fullmodel, run_proxALM, set_rho!
 
-function run_proxALM(opfdata::OPFData, rawdata::RawData, optimizer;
+function run_proxALM(opfdata::OPFData, rawdata::RawData;
                      modelinfo::ModelParams = ModelParams(),
                      algparams::AlgParams = AlgParams())
-    runinfo = ProxALMData(opfdata, rawdata, optimizer; modelinfo = modelinfo, algparams = algparams, fullmodel = true)
+    runinfo = ProxALMData(opfdata, rawdata; modelinfo = modelinfo, algparams = algparams, fullmodel = true)
     runinfo.initial_solve &&
         (algparams_copy = deepcopy(algparams))
     opfBlockData = runinfo.opfBlockData
