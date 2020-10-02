@@ -1,3 +1,5 @@
+using Ipopt
+
 optimizer_fullmodel = optimizer_with_attributes(Ipopt.Optimizer, "print_level" => Int64(algparams.verbose > 0)*5)
 optimizer_proxALM = optimizer_with_attributes(Ipopt.Optimizer, "print_level" => Int64(algparams.verbose > 0)*5)
 @testset "$T-period, $K-ctgs, time_link=penalty" begin

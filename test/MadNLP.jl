@@ -1,3 +1,5 @@
+using MadNLP
+
 optimizer_fullmodel = ()->MadNLP.Optimizer(linear_solver="Mumps",log_level="info",max_iter=100) 
 optimizer_proxALM = ()->MadNLP.Optimizer(linear_solver="Mumps",log_level="info",max_iter=100)
 @testset "$T-period, $K-ctgs, time_link=penalty" begin
