@@ -3,7 +3,7 @@
 #
 module ProxAL
 
-using JuMP, Ipopt
+using JuMP
 using Printf, CatViews
 using Distributed, SharedArrays
 using LinearAlgebra
@@ -18,10 +18,10 @@ include("../src/proxALMutil.jl")
 export RawData, ModelParams, AlgParams
 export opf_loaddata, solve_fullmodel, run_proxALM, set_rho!
 
-function run_proxALM(opfdata::OPFData, rawdata::RawData;
+function run_proxALM(opfdata::OPFData, rawdata::RawData, optimizer;
                      modelinfo::ModelParams = ModelParams(),
                      algparams::AlgParams = AlgParams())
-    runinfo = ProxALMData(opfdata, rawdata; modelinfo = modelinfo, algparams = algparams, fullmodel = true)
+    runinfo = ProxALMData(opfdata, rawdata, optimizer; modelinfo = modelinfo, algparams = algparams, fullmodel = true)
     runinfo.initial_solve &&
         (algparams_copy = deepcopy(algparams))
     opfBlockData = runinfo.opfBlockData
