@@ -22,7 +22,7 @@ mutable struct ProxALMData
     iter
     plt
 
-    
+
     function ProxALMData(opfdata::OPFData, rawdata::RawData;
                          modelinfo::ModelParams,
                          algparams::AlgParams,
@@ -62,7 +62,7 @@ mutable struct ProxALMData
         end
 
 
-        
+
         # initial values
         initial_solve = initial_primal === nothing
         x = (initial_primal === nothing) ?
@@ -80,7 +80,7 @@ mutable struct ProxALMData
         end
 
 
-        
+
         ser_order = blkLinIndex
         par_order = []
         if algparams.parallel

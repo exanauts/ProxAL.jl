@@ -13,7 +13,7 @@ struct Bus
     baseKV::Float64
     zone::Int
     Vmax::Float64
-    Vmin::Float64  
+    Vmin::Float64
 end
 
 struct Line
@@ -57,7 +57,7 @@ mutable struct Gener
     gentype::Int
     startup::Float64
     shutdown::Float64
-    n::Int 
+    n::Int
     coeff::Array
     alpha::Float64
 end
@@ -139,7 +139,7 @@ function opf_loaddata(raw::RawData;
         if buses[i].bustype==3
             if bus_ref>0
                 error("More than one reference bus present in the data")
-            else 
+            else
                 bus_ref=i
             end
         end
@@ -154,7 +154,7 @@ function opf_loaddata(raw::RawData;
     lines_on = findall((branch_arr[:,11].>0) .& ((branch_arr[:,1].!=lineOff.from) .| (branch_arr[:,2].!=lineOff.to)) )
     num_on   = length(lines_on)
 
-    if lineOff.from>0 && lineOff.to>0 
+    if lineOff.from>0 && lineOff.to>0
         # println("opf_loaddata: was asked to remove line from,to=", lineOff.from, ",", lineOff.to)
     end
     if length(findall(branch_arr[:,11].==0))>0
@@ -226,7 +226,7 @@ function opf_loaddata(raw::RawData;
         generators[i].n        = costgen_arr[git,4]
         generators[i].alpha    = -((1/R)*generators[i].Pmax)
         if generators[i].gentype == 1
-            generators[i].coeff = costgen_arr[git,5:end]  
+            generators[i].coeff = costgen_arr[git,5:end]
             error("Piecewise linear costs remains to be implemented.")
         else
             if generators[i].gentype == 2
@@ -234,7 +234,7 @@ function opf_loaddata(raw::RawData;
                 #println(generators[i].coeff, " ", length(generators[i].coeff), " ", generators[i].coeff[2])
             else
                 error("Invalid generator cost model in the data.")
-            end 
+            end
         end
     end
 
@@ -262,7 +262,7 @@ function  computeAdmitances(lines, buses, baseMVA; lossless::Bool=false, fixedta
     nlines = length(lines)
     YffR=Array{Float64}(undef, nlines)
     YffI=Array{Float64}(undef, nlines)
-    YttR=Array{Float64}(undef, nlines) 
+    YttR=Array{Float64}(undef, nlines)
     YttI=Array{Float64}(undef, nlines)
     YftR=Array{Float64}(undef, nlines)
     YftI=Array{Float64}(undef, nlines)
@@ -270,8 +270,8 @@ function  computeAdmitances(lines, buses, baseMVA; lossless::Bool=false, fixedta
     YtfI=Array{Float64}(undef, nlines)
 
     for i in 1:nlines
-        @assert lines[i].status == 1 
-        Ys = 1/((lossless ? 0.0 : lines[i].r) + lines[i].x*im) 
+        @assert lines[i].status == 1
+        Ys = 1/((lossless ? 0.0 : lines[i].r) + lines[i].x*im)
         #assign nonzero tap ratio
         tap = (lines[i].ratio==0) ? 1.0 : lines[i].ratio
         fixedtaps && (tap = 1.0)
@@ -338,7 +338,7 @@ end
 
 # Builds a map from lines to buses.
 # For each line we store an array with zero or one element containing
-# the  'From' and 'To'  bus number. 
+# the  'From' and 'To'  bus number.
 function mapLinesToBuses(buses, lines, busDict)
     nbus = length(buses)
     FromLines = [Int[] for b in 1:nbus]
@@ -370,7 +370,7 @@ end
 
 # Builds a map between buses and generators.
 # For each bus we keep an array of corresponding generators number (as array).
-# 
+#
 # (Can be more than one generator per bus)
 function mapGenersToBuses(buses, generators,busDict)
     gen2bus = [Int[] for b in 1:length(buses)]
