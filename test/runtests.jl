@@ -2,7 +2,7 @@ using Test
 using ProxAL
 using DelimitedFiles, Printf
 using Distributed
-using SharedArrays, LinearAlgebra, JuMP, Ipopt, MadNLP
+using SharedArrays, LinearAlgebra, JuMP
 using CatViews
 
 ENV["GKSwstype"]="nul"
