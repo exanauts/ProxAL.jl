@@ -1,25 +1,32 @@
-using Plots, LaTeXStrings
+using Plots, LaTeXStrings, JLD
 
 mutable struct ProxALMData
     opfBlockData::OPFBlockData
+    
+    #---- iterate information ----
     x::PrimalSolution
     λ::DualSolution
     xprev::PrimalSolution
     λprev::DualSolution
-    lyapunovprev::Float64
-    maxviol_t::Float64
-    maxviol_c::Float64
-    maxviol_d::Float64
-    opt_sol::Dict
-    lyapunov_sol::Dict
-    initial_solve::Bool
+    objvalue::Vector{Float64}
+    lyapunov::Vector{Float64}
+    maxviol_t::Vector{Float64}
+    maxviol_c::Vector{Float64}
+    maxviol_d::Vector{Float64}
+    dist_x::Vector{Float64}
+    dist_λ::Vector{Float64}
     nlp_opt_sol::SharedArray{Float64,2}
     nlp_soltime::SharedVector{Float64}
     wall_time_elapsed_actual::Float64
     wall_time_elapsed_ideal::Float64
+    iter
+    
+    #---- other/static information ----
+    opt_sol::Dict
+    lyapunov_sol::Dict
+    initial_solve::Bool
     ser_order
     par_order
-    iter
     plt
 
     
@@ -62,7 +69,7 @@ mutable struct ProxALMData
         end
 
 
-        
+
         # initial values
         initial_solve = initial_primal === nothing
         x = (initial_primal === nothing) ?
@@ -80,7 +87,7 @@ mutable struct ProxALMData
         end
 
 
-        
+
         ser_order = blkLinIndex
         par_order = []
         if algparams.parallel
@@ -92,12 +99,15 @@ mutable struct ProxALMData
                 par_order = @view blkLinIndex[2:end,:]
             end
         end
-        plt = (algparams.verbose > 1) ? initialize_plot() : nothing
+        plt = nothing
         iter = 0
-        lyapunovprev = Inf
-        maxviol_t = Inf
-        maxviol_c = Inf
-        maxviol_d = Inf
+        objvalue = []
+        lyapunov = []
+        maxviol_t = []
+        maxviol_c = []
+        maxviol_d = []
+        dist_x = []
+        dist_λ = []
         nlp_opt_sol = SharedArray{Float64, 2}(opfBlockData.colCount, opfBlockData.blkCount)
         nlp_opt_sol .= opfBlockData.colValue
         nlp_soltime = SharedVector{Float64}(opfBlockData.blkCount)
@@ -113,78 +123,86 @@ mutable struct ProxALMData
             λ,
             xprev,
             λprev,
-            lyapunovprev,
+            objvalue,
+            lyapunov,
             maxviol_t,
             maxviol_c,
             maxviol_d,
-            opt_sol,
-            lyapunov_sol,
-            initial_solve,
+            dist_x,
+            dist_λ,
             nlp_opt_sol,
             nlp_soltime,
             wall_time_elapsed_actual,
             wall_time_elapsed_ideal,
+            iter,
+            opt_sol,
+            lyapunov_sol,
+            initial_solve,
             ser_order,
             par_order,
-            iter,
             plt)
     end
 end
 
-function print_runinfo(runinfo::ProxALMData, opfdata::OPFData,
-                       modelinfo::ModelParams,
-                       algparams::AlgParams)
-    objvalue = compute_objective_function(runinfo.x, opfdata, modelinfo)
-    lyapunov = compute_lyapunov_function(runinfo.x, runinfo.λ, opfdata, runinfo.xprev, modelinfo, algparams)
-    runinfo.maxviol_d =
+function update_runinfo(runinfo::ProxALMData, opfdata::OPFData,
+                        modelinfo::ModelParams,
+                        algparams::AlgParams)
+    iter = runinfo.iter
+    push!(runinfo.objvalue,
+        compute_objective_function(runinfo.x, opfdata, modelinfo)
+    )
+    push!(runinfo.lyapunov,
+        compute_lyapunov_function(runinfo.x, runinfo.λ, opfdata, runinfo.xprev, modelinfo, algparams)
+    )
+    push!(runinfo.maxviol_d,
         compute_dual_error(runinfo.x, runinfo.xprev, runinfo.λ, runinfo.λprev, opfdata, modelinfo, algparams)
-    dist_x = NaN
-    dist_λ = NaN
+    )
+    push!(runinfo.dist_x, NaN)
+    push!(runinfo.dist_λ, NaN)
     optimgap = NaN
     lyapunov_gap = NaN
     if !isempty(runinfo.opt_sol)
         xstar = runinfo.opt_sol["primal"]
         λstar = runinfo.opt_sol["dual"]
         zstar = runinfo.opt_sol["objective_value_nondecomposed"]
-        dist_x = dist(runinfo.x, xstar, modelinfo, algparams)
-        dist_λ = dist(runinfo.λ, λstar, modelinfo, algparams)
-        optimgap = 100.0abs(objvalue - zstar)/abs(zstar)
+        runinfo.dist_x[iter] = dist(runinfo.x, xstar, modelinfo, algparams)
+        runinfo.dist_λ[iter] = dist(runinfo.λ, λstar, modelinfo, algparams)
+        optimgap = 100.0abs(runinfo.objvalue[iter] - zstar)/abs(zstar)
     end
     if !isempty(runinfo.lyapunov_sol)
         lyapunov_star = runinfo.lyapunov_sol["objective_value_lyapunov_bound"]
-        lyapunov_gap = 100.0(lyapunov - lyapunov_star)/abs(lyapunov_star)
+        lyapunov_gap = 100.0(runinfo.lyapunov[end] - lyapunov_star)/abs(lyapunov_star)
     end
 
     if algparams.verbose > 0
         @printf("iter %3d: ramp_err = %.3f, ctgs_err = %.3f, dual_err = %.3f, |x-x*| = %.3f, |λ-λ*| = %.3f, gap = %.2f%%, lyapgap = %.2f%%\n",
-                    runinfo.iter,
-                    runinfo.maxviol_t,
-                    runinfo.maxviol_c,
-                    runinfo.maxviol_d,
-                    dist_x,
-                    dist_λ,
+                    iter,
+                    runinfo.maxviol_t[iter],
+                    runinfo.maxviol_c[iter],
+                    runinfo.maxviol_d[iter],
+                    runinfo.dist_x[iter],
+                    runinfo.dist_λ[iter],
                     optimgap,
                     lyapunov_gap)
     end
 
     if algparams.verbose > 1
-        plotzero = algparams.zero
-        iter = runinfo.iter
-        push!(runinfo.plt, 1, iter, max(runinfo.maxviol_t, plotzero))
-        push!(runinfo.plt, 2, iter, max(runinfo.maxviol_c, plotzero))
-        push!(runinfo.plt, 3, iter, max(runinfo.maxviol_d, plotzero))
-        push!(runinfo.plt, 4, iter, max(dist_x, plotzero))
-        push!(runinfo.plt, 5, iter, max(dist_λ, plotzero))
-        push!(runinfo.plt, 6, iter, max(optimgap, plotzero))
-        push!(runinfo.plt, 7, iter, max(lyapunov_gap, plotzero))
+        (runinfo.plt === nothing) && (runinfo.plt = initialize_plot())
+        push!(runinfo.plt, 1, iter, runinfo.maxviol_t[iter])
+        push!(runinfo.plt, 2, iter, runinfo.maxviol_c[iter])
+        push!(runinfo.plt, 3, iter, runinfo.maxviol_d[iter])
+        push!(runinfo.plt, 4, iter, runinfo.dist_x[iter])
+        push!(runinfo.plt, 5, iter, runinfo.dist_λ[iter])
+        push!(runinfo.plt, 6, iter, optimgap)
+        push!(runinfo.plt, 7, iter, (lyapunov_gap < 0) ? NaN : lyapunov_gap)
         savefig(runinfo.plt, modelinfo.savefile * ".plot.png")
     end
 
     if algparams.verbose > 2
         savefile = modelinfo.savefile * ".iter_" * string(runinfo.iter) * ".jld"
         iter_sol = Dict()
-        iter_sol["x"] = x
-        iter_sol["λ"] = λ
+        iter_sol["x"] = runinfo.x
+        iter_sol["λ"] = runinfo.λ
         JLD.save(savefile, iter_sol)
     end
 end

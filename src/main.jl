@@ -4,6 +4,7 @@ using Distributed
 @everywhere Pkg.activate(joinpath(dirname(@__FILE__), ".."))
 @everywhere Pkg.instantiate()
 @everywhere using ProxAL
+@everywhere using Ipopt
 
 ENV["GKSwstype"]="nul"
 
@@ -95,6 +96,9 @@ function main()
         end
         modelinfo.savefile = outdir * modelinfo.savefile
     end
+    algparams.optimizer =
+                optimizer_with_attributes(Ipopt.Optimizer,
+                    "print_level" => Int64(algparams.verbose > 0)*5)
 
     ##
     ##  Solve the model

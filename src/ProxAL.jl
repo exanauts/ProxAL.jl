@@ -8,12 +8,12 @@ using Printf, CatViews
 using Distributed, SharedArrays
 using LinearAlgebra
 
-include("../src/params.jl")
-include("../src/opfdata.jl")
-include("../src/opfsolution.jl")
-include("../src/opfmodel.jl")
-include("../src/opfblocks.jl")
-include("../src/proxALMutil.jl")
+include("params.jl")
+include("opfdata.jl")
+include("opfsolution.jl")
+include("opfmodel.jl")
+include("opfblocks.jl")
+include("proxALMutil.jl")
 
 export RawData, ModelParams, AlgParams
 export opf_loaddata, solve_fullmodel, run_proxALM, set_rho!
@@ -87,7 +87,9 @@ function run_proxALM(opfdata::OPFData, rawdata::RawData,
     #------------------------------------------------------------------------------------
     function dual_update()
         elapsed_t = @elapsed begin
-            runinfo.maxviol_t, runinfo.maxviol_c = update_dual_vars(λ, opfdata, x, modelinfo, algparams)
+            maxviol_t, maxviol_c = update_dual_vars(λ, opfdata, x, modelinfo, algparams)
+            push!(runinfo.maxviol_t, maxviol_t)
+            push!(runinfo.maxviol_c, maxviol_c)
         end
         runinfo.wall_time_elapsed_actual += elapsed_t
         runinfo.wall_time_elapsed_ideal += elapsed_t
@@ -140,13 +142,11 @@ function run_proxALM(opfdata::OPFData, rawdata::RawData,
         # Prox update
         proximal_update()
 
-        # Write output
-        print_runinfo(runinfo, opfdata,
-                      modelinfo,
-                      algparams)
+        # Update counters and write output
+        update_runinfo(runinfo, opfdata, modelinfo, algparams)
 
         # Check convergence
-        if max(runinfo.maxviol_t, runinfo.maxviol_c, runinfo.maxviol_d) <= algparams.tol
+        if max(runinfo.maxviol_t[end], runinfo.maxviol_c[end], runinfo.maxviol_d[end]) <= algparams.tol
             break
         end
     end
