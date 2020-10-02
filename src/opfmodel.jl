@@ -1,14 +1,14 @@
-function solve_fullmodel(opfdata::OPFData, rawdata::RawData, optimizer;
+function solve_fullmodel(opfdata::OPFData, rawdata::RawData;
                          modelinfo::ModelParams,
                          algparams::AlgParams)
-    opfmodel = opf_model_nondecomposed(opfdata, rawdata, optimizer; modelinfo = modelinfo, algparams = algparams)
+    opfmodel = opf_model_nondecomposed(opfdata, rawdata; modelinfo = modelinfo, algparams = algparams)
     return opf_solve_nondecomposed(opfmodel, opfdata; modelinfo = modelinfo, algparams = algparams)
 end
 
-function opf_model_nondecomposed(opfdata::OPFData, rawdata::RawData, optimizer;
+function opf_model_nondecomposed(opfdata::OPFData, rawdata::RawData;
                                  modelinfo::ModelParams,
                                  algparams::AlgParams)
-    opfmodel = JuMP.Model(optimizer)
+    opfmodel = JuMP.Model(algparams.optimizer)
     opf_model_add_variables(opfmodel, opfdata; modelinfo = modelinfo, algparams = algparams)
     opf_model_add_block_constraints(opfmodel, opfdata, rawdata; modelinfo = modelinfo)
     obj_expr = compute_objective_function(opfmodel, opfdata; modelinfo = modelinfo)
