@@ -5,15 +5,14 @@ mutable struct OPFBlockData
     blkCount::Int64
     blkIndex::CartesianIndices
     blkModel::Vector{JuMP.Model}
-    blkOptimizer
     blkOpfdt::Vector{OPFData}
     blkMInfo::Vector{ModelParams}
     colCount::Int64
     colValue::Array{Float64,2}
 
-    function OPFBlockData(opfdata::OPFData, rawdata::RawData, optimizer;
-                          modelinfo::ModelParams = ModelParams(),
-                          algparams::AlgParams = AlgParams())
+    function OPFBlockData(opfdata::OPFData, rawdata::RawData,
+                          modelinfo::ModelParams,
+                          algparams::AlgParams)
         ngen  = length(opfdata.generators)
         nbus  = length(opfdata.buses)
         nline = length(opfdata.lines)
@@ -59,22 +58,22 @@ mutable struct OPFBlockData
         end
 
 
-        new(blkCount,blkIndex,blkModel,optimizer,blkOpfdt,blkMInfo,colCount,colValue)
+        new(blkCount,blkIndex,blkModel,blkOpfdt,blkMInfo,colCount,colValue)
     end
 end
 
-function opf_block_model_initialize(blk::Int, opfblocks::OPFBlockData, rawdata::RawData;
+function opf_block_model_initialize(blk::Int, opfblocks::OPFBlockData, rawdata::RawData,
                                     algparams::AlgParams)
     @assert blk >= 1 && blk <= opfblocks.blkCount
 
-    opfmodel = JuMP.Model(opfblocks.blkOptimizer)
+    opfmodel = JuMP.Model(algparams.optimizer_proxALM)
     opfdata = opfblocks.blkOpfdt[blk]
     modelinfo = opfblocks.blkMInfo[blk]
     Kblock = modelinfo.num_ctgs + 1
 
-    opf_model_add_variables(opfmodel, opfdata; modelinfo = modelinfo, algparams = algparams)
+    opf_model_add_variables(opfmodel, opfdata, modelinfo, algparams)
     if !algparams.decompCtgs
-        opf_model_add_ctgs_linking_constraints(opfmodel, opfdata; modelinfo = modelinfo)
+        opf_model_add_ctgs_linking_constraints(opfmodel, opfdata, modelinfo)
     end
 
     @assert opfblocks.colCount == num_variables(opfmodel)
@@ -120,24 +119,24 @@ function opf_block_model_initialize(blk::Int, opfblocks::OPFBlockData, rawdata::
     return opfmodel
 end
 
-function opf_block_set_objective(blk::Int, opfmodel::JuMP.Model, opfblocks::OPFBlockData;
+function opf_block_set_objective(blk::Int, opfmodel::JuMP.Model, opfblocks::OPFBlockData,
+                                 algparams::AlgParams,
                                  primal::PrimalSolution,
-                                 dual::DualSolution,
-                                 algparams::AlgParams)
+                                 dual::DualSolution)
     @assert blk >= 1 && blk <= opfblocks.blkCount
 
     opfdata = opfblocks.blkOpfdt[blk]
     modelinfo = opfblocks.blkMInfo[blk]
-    obj_expr = compute_objective_function(opfmodel, opfdata; modelinfo = modelinfo)
-    auglag_penalty = opf_block_get_auglag_penalty_expr(blk, opfmodel, opfblocks; algparams = algparams, primal = primal, dual = dual)
+    obj_expr = compute_objective_function(opfmodel, opfdata, modelinfo)
+    auglag_penalty = opf_block_get_auglag_penalty_expr(blk, opfmodel, opfblocks, algparams, primal, dual)
     @objective(opfmodel, Min, obj_expr + auglag_penalty)
     return nothing
 end
 
-function opf_block_get_auglag_penalty_expr(blk::Int, opfmodel::JuMP.Model, opfblocks::OPFBlockData;
+function opf_block_get_auglag_penalty_expr(blk::Int, opfmodel::JuMP.Model, opfblocks::OPFBlockData,
+                                           algparams::AlgParams,
                                            primal::PrimalSolution,
-                                           dual::DualSolution,
-                                           algparams::AlgParams)
+                                           dual::DualSolution)
     modelinfo = opfblocks.blkMInfo[blk]
     gens = opfblocks.blkOpfdt[blk].generators
     k = opfblocks.blkIndex[blk][1]

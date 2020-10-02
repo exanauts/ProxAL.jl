@@ -44,10 +44,15 @@ algparams.verbose = 0
 K = 0
 algparams.decompCtgs = false
 
+# @testset "Hiop" begin
+#     if haskey(ENV, "JULIA_HIOP_LIBRARY_PATH")
+#         include("Hiop.jl")
+#     end
+# end
 @testset "Ipopt" begin
     include("Ipopt.jl")
 end
 
-@testset "MadNLP" begin
-    include("MadNLP.jl")
-end
+# @testset "MadNLP" begin
+#     include("MadNLP.jl")
+# end

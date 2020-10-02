@@ -1,27 +1,23 @@
-function solve_fullmodel(opfdata::OPFData, rawdata::RawData, optimizer;
-                         modelinfo::ModelParams,
-                         algparams::AlgParams)
-    opfmodel = opf_model_nondecomposed(opfdata, rawdata, optimizer; modelinfo = modelinfo, algparams = algparams)
-    return opf_solve_nondecomposed(opfmodel, opfdata; modelinfo = modelinfo, algparams = algparams)
+function solve_fullmodel(opfdata::OPFData, rawdata::RawData, modelinfo::ModelParams, algparams::AlgParams)
+    opfmodel = opf_model_nondecomposed(opfdata, rawdata, modelinfo, algparams)
+    return opf_solve_nondecomposed(opfmodel, opfdata, modelinfo, algparams)
 end
 
-function opf_model_nondecomposed(opfdata::OPFData, rawdata::RawData, optimizer;
-                                 modelinfo::ModelParams,
-                                 algparams::AlgParams)
-    opfmodel = JuMP.Model(optimizer)
-    opf_model_add_variables(opfmodel, opfdata; modelinfo = modelinfo, algparams = algparams)
-    opf_model_add_block_constraints(opfmodel, opfdata, rawdata; modelinfo = modelinfo)
-    obj_expr = compute_objective_function(opfmodel, opfdata; modelinfo = modelinfo)
+function opf_model_nondecomposed(opfdata::OPFData, rawdata::RawData, modelinfo::ModelParams, algparams::AlgParams)
+    opfmodel = JuMP.Model(algparams.optimizer_fullmodel)
+    opf_model_add_variables(opfmodel, opfdata, modelinfo, algparams)
+    opf_model_add_block_constraints(opfmodel, opfdata, rawdata, modelinfo)
+    obj_expr = compute_objective_function(opfmodel, opfdata, modelinfo)
 
     if algparams.mode == :lyapunov_bound
-        lyapunov_expr = compute_quadratic_penalty(opfmodel, opfdata; modelinfo = modelinfo, algparams = algparams)
+        lyapunov_expr = compute_quadratic_penalty(opfmodel, opfdata,  modelinfo, algparams)
         if !algparams.decompCtgs
-            opf_model_add_ctgs_linking_constraints(opfmodel, opfdata; modelinfo = modelinfo)
+            opf_model_add_ctgs_linking_constraints(opfmodel, opfdata, modelinfo)
         end
     else
         lyapunov_expr = 0
-        opf_model_add_time_linking_constraints(opfmodel, opfdata; modelinfo = modelinfo)
-        opf_model_add_ctgs_linking_constraints(opfmodel, opfdata; modelinfo = modelinfo)
+        opf_model_add_time_linking_constraints(opfmodel, opfdata, modelinfo)
+        opf_model_add_ctgs_linking_constraints(opfmodel, opfdata, modelinfo)
     end
 
     @objective(opfmodel,Min, obj_expr + lyapunov_expr)
@@ -29,7 +25,7 @@ function opf_model_nondecomposed(opfdata::OPFData, rawdata::RawData, optimizer;
     return opfmodel
 end
 
-function opf_solve_nondecomposed(opfmodel::JuMP.Model, opfdata::OPFData;
+function opf_solve_nondecomposed(opfmodel::JuMP.Model, opfdata::OPFData,
                                  modelinfo::ModelParams,
                                  algparams::AlgParams)
     optimize!(opfmodel)
@@ -41,7 +37,7 @@ function opf_solve_nondecomposed(opfmodel::JuMP.Model, opfdata::OPFData;
     end
 
 
-    x = PrimalSolution(opfdata; modelinfo = modelinfo)
+    x = PrimalSolution(opfdata, modelinfo)
     x.Pg .= value.(opfmodel[:Pg])
     x.Qg .= value.(opfmodel[:Qg])
     x.Vm .= value.(opfmodel[:Vm])
@@ -62,7 +58,7 @@ function opf_solve_nondecomposed(opfmodel::JuMP.Model, opfdata::OPFData;
     # @show(maximum(abs.(x.ωt)))
 
 
-    λ = DualSolution(opfdata; modelinfo = modelinfo)
+    λ = DualSolution(opfdata, modelinfo)
     T = modelinfo.num_time_periods
     K = modelinfo.num_ctgs + 1
     if T > 1 && algparams.mode != :lyapunov_bound
@@ -92,7 +88,7 @@ function opf_solve_nondecomposed(opfmodel::JuMP.Model, opfdata::OPFData;
     return result
 end
 
-function opf_model_add_variables(opfmodel::JuMP.Model, opfdata::OPFData;
+function opf_model_add_variables(opfmodel::JuMP.Model, opfdata::OPFData,
                                  modelinfo::ModelParams,
                                  algparams::AlgParams)
     # shortcuts for compactness
@@ -204,8 +200,7 @@ function opf_model_add_variables(opfmodel::JuMP.Model, opfdata::OPFData;
     end
 end
 
-function opf_model_add_block_constraints(opfmodel::JuMP.Model, opfdata::OPFData, rawdata::RawData;
-                                         modelinfo::ModelParams)
+function opf_model_add_block_constraints(opfmodel::JuMP.Model, opfdata::OPFData, rawdata::RawData, modelinfo::ModelParams)
     T = modelinfo.num_time_periods
     K = (modelinfo.num_ctgs + 1)
     if modelinfo.allow_constr_infeas
@@ -323,12 +318,11 @@ function opf_model_add_imag_power_balance_constraints(opfmodel::JuMP.Model, opfd
     end
 end
 
-function opf_model_add_time_linking_constraints(opfmodel::JuMP.Model, opfdata::OPFData;
-                                                modelinfo::ModelParams)
+function opf_model_add_time_linking_constraints(opfmodel::JuMP.Model, opfdata::OPFData, modelinfo::ModelParams)
     (ngen, K, T) = size(opfmodel[:Pg])
 
     if T > 1
-        link = compute_time_linking_constraints(opfmodel, opfdata; modelinfo = modelinfo)
+        link = compute_time_linking_constraints(opfmodel, opfdata, modelinfo)
 
         if modelinfo.time_link_constr_type == :inequality
             @constraint(opfmodel, ramping_p[g=1:ngen,t=2:T], link[:ramping_p][g,t] <= 0)
@@ -341,12 +335,11 @@ function opf_model_add_time_linking_constraints(opfmodel::JuMP.Model, opfdata::O
     return nothing
 end
 
-function opf_model_add_ctgs_linking_constraints(opfmodel::JuMP.Model, opfdata::OPFData;
-                                                modelinfo::ModelParams)
+function opf_model_add_ctgs_linking_constraints(opfmodel::JuMP.Model, opfdata::OPFData, modelinfo::ModelParams)
     (ngen, K, T) = size(opfmodel[:Pg])
 
     if K > 1
-        link = compute_ctgs_linking_constraints(opfmodel, opfdata; modelinfo = modelinfo)
+        link = compute_ctgs_linking_constraints(opfmodel, opfdata, modelinfo)
 
         if modelinfo.ctgs_link_constr_type == :corrective_inequality
             @constraint(opfmodel, ctgs_p[g=1:ngen,k=2:K,t=1:T], link[:ctgs_p][g,k,t] <= 0)
@@ -361,8 +354,7 @@ end
 
 
 
-function compute_objective_function(opfdict, opfdata::OPFData;
-                                    modelinfo::ModelParams)
+function compute_objective_function(opfdict, opfdata::OPFData, modelinfo::ModelParams)
     Pg = opfdict[:Pg]
     ωt = opfdict[:ωt]
     Zt = opfdict[:Zt]
@@ -423,8 +415,7 @@ function compute_objective_function(opfdict, opfdata::OPFData;
         )
 end
 
-function compute_time_linking_constraints(opfdict, opfdata::OPFData;
-                                          modelinfo::ModelParams)
+function compute_time_linking_constraints(opfdict, opfdata::OPFData, modelinfo::ModelParams)
     Pg = opfdict[:Pg]
     St = opfdict[:St]
     Zt = opfdict[:Zt]
@@ -443,8 +434,7 @@ function compute_time_linking_constraints(opfdict, opfdata::OPFData;
     return link
 end
 
-function compute_ctgs_linking_constraints(opfdict, opfdata::OPFData;
-                                          modelinfo::ModelParams)
+function compute_ctgs_linking_constraints(opfdict, opfdata::OPFData, modelinfo::ModelParams)
     Pg = opfdict[:Pg]
     ωt = opfdict[:ωt]   
     Sk = opfdict[:Sk]
@@ -467,14 +457,14 @@ function compute_ctgs_linking_constraints(opfdict, opfdata::OPFData;
     return link
 end
 
-function compute_quadratic_penalty(opfdict, opfdata::OPFData;
+function compute_quadratic_penalty(opfdict, opfdata::OPFData,
                                    modelinfo::ModelParams, algparams::AlgParams)
     (ngen, K, T) = size(opfdict[:Pg])
 
     if T > 1
         inequality = (modelinfo.time_link_constr_type == :inequality)
         inequality && (modelinfo.time_link_constr_type = :equality)
-        link = compute_time_linking_constraints(opfdict, opfdata; modelinfo = modelinfo)
+        link = compute_time_linking_constraints(opfdict, opfdata, modelinfo)
         inequality && (modelinfo.time_link_constr_type = :inequality)
         
         lyapunov_quadratic_penalty_time = sum(link[:ramping][:,2:T].^2)
@@ -486,7 +476,7 @@ function compute_quadratic_penalty(opfdict, opfdata::OPFData;
     if K > 1 && algparams.decompCtgs
         inequality = (modelinfo.ctgs_link_constr_type == :corrective_inequality)
         inequality && (modelinfo.ctgs_link_constr_type = :corrective_equality)
-        link = compute_ctgs_linking_constraints(opfdict, opfdata; modelinfo = modelinfo)
+        link = compute_ctgs_linking_constraints(opfdict, opfdata, modelinfo)
         inequality && (modelinfo.ctgs_link_constr_type = :corrective_inequality)
 
         lyapunov_quadratic_penalty_ctgs = sum(link[:ctgs][:,2:K,:].^2)
@@ -499,15 +489,15 @@ function compute_quadratic_penalty(opfdict, opfdata::OPFData;
             (0.5algparams.maxρ_c*lyapunov_quadratic_penalty_ctgs))
 end
 
-function compute_lagrangian_function(opfdict, λ::DualSolution, opfdata::OPFData;
+function compute_lagrangian_function(opfdict, λ::DualSolution, opfdata::OPFData,
                                      modelinfo::ModelParams, algparams::AlgParams)
 
     (ngen, K, T) = size(opfdict[:Pg])
 
-    obj = compute_objective_function(opfdict, opfdata; modelinfo = modelinfo)
+    obj = compute_objective_function(opfdict, opfdata, modelinfo)
 
     if T > 1
-        link = compute_time_linking_constraints(opfdict, opfdata; modelinfo = modelinfo)
+        link = compute_time_linking_constraints(opfdict, opfdata, modelinfo)
         if modelinfo.time_link_constr_type == :inequality
             lagrangian_t = sum(λ.ramping_p.*link[:ramping_p]) + sum(λ.ramping_n.*link[:ramping_n])
         else
@@ -519,7 +509,7 @@ function compute_lagrangian_function(opfdict, λ::DualSolution, opfdata::OPFData
 
 
     if K > 1 && algparams.decompCtgs
-        link = compute_ctgs_linking_constraints(opfdict, opfdata; modelinfo = modelinfo)
+        link = compute_ctgs_linking_constraints(opfdict, opfdata, modelinfo)
         if modelinfo.ctgs_link_constr_type == :corrective_inequality
             lagrangian_c = sum(λ.ctgs_p.*link[:ctgs_p]) + sum(λ.ctgs_n.*link[:ctgs_n])
         else
@@ -532,7 +522,7 @@ function compute_lagrangian_function(opfdict, λ::DualSolution, opfdata::OPFData
     return obj + lagrangian_t + lagrangian_c
 end
 
-function compute_proximal_function(x1::PrimalSolution, x2::PrimalSolution;
+function compute_proximal_function(x1::PrimalSolution, x2::PrimalSolution,
                                    modelinfo::ModelParams, algparams::AlgParams)
     (ngen, K, T) = size(x1.Pg)
 
@@ -557,7 +547,7 @@ function compute_proximal_function(x1::PrimalSolution, x2::PrimalSolution;
     return 0.5algparams.τ*(prox_pg + prox_penalty)
 end
 
-function compute_objective_function(x::PrimalSolution, opfdata::OPFData;
+function compute_objective_function(x::PrimalSolution, opfdata::OPFData,
                                     modelinfo::ModelParams)
     d = Dict(:Pg => x.Pg,
              :ωt => x.ωt,
@@ -567,10 +557,10 @@ function compute_objective_function(x::PrimalSolution, opfdata::OPFData;
              :sigma_imag => x.sigma_imag,
              :sigma_lineFr => x.sigma_lineFr,
              :sigma_lineTo => x.sigma_lineTo)
-    return compute_objective_function(d, opfdata; modelinfo = modelinfo)
+    return compute_objective_function(d, opfdata, modelinfo)
 end
 
-function compute_lyapunov_function(x::PrimalSolution, λ::DualSolution, opfdata::OPFData;
+function compute_lyapunov_function(x::PrimalSolution, λ::DualSolution, opfdata::OPFData,
                                    xref::PrimalSolution,
                                    modelinfo::ModelParams,
                                    algparams::AlgParams)
@@ -584,17 +574,17 @@ function compute_lyapunov_function(x::PrimalSolution, λ::DualSolution, opfdata:
              :sigma_imag => x.sigma_imag,
              :sigma_lineFr => x.sigma_lineFr,
              :sigma_lineTo => x.sigma_lineTo)
-    lagrangian = compute_lagrangian_function(d, λ, opfdata; modelinfo = modelinfo, algparams = algparams)
-    quadratic_penalty = compute_quadratic_penalty(d, opfdata; modelinfo = modelinfo, algparams = algparams)
+    lagrangian = compute_lagrangian_function(d, λ, opfdata, modelinfo, algparams)
+    quadratic_penalty = compute_quadratic_penalty(d, opfdata, modelinfo, algparams)
     # proximal = 0.5algparams.τ*dist(x, xref; modelinfo = modelinfo, algparams = algparams, lnorm = 2)^2
-    proximal = compute_proximal_function(x, xref; modelinfo = modelinfo, algparams = algparams)
+    proximal = compute_proximal_function(x, xref, modelinfo, algparams)
 
     return lagrangian + quadratic_penalty + 0.5proximal
 end
 
-function compute_dual_error(x::PrimalSolution, xprev::PrimalSolution, λ::DualSolution, λprev::DualSolution, opfdata::OPFData;
+function compute_dual_error(x::PrimalSolution, xprev::PrimalSolution, λ::DualSolution, λprev::DualSolution, opfdata::OPFData,
                             modelinfo::ModelParams,
-                            algparams::AlgParams,
+                            algparams::AlgParams;
                             lnorm = Inf)
     (ngen, K, T) = size(x.Pg)
 

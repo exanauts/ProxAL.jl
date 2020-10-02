@@ -18,10 +18,10 @@ include("../src/proxALMutil.jl")
 export RawData, ModelParams, AlgParams
 export opf_loaddata, solve_fullmodel, run_proxALM, set_rho!
 
-function run_proxALM(opfdata::OPFData, rawdata::RawData, optimizer;
-                     modelinfo::ModelParams = ModelParams(),
-                     algparams::AlgParams = AlgParams())
-    runinfo = ProxALMData(opfdata, rawdata, optimizer; modelinfo = modelinfo, algparams = algparams, fullmodel = true)
+function run_proxALM(opfdata::OPFData, rawdata::RawData,
+                     modelinfo::ModelParams,
+                     algparams::AlgParams)
+    runinfo = ProxALMData(opfdata, rawdata, modelinfo, algparams, true)
     runinfo.initial_solve &&
         (algparams_copy = deepcopy(algparams))
     opfBlockData = runinfo.opfBlockData
@@ -32,21 +32,21 @@ function run_proxALM(opfdata::OPFData, rawdata::RawData, optimizer;
 
 
     #------------------------------------------------------------------------------------
-    function blocknlp_copy(blk; x_ref, λ_ref, alg_ref)
-        opf_block_set_objective(blk, opfBlockData.blkModel[blk], opfBlockData;
-                                algparams = alg_ref,
-                                primal = x_ref,
-                                dual = λ_ref)
+    function blocknlp_copy(blk, x_ref, λ_ref, alg_ref)
+        opf_block_set_objective(blk, opfBlockData.blkModel[blk], opfBlockData,
+                                alg_ref,
+                                x_ref,
+                                λ_ref)
         nlp_opt_sol[:,blk] .= opf_block_solve_model(blk, opfBlockData.blkModel[blk], opfBlockData)
     end
     #------------------------------------------------------------------------------------
-    function blocknlp_recreate(blk; x_ref, λ_ref, alg_ref)
-        opfmodel = opf_block_model_initialize(blk, opfBlockData, rawdata;
-                                              algparams = alg_ref)
-        opf_block_set_objective(blk, opfmodel, opfBlockData;
-                                algparams = alg_ref,
-                                primal = x_ref,
-                                dual = λ_ref)
+    function blocknlp_recreate(blk, x_ref, λ_ref, alg_ref)
+        opfmodel = opf_block_model_initialize(blk, opfBlockData, rawdata,
+                                              alg_ref)
+        opf_block_set_objective(blk, opfmodel, opfBlockData,
+                                alg_ref,
+                                x_ref,
+                                λ_ref)
         nlp_opt_sol[:,blk] .= opf_block_solve_model(blk, opfmodel, opfBlockData)
     end
     #------------------------------------------------------------------------------------
@@ -54,31 +54,31 @@ function run_proxALM(opfdata::OPFData, rawdata::RawData, optimizer;
         runinfo.wall_time_elapsed_actual += @elapsed begin
             # Primal update except penalty vars
             for blk in runinfo.ser_order
-                nlp_soltime[blk] = @elapsed blocknlp_copy(blk; x_ref = x, λ_ref = λ, alg_ref = algparams)
+                nlp_soltime[blk] = @elapsed blocknlp_copy(blk, x, λ, algparams)
                 # nlp_soltime[blk] = @elapsed blocknlp_recreate(blk; x_ref = x, λ_ref = λ, alg_ref = algparams)
                 opfBlockData.colValue[:,blk] .= nlp_opt_sol[:,blk]
                 if !algparams.jacobi
-                    update_primal_nlpvars(x, opfBlockData, blk; modelinfo = modelinfo, algparams = algparams)
+                    update_primal_nlpvars(x, opfBlockData, blk, modelinfo, algparams)
                 end
             end
             @sync for blk in runinfo.par_order
                 @async @spawn begin
                     # nlp_soltime[blk] = @elapsed blocknlp_copy(blk; x_ref = x, λ_ref = λ, alg_ref = algparams)
-                    nlp_soltime[blk] = @elapsed blocknlp_recreate(blk; x_ref = x, λ_ref = λ, alg_ref = algparams)
+                    nlp_soltime[blk] = @elapsed blocknlp_recreate(blk, x, λ, algparams)
                 end
             end
             for blk in runinfo.par_order
                 opfBlockData.colValue[:,blk] .= nlp_opt_sol[:,blk]
-                update_primal_nlpvars(x, opfBlockData, blk; modelinfo = modelinfo, algparams = algparams)
+                update_primal_nlpvars(x, opfBlockData, blk, modelinfo, algparams)
             end
             if algparams.jacobi
                 for blk in runinfo.ser_order
-                    update_primal_nlpvars(x, opfBlockData, blk; modelinfo = modelinfo, algparams = algparams)
+                    update_primal_nlpvars(x, opfBlockData, blk, modelinfo, algparams)
                 end
             end
 
             # Primal update of penalty vars
-            elapsed_t = @elapsed update_primal_penalty(x, opfdata; primal = x, dual = λ, modelinfo = modelinfo, algparams = algparams)
+            elapsed_t = @elapsed update_primal_penalty(x, opfdata, x, λ, modelinfo, algparams)
         end
         runinfo.wall_time_elapsed_ideal += isempty(runinfo.ser_order) ? 0.0 : sum(nlp_soltime[blk] for blk in runinfo.ser_order)
         runinfo.wall_time_elapsed_ideal += isempty(runinfo.par_order) ? 0.0 : maximum([nlp_soltime[blk] for blk in runinfo.par_order])
@@ -87,7 +87,7 @@ function run_proxALM(opfdata::OPFData, rawdata::RawData, optimizer;
     #------------------------------------------------------------------------------------
     function dual_update()
         elapsed_t = @elapsed begin
-            runinfo.maxviol_t, runinfo.maxviol_c = update_dual_vars(λ, opfdata; primal = x, modelinfo = modelinfo, algparams = algparams)
+            runinfo.maxviol_t, runinfo.maxviol_c = update_dual_vars(λ, opfdata, x, modelinfo, algparams)
         end
         runinfo.wall_time_elapsed_actual += elapsed_t
         runinfo.wall_time_elapsed_ideal += elapsed_t
@@ -141,9 +141,9 @@ function run_proxALM(opfdata::OPFData, rawdata::RawData, optimizer;
         proximal_update()
 
         # Write output
-        print_runinfo(runinfo, opfdata;
-                      modelinfo = modelinfo,
-                      algparams = algparams)
+        print_runinfo(runinfo, opfdata,
+                      modelinfo,
+                      algparams)
 
         # Check convergence
         if max(runinfo.maxviol_t, runinfo.maxviol_c, runinfo.maxviol_d) <= algparams.tol
@@ -154,18 +154,18 @@ function run_proxALM(opfdata::OPFData, rawdata::RawData, optimizer;
     return runinfo
 end
 
-function update_primal_nlpvars(x::PrimalSolution, opfBlockData::OPFBlockData, blk::Int;
+function update_primal_nlpvars(x::PrimalSolution, opfBlockData::OPFBlockData, blk::Int,
                                modelinfo::ModelParams,
                                algparams::AlgParams)
-    solution = get_block_view(x, opfBlockData.blkIndex[blk];
-                              modelinfo = modelinfo,
-                              algparams = algparams)
+    solution = get_block_view(x, opfBlockData.blkIndex[blk],
+                              modelinfo,
+                              algparams)
     solution .= opfBlockData.colValue[:,blk]
 
     return nothing
 end
 
-function update_primal_penalty(x::PrimalSolution, opfdata::OPFData;
+function update_primal_penalty(x::PrimalSolution, opfdata::OPFData,
                                primal::PrimalSolution,
                                dual::DualSolution,
                                modelinfo::ModelParams,
@@ -213,7 +213,7 @@ function update_primal_penalty(x::PrimalSolution, opfdata::OPFData;
     return nothing
 end
 
-function update_dual_vars(λ::DualSolution, opfdata::OPFData;
+function update_dual_vars(λ::DualSolution, opfdata::OPFData,
                           primal::PrimalSolution,
                           modelinfo::ModelParams,
                           algparams::AlgParams)
@@ -231,7 +231,7 @@ function update_dual_vars(λ::DualSolution, opfdata::OPFData;
     end
 
     if T > 1
-        link_constr = compute_time_linking_constraints(d, opfdata; modelinfo = modelinfo)
+        link_constr = compute_time_linking_constraints(d, opfdata, modelinfo)
         viol_t = (modelinfo.time_link_constr_type == :inequality) ?
                     max.(link_constr[:ramping_p], link_constr[:ramping_n], 0.0) :
                     abs.(link_constr[:ramping])
@@ -253,7 +253,7 @@ function update_dual_vars(λ::DualSolution, opfdata::OPFData;
         maxviol_t = maximum(viol_t)
     end
     if K > 1 && algparams.decompCtgs
-        link_constr = compute_ctgs_linking_constraints(d, opfdata; modelinfo = modelinfo)
+        link_constr = compute_ctgs_linking_constraints(d, opfdata, modelinfo)
         viol_c = (modelinfo.ctgs_link_constr_type == :corrective_inequality) ?
                     max.(link_constr[:ctgs_p], link_constr[:ctgs_n], 0.0) :
                     abs.(link_constr[:ctgs])

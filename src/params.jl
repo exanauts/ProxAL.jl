@@ -22,6 +22,8 @@ mutable struct AlgParams
     updateτ::Bool   # Dynamically update τ
     verbose::Int    # level of output: 0 (none), 1 (stdout), 2 (+plots), 3 (+outfiles)
     mode::Symbol    # computation mode [:nondecomposed, :coldstart, :lyapunov_bound]
+    optimizer_fullmodel
+    optimizer_proxALM
 
     function AlgParams()
         new(false,  # decompCtgs
@@ -43,7 +45,9 @@ mutable struct AlgParams
             1.0,    # θ
             false,  # updateτ
             0,      # verbose
-            :nondecomposed # mode
+            :nondecomposed, # mode
+            nothing,
+            nothing
         )
     end
 end

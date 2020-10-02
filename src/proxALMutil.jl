@@ -23,7 +23,7 @@ mutable struct ProxALMData
     plt
 
     
-    function ProxALMData(opfdata::OPFData, rawdata::RawData, optimizer;
+    function ProxALMData(opfdata::OPFData, rawdata::RawData,
                          modelinfo::ModelParams,
                          algparams::AlgParams,
                          fullmodel::Bool = false,
@@ -35,9 +35,9 @@ mutable struct ProxALMData
         if fullmodel
             mode_oldval = algparams.mode
             algparams.mode = :nondecomposed
-            opt_sol = solve_fullmodel(opfdata, rawdata, optimizer; modelinfo = modelinfo, algparams = algparams)
+            opt_sol = solve_fullmodel(opfdata, rawdata, modelinfo, algparams)
             algparams.mode = :lyapunov_bound
-            lyapunov_sol = solve_fullmodel(opfdata, rawdata, optimizer; modelinfo = modelinfo, algparams = algparams)
+            lyapunov_sol = solve_fullmodel(opfdata, rawdata, modelinfo,  algparams)
             algparams.mode = mode_oldval
 
             if algparams.verbose > 2
@@ -66,17 +66,17 @@ mutable struct ProxALMData
         # initial values
         initial_solve = initial_primal === nothing
         x = (initial_primal === nothing) ?
-                PrimalSolution(opfdata; modelinfo = modelinfo) :
+                PrimalSolution(opfdata, modelinfo) :
                 deepcopy(initial_primal)
         λ = (initial_dual === nothing) ?
-                DualSolution(opfdata; modelinfo = modelinfo) :
+                DualSolution(opfdata, modelinfo) :
                 deepcopy(initial_dual)
         # NLP blocks
-        opfBlockData = OPFBlockData(opfdata, rawdata, optimizer; modelinfo = modelinfo, algparams = algparams)
+        opfBlockData = OPFBlockData(opfdata, rawdata, modelinfo, algparams)
         blkLinIndex = LinearIndices(opfBlockData.blkIndex)
         for blk in blkLinIndex
-            opfBlockData.blkModel[blk] = opf_block_model_initialize(blk, opfBlockData, rawdata; algparams = algparams)
-            opfBlockData.colValue[:,blk] .= get_block_view(x, opfBlockData.blkIndex[blk]; modelinfo = modelinfo, algparams = algparams)
+            opfBlockData.blkModel[blk] = opf_block_model_initialize(blk, opfBlockData, rawdata, algparams)
+            opfBlockData.colValue[:,blk] .= get_block_view(x, opfBlockData.blkIndex[blk], modelinfo, algparams)
         end
 
 
@@ -131,13 +131,13 @@ mutable struct ProxALMData
     end
 end
 
-function print_runinfo(runinfo::ProxALMData, opfdata::OPFData;
+function print_runinfo(runinfo::ProxALMData, opfdata::OPFData,
                        modelinfo::ModelParams,
                        algparams::AlgParams)
-    objvalue = compute_objective_function(runinfo.x, opfdata; modelinfo = modelinfo)
-    lyapunov = compute_lyapunov_function(runinfo.x, runinfo.λ, opfdata; xref = runinfo.xprev, modelinfo = modelinfo, algparams = algparams)
+    objvalue = compute_objective_function(runinfo.x, opfdata, modelinfo)
+    lyapunov = compute_lyapunov_function(runinfo.x, runinfo.λ, opfdata, runinfo.xprev, modelinfo, algparams)
     runinfo.maxviol_d =
-        compute_dual_error(runinfo.x, runinfo.xprev, runinfo.λ, runinfo.λprev, opfdata; modelinfo = modelinfo, algparams = algparams)
+        compute_dual_error(runinfo.x, runinfo.xprev, runinfo.λ, runinfo.λprev, opfdata, modelinfo, algparams)
     dist_x = NaN
     dist_λ = NaN
     optimgap = NaN
@@ -146,8 +146,8 @@ function print_runinfo(runinfo::ProxALMData, opfdata::OPFData;
         xstar = runinfo.opt_sol["primal"]
         λstar = runinfo.opt_sol["dual"]
         zstar = runinfo.opt_sol["objective_value_nondecomposed"]
-        dist_x = dist(runinfo.x, xstar; modelinfo = modelinfo, algparams = algparams)
-        dist_λ = dist(runinfo.λ, λstar; modelinfo = modelinfo, algparams = algparams)
+        dist_x = dist(runinfo.x, xstar, modelinfo, algparams)
+        dist_λ = dist(runinfo.λ, λstar, modelinfo, algparams)
         optimgap = 100.0abs(objvalue - zstar)/abs(zstar)
     end
     if !isempty(runinfo.lyapunov_sol)
