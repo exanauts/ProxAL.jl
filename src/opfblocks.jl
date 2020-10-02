@@ -81,13 +81,13 @@ function opf_block_model_initialize(blk::Int, opfblocks::OPFBlockData, rawdata::
     @assert opfblocks.colCount == num_variables(opfmodel)
     @assert modelinfo.num_time_periods == 1
     @assert !algparams.decompCtgs || Kblock == 1
-    
+
     k = opfblocks.blkIndex[blk][1]
     t = opfblocks.blkIndex[blk][2]
     (t==1) &&
         fix.(opfmodel[:St][:,1], 0; force = true)
     (k==1 && algparams.decompCtgs) &&
-        fix.(opfmodel[:Sk][:,1,:], 0; force = true)    
+        fix.(opfmodel[:Sk][:,1,:], 0; force = true)
 
     # Fix penalty vars to 0
     fix.(opfmodel[:Zt], 0; force = true)
@@ -101,7 +101,7 @@ function opf_block_model_initialize(blk::Int, opfblocks::OPFBlockData, rawdata::
     # Add block constraints
     if modelinfo.allow_constr_infeas
         @views for j=1:Kblock
-            opfdata_c = (j == 1) ? opfdata : 
+            opfdata_c = (j == 1) ? opfdata :
                 opf_loaddata(rawdata; lineOff = opfdata.lines[rawdata.ctgs_arr[j - 1]], time_horizon_start = t, time_horizon_end = t, load_scale = modelinfo.load_scale, ramp_scale = modelinfo.ramp_scale)
             opf_model_add_real_power_balance_constraints(opfmodel, opfdata_c, opfmodel[:Pg][:,j,1], opfdata_c.Pd[:,1], opfmodel[:Vm][:,j,1], opfmodel[:Va][:,j,1], opfmodel[:sigma_real][:,j,1])
             opf_model_add_imag_power_balance_constraints(opfmodel, opfdata_c, opfmodel[:Qg][:,j,1], opfdata_c.Qd[:,1], opfmodel[:Vm][:,j,1], opfmodel[:Va][:,j,1], opfmodel[:sigma_imag][:,j,1])
@@ -111,7 +111,7 @@ function opf_block_model_initialize(blk::Int, opfblocks::OPFBlockData, rawdata::
         zb = zeros(length(opfdata.buses))
         zl = zeros(length(opfdata.lines))
         @views for j=1:Kblock
-            opfdata_c = (j == 1) ? opfdata : 
+            opfdata_c = (j == 1) ? opfdata :
                 opf_loaddata(rawdata; lineOff = opfdata.lines[rawdata.ctgs_arr[j - 1]], time_horizon_start = t, time_horizon_end = t, load_scale = modelinfo.load_scale, ramp_scale = modelinfo.ramp_scale)
             opf_model_add_real_power_balance_constraints(opfmodel, opfdata_c, opfmodel[:Pg][:,j,1], opfdata_c.Pd[:,1], opfmodel[:Vm][:,j,1], opfmodel[:Va][:,j,1], zb)
             opf_model_add_imag_power_balance_constraints(opfmodel, opfdata_c, opfmodel[:Qg][:,j,1], opfdata_c.Qd[:,1], opfmodel[:Vm][:,j,1], opfmodel[:Va][:,j,1], zb)
@@ -158,7 +158,7 @@ function opf_block_get_auglag_penalty_expr(blk::Int, opfmodel::JuMP.Model, opfbl
     Sk = opfmodel[:Sk]
 
     auglag_penalty = @expression(opfmodel, 0.5algparams.τ*sum((Pg[g,1,1] - primal.Pg[g,k,t])^2 for g=1:ngen))
-    
+
     if !algparams.decompCtgs || k == 1
         if t > 1
             ramp_link_expr_prev =
@@ -179,7 +179,7 @@ function opf_block_get_auglag_penalty_expr(blk::Int, opfmodel::JuMP.Model, opfbl
             end
         end
         if t < T
-            ramp_link_expr_next = 
+            ramp_link_expr_next =
                 @expression(opfmodel,
                     [g=1:ngen],
                         Pg[g,1,1] - primal.Pg[g,1,t+1] + primal.St[g,t+1] + primal.Zt[g,t+1] - gens[g].ramp_agc
@@ -206,7 +206,7 @@ function opf_block_get_auglag_penalty_expr(blk::Int, opfmodel::JuMP.Model, opfbl
             (β .= 0)
 
         if k > 1
-            ctgs_link_expr_prev = 
+            ctgs_link_expr_prev =
                 @expression(opfmodel,
                     [g=1:ngen],
                         primal.Pg[g,1,t] - Pg[g,1,1] + (gens[g].alpha*primal.ωt[k,t]) + Sk[g,1,1] + primal.Zk[g,k,t] - β[g]
