@@ -4,7 +4,7 @@ function solve_fullmodel(opfdata::OPFData, rawdata::RawData, modelinfo::ModelPar
 end
 
 function opf_model_nondecomposed(opfdata::OPFData, rawdata::RawData, modelinfo::ModelParams, algparams::AlgParams)
-    opfmodel = JuMP.Model(algparams.optimizer_fullmodel)
+    opfmodel = JuMP.Model(algparams.optimizer)
     opf_model_add_variables(opfmodel, opfdata, modelinfo, algparams)
     opf_model_add_block_constraints(opfmodel, opfdata, rawdata, modelinfo)
     obj_expr = compute_objective_function(opfmodel, opfdata, modelinfo)
@@ -21,7 +21,7 @@ function opf_model_nondecomposed(opfdata::OPFData, rawdata::RawData, modelinfo::
     end
 
     @objective(opfmodel,Min, obj_expr + lyapunov_expr)
-    
+
     return opfmodel
 end
 
@@ -205,7 +205,7 @@ function opf_model_add_block_constraints(opfmodel::JuMP.Model, opfdata::OPFData,
     K = (modelinfo.num_ctgs + 1)
     if modelinfo.allow_constr_infeas
         @views for t=1:T, k=1:K
-            opfdata_c = (k == 1) ? opfdata : 
+            opfdata_c = (k == 1) ? opfdata :
                 opf_loaddata(rawdata; lineOff = opfdata.lines[rawdata.ctgs_arr[k - 1]], time_horizon_start = t, time_horizon_end = t, load_scale = modelinfo.load_scale, ramp_scale = modelinfo.ramp_scale)
             opf_model_add_real_power_balance_constraints(opfmodel, opfdata_c, opfmodel[:Pg][:,k,t], opfdata.Pd[:,t], opfmodel[:Vm][:,k,t], opfmodel[:Va][:,k,t], opfmodel[:sigma_real][:,k,t])
             opf_model_add_imag_power_balance_constraints(opfmodel, opfdata_c, opfmodel[:Qg][:,k,t], opfdata.Qd[:,t], opfmodel[:Vm][:,k,t], opfmodel[:Va][:,k,t], opfmodel[:sigma_imag][:,k,t])
@@ -215,7 +215,7 @@ function opf_model_add_block_constraints(opfmodel::JuMP.Model, opfdata::OPFData,
         zb = zeros(length(opfdata.buses))
         zl = zeros(length(opfdata.lines))
         @views for t=1:T, k=1:K
-            opfdata_c = (k == 1) ? opfdata : 
+            opfdata_c = (k == 1) ? opfdata :
                 opf_loaddata(rawdata; lineOff = opfdata.lines[rawdata.ctgs_arr[k - 1]], time_horizon_start = t, time_horizon_end = t, load_scale = modelinfo.load_scale, ramp_scale = modelinfo.ramp_scale)
             opf_model_add_real_power_balance_constraints(opfmodel, opfdata_c, opfmodel[:Pg][:,k,t], opfdata.Pd[:,t], opfmodel[:Vm][:,k,t], opfmodel[:Va][:,k,t], zb)
             opf_model_add_imag_power_balance_constraints(opfmodel, opfdata_c, opfmodel[:Qg][:,k,t], opfdata.Qd[:,t], opfmodel[:Vm][:,k,t], opfmodel[:Va][:,k,t], zb)
@@ -247,9 +247,9 @@ function opf_model_add_line_power_constraints(opfmodel::JuMP.Model, opfdata::OPF
         Yre=YffR[l]*YftR[l]+YffI[l]*YftI[l]; Yim=-YffR[l]*YftI[l]+YffI[l]*YftR[l]
         @NLconstraint(opfmodel,
             Vm[from]^2 *
-            ( Yff_abs2*Vm[from]^2 + Yft_abs2*Vm[to]^2 
-            + 2*Vm[from]*Vm[to]*(Yre*cos(Va[from]-Va[to])-Yim*sin(Va[from]-Va[to])) 
-            ) 
+            ( Yff_abs2*Vm[from]^2 + Yft_abs2*Vm[to]^2
+            + 2*Vm[from]*Vm[to]*(Yre*cos(Va[from]-Va[to])-Yim*sin(Va[from]-Va[to]))
+            )
             - flowmax
             - (sigma_lineFr[l]/baseMVA)
             <=0
@@ -258,7 +258,7 @@ function opf_model_add_line_power_constraints(opfmodel::JuMP.Model, opfdata::OPF
         #branch apparent power limits (to bus)
         Ytf_abs2=YtfR[l]^2+YtfI[l]^2; Ytt_abs2=YttR[l]^2+YttI[l]^2
         Yre=YtfR[l]*YttR[l]+YtfI[l]*YttI[l]; Yim=-YtfR[l]*YttI[l]+YtfI[l]*YttR[l]
-        @NLconstraint(opfmodel, 
+        @NLconstraint(opfmodel,
             Vm[to]^2 *
             ( Ytf_abs2*Vm[from]^2 + Ytt_abs2*Vm[to]^2
             + 2*Vm[from]*Vm[to]*(Yre*cos(Va[from]-Va[to])-Yim*sin(Va[from]-Va[to]))
@@ -284,10 +284,10 @@ function opf_model_add_real_power_balance_constraints(opfmodel::JuMP.Model, opfd
     # Power Balance Equations
     for b in 1:length(buses)
         #real part
-        @NLconstraint(opfmodel, 
-            ( sum( YffR[l] for l in FromLines[b]) + sum( YttR[l] for l in ToLines[b]) + YshR[b] ) * Vm[b]^2 
-            + sum( Vm[b]*Vm[busIdx[lines[l].to]]  *( YftR[l]*cos(Va[b]-Va[busIdx[lines[l].to]]  ) + YftI[l]*sin(Va[b]-Va[busIdx[lines[l].to]]  )) for l in FromLines[b] )  
-            + sum( Vm[b]*Vm[busIdx[lines[l].from]]*( YtfR[l]*cos(Va[b]-Va[busIdx[lines[l].from]]) + YtfI[l]*sin(Va[b]-Va[busIdx[lines[l].from]])) for l in ToLines[b]   ) 
+        @NLconstraint(opfmodel,
+            ( sum( YffR[l] for l in FromLines[b]) + sum( YttR[l] for l in ToLines[b]) + YshR[b] ) * Vm[b]^2
+            + sum( Vm[b]*Vm[busIdx[lines[l].to]]  *( YftR[l]*cos(Va[b]-Va[busIdx[lines[l].to]]  ) + YftI[l]*sin(Va[b]-Va[busIdx[lines[l].to]]  )) for l in FromLines[b] )
+            + sum( Vm[b]*Vm[busIdx[lines[l].from]]*( YtfR[l]*cos(Va[b]-Va[busIdx[lines[l].from]]) + YtfI[l]*sin(Va[b]-Va[busIdx[lines[l].from]])) for l in ToLines[b]   )
             - ( sum(baseMVA*Pg[g] for g in BusGeners[b]) - Pd[b] + sigma_real[b]) / baseMVA      # Sbus part
             ==0
         )
@@ -309,7 +309,7 @@ function opf_model_add_imag_power_balance_constraints(opfmodel::JuMP.Model, opfd
     for b in 1:length(buses)
         #imaginary part
         @NLconstraint(opfmodel,
-            ( sum(-YffI[l] for l in FromLines[b]) + sum(-YttI[l] for l in ToLines[b]) - YshI[b] ) * Vm[b]^2 
+            ( sum(-YffI[l] for l in FromLines[b]) + sum(-YttI[l] for l in ToLines[b]) - YshI[b] ) * Vm[b]^2
             + sum( Vm[b]*Vm[busIdx[lines[l].to]]  *(-YftI[l]*cos(Va[b]-Va[busIdx[lines[l].to]]  ) + YftR[l]*sin(Va[b]-Va[busIdx[lines[l].to]]  )) for l in FromLines[b] )
             + sum( Vm[b]*Vm[busIdx[lines[l].from]]*(-YtfI[l]*cos(Va[b]-Va[busIdx[lines[l].from]]) + YtfR[l]*sin(Va[b]-Va[busIdx[lines[l].from]])) for l in ToLines[b]   )
             - ( sum(baseMVA*Qg[g] for g in BusGeners[b]) - Qd[b] + sigma_imag[b]) / baseMVA      #Sbus part
@@ -424,7 +424,7 @@ function compute_time_linking_constraints(opfdict, opfdata::OPFData, modelinfo::
     (ngen, K, T) = size(Pg)
 
     link = Dict{Symbol, Array}()
-    if modelinfo.time_link_constr_type == :inequality 
+    if modelinfo.time_link_constr_type == :inequality
         link[:ramping_p] = [(t > 1) ? (+Pg[g,1,t-1] - Pg[g,1,t] - gens[g].ramp_agc) : 0.0 for g=1:ngen,t=1:T]
         link[:ramping_n] = [(t > 1) ? (-Pg[g,1,t-1] + Pg[g,1,t] - gens[g].ramp_agc) : 0.0 for g=1:ngen,t=1:T]
     else
@@ -436,7 +436,7 @@ end
 
 function compute_ctgs_linking_constraints(opfdict, opfdata::OPFData, modelinfo::ModelParams)
     Pg = opfdict[:Pg]
-    ωt = opfdict[:ωt]   
+    ωt = opfdict[:ωt]
     Sk = opfdict[:Sk]
     Zk = opfdict[:Zk]
 
@@ -445,7 +445,7 @@ function compute_ctgs_linking_constraints(opfdict, opfdata::OPFData, modelinfo::
 
 
     link = Dict{Symbol, Array}()
-    if modelinfo.ctgs_link_constr_type == :corrective_inequality 
+    if modelinfo.ctgs_link_constr_type == :corrective_inequality
         link[:ctgs_p] = [(k > 1) ? (+Pg[g,1,t] - Pg[g,k,t] - gens[g].scen_agc) : 0.0 for g=1:ngen,k=1:K,t=1:T]
         link[:ctgs_n] = [(k > 1) ? (-Pg[g,1,t] + Pg[g,k,t] - gens[g].scen_agc) : 0.0 for g=1:ngen,k=1:K,t=1:T]
     else
@@ -466,7 +466,7 @@ function compute_quadratic_penalty(opfdict, opfdata::OPFData,
         inequality && (modelinfo.time_link_constr_type = :equality)
         link = compute_time_linking_constraints(opfdict, opfdata, modelinfo)
         inequality && (modelinfo.time_link_constr_type = :inequality)
-        
+
         lyapunov_quadratic_penalty_time = sum(link[:ramping][:,2:T].^2)
     else
         lyapunov_quadratic_penalty_time = 0
@@ -704,7 +704,7 @@ function compute_dual_error(x::PrimalSolution, xprev::PrimalSolution, λ::DualSo
     err_zt_view = view(err_zt, :, :)
     err_sk_view = view(err_sk, :, :, :)
     err_zk_view = view(err_zk, :, :, :)
-    
+
     dual_error = CatView(err_pg_view, err_ωt_view, err_st_view, err_zt_view, err_sk_view, err_zk_view)
 
     return norm(dual_error, lnorm)
