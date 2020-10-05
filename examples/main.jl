@@ -1,7 +1,9 @@
 using Distributed
 
 @everywhere using Pkg
-@everywhere Pkg.activate(joinpath(dirname(@__FILE__)))
+@everywhere Pkg.activate(dirname(@__FILE__))
+@everywhere Pkg.add(PackageSpec(url="https://github.com/exanauts/ProxAL.jl"))
+@everywhere Pkg.add(["ArgParse", "Ipopt", "JLD", "LaTeXStrings", "Plots"])
 @everywhere Pkg.instantiate()
 @everywhere using ProxAL
 @everywhere using JuMP, Ipopt
@@ -89,7 +91,7 @@ function main()
              maxρ_t = maxρ,
              maxρ_c = maxρ)
     algparams.mode = mode
-    algparams.verbose = 3 # level of output: 0 (none), 1 (stdout), 2 (+plots), 3 (+outfiles)
+    algparams.verbose = 1 # level of output: 0 (none), 1 (stdout), 2 (+plots), 3 (+outfiles)
     algparams.optimizer =
                 optimizer_with_attributes(Ipopt.Optimizer,
                     "print_level" => Int64(algparams.verbose > 0)*5)

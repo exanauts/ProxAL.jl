@@ -46,6 +46,7 @@ pkg> test ProxAL
 Next, set up and solve the problem as follows. Note that all case files are stored in the `data/` subdirectory. For a full list of model and algorithmic options, see `src/proxALMutil.jl`.
 ```julia
 using ProxAL
+using JuMP, Ipopt
 
 # Model/formulation settings
 modelinfo = ModelParams()
@@ -72,6 +73,7 @@ algparams = AlgParams()
 algparams.parallel = false
 algparams.decompCtgs = false
 algparams.verbose = 0
+algparams.optimizer = JuMP.optimizer_with_attributes(Ipopt.Optimizer, "print_level" => 0)
 maxρ = 0.1
 set_rho!(algparams;
          ngen = length(opfdata.generators),
@@ -81,14 +83,14 @@ set_rho!(algparams;
 algparams.mode = :coldstart
 
 if algparams.mode ∈ [:nondecomposed, :lyapunov_bound]
-    solve_fullmodel(opfdata, rawdata; modelinfo = modelinfo, algparams = algparams)
+    solve_fullmodel(opfdata, rawdata, modelinfo, algparams)
 elseif algparams.mode == :coldstart
-    run_proxALM(opfdata, rawdata; modelinfo = modelinfo, algparams = algparams)
+    run_proxALM(opfdata, rawdata, modelinfo, algparams)
 end
 ```
 
 ### Terminal
-Enter `julia src/main.jl --help` to get a help message:
+Enter `julia examples/main.jl --help` to get a help message:
 ```
 usage: main.jl [--T T] [--Ctgs CTGS] [--time_unit UNIT]
                [--ramp_value RVAL] [--decompCtgs] [--ramp_constr RCON]
@@ -132,6 +134,6 @@ optional arguments:
 
 A typical call might look as follows:
 ```julia
-julia src/main.jl case9 --T=2 --Ctgs=1 --time_unit=hour --ramp_value=0.5 --load_scale=1.0 --ramp_constr=penalty --Ctgs_constr=frequency_ctrl --auglag_rho=0.1 --quad_penalty=0.1 --compute_mode=coldstart
+julia examples/main.jl case9 --T=2 --Ctgs=1 --time_unit=hour --ramp_value=0.5 --load_scale=1.0 --ramp_constr=penalty --Ctgs_constr=frequency_ctrl --auglag_rho=0.1 --quad_penalty=0.1 --compute_mode=coldstart
 ```
 To use multiple processes (say 2 processes), modify the `julia` call to `julia -p 2`.
