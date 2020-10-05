@@ -1,5 +1,3 @@
-using Plots, LaTeXStrings, JLD
-
 mutable struct ProxALMData
     opfBlockData::OPFBlockData
     
@@ -185,61 +183,5 @@ function update_runinfo(runinfo::ProxALMData, opfdata::OPFData,
                     optimgap,
                     lyapunov_gap)
     end
-
-    if algparams.verbose > 1
-        (runinfo.plt === nothing) && (runinfo.plt = initialize_plot())
-        push!(runinfo.plt, 1, iter, runinfo.maxviol_t[iter])
-        push!(runinfo.plt, 2, iter, runinfo.maxviol_c[iter])
-        push!(runinfo.plt, 3, iter, runinfo.maxviol_d[iter])
-        push!(runinfo.plt, 4, iter, runinfo.dist_x[iter])
-        push!(runinfo.plt, 5, iter, runinfo.dist_λ[iter])
-        push!(runinfo.plt, 6, iter, optimgap)
-        push!(runinfo.plt, 7, iter, (lyapunov_gap < 0) ? NaN : lyapunov_gap)
-        savefig(runinfo.plt, modelinfo.savefile * ".plot.png")
-    end
-
-    if algparams.verbose > 2
-        savefile = modelinfo.savefile * ".iter_" * string(runinfo.iter) * ".jld"
-        iter_sol = Dict()
-        iter_sol["x"] = runinfo.x
-        iter_sol["λ"] = runinfo.λ
-        JLD.save(savefile, iter_sol)
-    end
 end
 
-function options_plot(plt)
-    fsz = 20
-    plot!(plt,
-          fontfamily = "Computer-Modern",
-          yscale = :log10,
-          framestyle = :box,
-          ylim = [1e-4, 1e+1],
-          xtickfontsize = fsz,
-          ytickfontsize = fsz,
-          guidefontsize = fsz,
-          titlefontsize = fsz,
-          legendfontsize = fsz,
-          size = (800, 800)
-    )
-end
-
-function initialize_plot()
-    gr()
-    label = [L"|p^0_{gt} - p^0_{g,t-1}| - r_g"
-             L"|p^k_{gt} - p^0_{gt} - \alpha_g \omega^k_t|"
-             L"|\textrm{\sffamily KKT}|"
-             L"|x-x^*|"
-             L"|\lambda-\lambda^*|"
-             L"|c(x)-c(x^*)|/c(x^*)"
-             L"|L-L^*|/L^*"]
-    any = Array{Any, 1}(undef, length(label))
-    any .= Any[[1,1]]
-    plt = plot([Inf, Inf], any,
-                lab = reshape(label, 1, length(label)),
-                lw = 2.5,
-                # markersize = 2.5,
-                # markershape = :auto,
-                xlabel=L"\textrm{\sffamily Iteration}")
-    options_plot(plt)
-    return plt
-end

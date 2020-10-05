@@ -5,6 +5,7 @@ using Distributed
 @everywhere Pkg.instantiate()
 @everywhere using ProxAL
 @everywhere using JuMP, Ipopt
+@everywhere using Plots, LaTeXStrings, JLD
 
 ENV["GKSwstype"]="nul"
 
@@ -88,7 +89,10 @@ function main()
              maxρ_t = maxρ,
              maxρ_c = maxρ)
     algparams.mode = mode
-    algparams.verbose = 1 # level of output: 0 (none), 1 (stdout), 2 (+plots), 3 (+outfiles)
+    algparams.verbose = 3 # level of output: 0 (none), 1 (stdout), 2 (+plots), 3 (+outfiles)
+    algparams.optimizer =
+                optimizer_with_attributes(Ipopt.Optimizer,
+                    "print_level" => Int64(algparams.verbose > 0)*5)
     if algparams.verbose > 1
         outdir = joinpath(dirname(@__FILE__), "./outfiles/")
         if !ispath(outdir)
@@ -96,9 +100,6 @@ function main()
         end
         modelinfo.savefile = outdir * modelinfo.savefile
     end
-    algparams.optimizer =
-                optimizer_with_attributes(Ipopt.Optimizer,
-                    "print_level" => Int64(algparams.verbose > 0)*5)
 
     ##
     ##  Solve the model
@@ -107,9 +108,78 @@ function main()
         solve_fullmodel(opfdata, rawdata, modelinfo, algparams)
     elseif algparams.mode == :coldstart
         run_proxALM(opfdata, rawdata, modelinfo, algparams)
+        
+        if algparams.verbose > 1
+            (runinfo.plt === nothing) &&
+                (runinfo.plt = initialize_plot())
+            zstar, lyapunov_star = NaN, NaN
+            if !isempty(runinfo.opt_sol)
+                zstar = runinfo.opt_sol["objective_value_nondecomposed"]
+            end
+            if !isempty(runinfo.lyapunov_sol)
+                lyapunov_star = runinfo.lyapunov_sol["objective_value_lyapunov_bound"]
+            end
+            for iter=1:runinfo.iter
+                optimgap = 100.0abs(runinfo.objvalue[iter] - zstar)/abs(zstar)
+                lyapunov_gap = 100.0(runinfo.lyapunov[iter] - lyapunov_star)/abs(lyapunov_star)
+                push!(runinfo.plt, 1, iter, runinfo.maxviol_t[iter])
+                push!(runinfo.plt, 2, iter, runinfo.maxviol_c[iter])
+                push!(runinfo.plt, 3, iter, runinfo.maxviol_d[iter])
+                push!(runinfo.plt, 4, iter, runinfo.dist_x[iter])
+                push!(runinfo.plt, 5, iter, runinfo.dist_λ[iter])
+                push!(runinfo.plt, 6, iter, optimgap)
+                push!(runinfo.plt, 7, iter, (lyapunov_gap < 0) ? NaN : lyapunov_gap)
+                #=
+                if algparams.verbose > 2
+                    savefile = modelinfo.savefile * ".iter_" * string(runinfo.iter) * ".jld"
+                    iter_sol = Dict()
+                    iter_sol["x"] = runinfo.x
+                    iter_sol["λ"] = runinfo.λ
+                    JLD.save(savefile, iter_sol)
+                end
+                =#
+            end
+            savefig(runinfo.plt, modelinfo.savefile * ".plot.png")
     end
 
     return nothing
+end
+
+function options_plot(plt)
+    fsz = 20
+    plot!(plt,
+          fontfamily = "Computer-Modern",
+          yscale = :log10,
+          framestyle = :box,
+          ylim = [1e-4, 1e+1],
+          xtickfontsize = fsz,
+          ytickfontsize = fsz,
+          guidefontsize = fsz,
+          titlefontsize = fsz,
+          legendfontsize = fsz,
+          size = (800, 800)
+    )
+end
+
+function initialize_plot()
+    gr()
+    label = [L"|p^0_{gt} - p^0_{g,t-1}| - r_g"
+             L"|p^k_{gt} - p^0_{gt} - \alpha_g \omega^k_t|"
+             L"|\textrm{\sffamily KKT}|"
+             L"|x-x^*|"
+             L"|\lambda-\lambda^*|"
+             L"|c(x)-c(x^*)|/c(x^*)"
+             L"|L-L^*|/L^*"]
+    any = Array{Any, 1}(undef, length(label))
+    any .= Any[[1,1]]
+    plt = plot([Inf, Inf], any,
+                lab = reshape(label, 1, length(label)),
+                lw = 2.5,
+                # markersize = 2.5,
+                # markershape = :auto,
+                xlabel=L"\textrm{\sffamily Iteration}")
+    options_plot(plt)
+    return plt
 end
 
 
