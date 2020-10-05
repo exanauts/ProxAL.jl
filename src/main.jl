@@ -4,7 +4,7 @@ using Distributed
 @everywhere Pkg.activate(joinpath(dirname(@__FILE__), ".."))
 @everywhere Pkg.instantiate()
 @everywhere using ProxAL
-@everywhere using Ipopt
+@everywhere using JuMP, Ipopt
 
 ENV["GKSwstype"]="nul"
 
@@ -104,9 +104,9 @@ function main()
     ##  Solve the model
     ##
     if algparams.mode ∈ [:nondecomposed, :lyapunov_bound]
-        solve_fullmodel(opfdata, rawdata; modelinfo = modelinfo, algparams = algparams)
+        solve_fullmodel(opfdata, rawdata, modelinfo, algparams)
     elseif algparams.mode == :coldstart
-        run_proxALM(opfdata, rawdata; modelinfo = modelinfo, algparams = algparams)
+        run_proxALM(opfdata, rawdata, modelinfo, algparams)
     end
 
     return nothing
