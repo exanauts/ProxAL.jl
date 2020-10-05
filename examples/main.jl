@@ -1,7 +1,7 @@
 using Distributed
 
 @everywhere using Pkg
-@everywhere Pkg.activate(joinpath(dirname(@__FILE__), ".."))
+@everywhere Pkg.activate(joinpath(dirname(@__FILE__)))
 @everywhere Pkg.instantiate()
 @everywhere using ProxAL
 @everywhere using JuMP, Ipopt
@@ -107,11 +107,10 @@ function main()
     if algparams.mode ∈ [:nondecomposed, :lyapunov_bound]
         solve_fullmodel(opfdata, rawdata, modelinfo, algparams)
     elseif algparams.mode == :coldstart
-        run_proxALM(opfdata, rawdata, modelinfo, algparams)
+        runinfo = run_proxALM(opfdata, rawdata, modelinfo, algparams)
         
         if algparams.verbose > 1
-            (runinfo.plt === nothing) &&
-                (runinfo.plt = initialize_plot())
+            plt = initialize_plot()
             zstar, lyapunov_star = NaN, NaN
             if !isempty(runinfo.opt_sol)
                 zstar = runinfo.opt_sol["objective_value_nondecomposed"]
@@ -122,13 +121,13 @@ function main()
             for iter=1:runinfo.iter
                 optimgap = 100.0abs(runinfo.objvalue[iter] - zstar)/abs(zstar)
                 lyapunov_gap = 100.0(runinfo.lyapunov[iter] - lyapunov_star)/abs(lyapunov_star)
-                push!(runinfo.plt, 1, iter, runinfo.maxviol_t[iter])
-                push!(runinfo.plt, 2, iter, runinfo.maxviol_c[iter])
-                push!(runinfo.plt, 3, iter, runinfo.maxviol_d[iter])
-                push!(runinfo.plt, 4, iter, runinfo.dist_x[iter])
-                push!(runinfo.plt, 5, iter, runinfo.dist_λ[iter])
-                push!(runinfo.plt, 6, iter, optimgap)
-                push!(runinfo.plt, 7, iter, (lyapunov_gap < 0) ? NaN : lyapunov_gap)
+                push!(plt, 1, iter, runinfo.maxviol_t[iter])
+                push!(plt, 2, iter, runinfo.maxviol_c[iter])
+                push!(plt, 3, iter, runinfo.maxviol_d[iter])
+                push!(plt, 4, iter, runinfo.dist_x[iter])
+                push!(plt, 5, iter, runinfo.dist_λ[iter])
+                push!(plt, 6, iter, optimgap)
+                push!(plt, 7, iter, (lyapunov_gap < 0) ? NaN : lyapunov_gap)
                 #=
                 if algparams.verbose > 2
                     savefile = modelinfo.savefile * ".iter_" * string(runinfo.iter) * ".jld"
@@ -139,7 +138,8 @@ function main()
                 end
                 =#
             end
-            savefig(runinfo.plt, modelinfo.savefile * ".plot.png")
+            savefig(plt, modelinfo.savefile * ".plot.png")
+        end
     end
 
     return nothing

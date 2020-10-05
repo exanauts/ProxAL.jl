@@ -34,8 +34,6 @@ mutable struct ProxALMData
                          fullmodel::Bool = false,
                          initial_primal = nothing,
                          initial_dual = nothing)
-        optfile_nondecomposed = modelinfo.savefile * ".nondecomposed.jld"
-        optfile_lyapunov = modelinfo.savefile * ".lyapunov.jld"
         lyapunov_sol, opt_sol = Dict(), Dict()
         if fullmodel
             mode_oldval = algparams.mode
@@ -44,18 +42,6 @@ mutable struct ProxALMData
             algparams.mode = :lyapunov_bound
             lyapunov_sol = solve_fullmodel(opfdata, rawdata, modelinfo,  algparams)
             algparams.mode = mode_oldval
-
-            if algparams.verbose > 2
-                JLD.save(optfile_nondecomposed, opt_sol)
-                JLD.save(optfile_lyapunov, lyapunov_sol)
-            end
-        else
-            if isfile(optfile_nondecomposed)
-                opt_sol = JLD.load(optfile_nondecomposed)
-            end
-            if isfile(optfile_lyapunov)
-                lyapunov_sol = JLD.load(optfile_lyapunov)
-            end
         end
         if !isempty(opt_sol)
             (algparams.verbose > 0) &&
