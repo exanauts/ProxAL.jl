@@ -5,7 +5,6 @@ using Distributed
 using SharedArrays, LinearAlgebra, JuMP
 using CatViews
 
-ENV["GKSwstype"]="nul"
 DATA_DIR = joinpath(dirname(@__FILE__), "..", "data")
 case = "case9"
 T = 2
