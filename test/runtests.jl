@@ -4,6 +4,7 @@ using DelimitedFiles, Printf
 using Distributed
 using SharedArrays, LinearAlgebra, JuMP
 using CatViews
+using CUDA
 
 DATA_DIR = joinpath(dirname(@__FILE__), "..", "data")
 case = "case9"
@@ -37,10 +38,17 @@ algparams = AlgParams()
 algparams.parallel = false #algparams.parallel = (nprocs() > 1)
 algparams.verbose = 0
 
+if CUDA.has_cuda_gpu()
+    solver_list = ["Ipopt", "MadNLP", "MadNLPGPU"]
+else
+    solver_list = ["Ipopt", "MadNLP"]
+end
+
 @testset "Test ProxAL on $(case)" begin
     modelinfo.case_name = case
 
-    for solver in ["MadNLP"]
+    for solver in solver_list
+    @testset "$(solver)" begin
         if solver == "Ipopt"
             using Ipopt
             algparams.optimizer =
@@ -51,6 +59,13 @@ algparams.verbose = 0
             using MadNLP
             algparams.optimizer = () ->
                 MadNLP.Optimizer(linear_solver="Mumps",
+                                 print_level=MadNLP.ERROR,
+                                 max_iter=300)
+        end
+        if solver == "MadNLPGPU"
+            using MadNLP
+            algparams.optimizer = () ->
+                MadNLP.Optimizer(linear_solver="LapackCUDA",
                                  print_level=MadNLP.ERROR,
                                  max_iter=300)
         end
@@ -84,7 +99,11 @@ algparams.verbose = 0
                     result = solve_fullmodel(opfdata, rawdata, modelinfo, algparams)
                     @test isapprox(result["objective_value_nondecomposed"], 11.258316111585623, rtol = rtol)
                     @test isapprox(result["primal"].Pg[:], [0.8979870694509675, 1.3432060120295906, 0.9418738103137331, 0.9840203268625166, 1.448040098924617, 1.0149638876964715], rtol = rtol)
-                    @test_broken isapprox(result["primal"].Zt[:], [0.0, 0.0, 0.0, 2.7859277234613066e-6, 2.3533760802049378e-6, 2.0234235436650152e-6], rtol = rtol)
+                    if solver != "Ipopt"
+                        @test_broken isapprox(result["primal"].Zt[:], [0.0, 0.0, 0.0, 2.7859277234613066e-6, 2.3533760802049378e-6, 2.0234235436650152e-6], rtol = rtol)
+                    else
+                        @test isapprox(result["primal"].Zt[:], [0.0, 0.0, 0.0, 2.7859277234613066e-6, 2.3533760802049378e-6, 2.0234235436650152e-6], rtol = rtol)
+                    end
                 end
                 
                 @testset "Lyapunov bound" begin
@@ -130,7 +149,11 @@ algparams.verbose = 0
                     result = solve_fullmodel(opfdata, rawdata, modelinfo, algparams)
                     @test isapprox(result["objective_value_nondecomposed"], 11.258316111574212, rtol = rtol)
                     @test isapprox(result["primal"].Pg[:], [0.8979870693416382, 1.3432060108971793, 0.9418738115511179, 0.9055318507524525, 1.3522597485901564, 0.9500221754747974, 0.9840203265549852, 1.4480400977338292, 1.014963889201792, 0.9932006221514175, 1.459056452449548, 1.024878608445939], rtol = rtol)
-                    @test_broken isapprox(result["primal"].Zt[:], [0.0, 0.0, 0.0, 2.7857429391709934e-6, 2.353279608425683e-6, 2.023313001658965e-6], rtol = rtol)
+                    if solver != "Ipopt"
+                        @test_broken isapprox(result["primal"].Zt[:], [0.0, 0.0, 0.0, 2.7857429391709934e-6, 2.353279608425683e-6, 2.023313001658965e-6], rtol = rtol)
+                    else
+                        @test isapprox(result["primal"].Zt[:], [0.0, 0.0, 0.0, 2.7857429391709934e-6, 2.353279608425683e-6, 2.023313001658965e-6], rtol = rtol)
+                    end
                     @test isapprox(result["primal"].ωt[:], [0.0, -0.00012071650257302939, 0.0, -0.00014688472954291597], rtol = rtol)
                 end
                 @testset "Lyapunov bound" begin
@@ -179,7 +202,11 @@ algparams.verbose = 0
                     result = solve_fullmodel(opfdata, rawdata, modelinfo, algparams)
                     @test isapprox(result["objective_value_nondecomposed"], 11.258316111574212, rtol = rtol)
                     @test isapprox(result["primal"].Pg[:], [0.8979870693416382, 1.3432060108971793, 0.9418738115511179, 0.9055318507524525, 1.3522597485901564, 0.9500221754747974, 0.9840203265549852, 1.4480400977338292, 1.014963889201792, 0.9932006221514175, 1.459056452449548, 1.024878608445939], rtol = rtol)
-                    @test_broken isapprox(result["primal"].Zt[:], [0.0, 0.0, 0.0, 2.7857429391709934e-6, 2.353279608425683e-6, 2.023313001658965e-6], rtol = rtol)
+                    if solver != "Ipopt"
+                        @test_broken isapprox(result["primal"].Zt[:], [0.0, 0.0, 0.0, 2.7857429391709934e-6, 2.353279608425683e-6, 2.023313001658965e-6], rtol = rtol)
+                    else
+                        @test isapprox(result["primal"].Zt[:], [0.0, 0.0, 0.0, 2.7857429391709934e-6, 2.353279608425683e-6, 2.023313001658965e-6], rtol = rtol)
+                    end
                     @test isapprox(result["primal"].ωt[:], [0.0, -0.00012071650257302939, 0.0, -0.00014688472954291597], rtol = rtol)
                 end
                 @testset "Lyapunov bound" begin
@@ -188,7 +215,8 @@ algparams.verbose = 0
                     @test isapprox(result["objective_value_lyapunov_bound"], 11.258316111574207)
                     @test isapprox(result["primal"].Pg[:], [0.8979870693416395, 1.3432060108971777, 0.9418738115511173, 0.9055318507524539, 1.3522597485901549, 0.9500221754747968, 0.9840203265549855, 1.4480400977338292, 1.0149638892017916, 0.9932006221514178, 1.459056452449548, 1.0248786084459387], rtol = rtol)
                 end
-                if solver != "MadNLP"
+                # MadNLP gets stuck here
+                if solver == "Ipopt"
                 @testset "ProxALM" begin
                     algparams.mode = :coldstart
                     runinfo = run_proxALM(opfdata, rawdata, modelinfo, algparams)
@@ -206,5 +234,6 @@ algparams.verbose = 0
                 end # !MadNLP
             end
         end
+    end # solver testset
     end
 end
