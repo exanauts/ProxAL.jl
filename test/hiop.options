@@ -1,0 +1,13 @@
+dualsUpdateType linear
+dualsInitialization zero
+
+Hessian analytical_exact
+KKTLinsys auto
+compute_mode cpu
+
+verbosity_level 0
+mu0 1e-1
+fixed_var relax
+max_iter 3000
+kappa1 1e-8
+kappa2 1e-8
