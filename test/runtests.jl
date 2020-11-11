@@ -1,11 +1,12 @@
 using Test
 using ProxAL
 using DelimitedFiles, Printf
-using Distributed
-using SharedArrays, LinearAlgebra, JuMP
+using LinearAlgebra, JuMP
 using CatViews
 using CUDA
+using MPI
 
+MPI.Init()
 DATA_DIR = joinpath(dirname(@__FILE__), "..", "data")
 case = "case9"
 T = 2
@@ -272,3 +273,4 @@ end
     end # solver testset
     end
 end
+MPI.Finalize()
