@@ -13,8 +13,8 @@ mutable struct ProxALMData
     maxviol_d::Vector{Float64}
     dist_x::Vector{Float64}
     dist_λ::Vector{Float64}
-    nlp_opt_sol::SharedArray{Float64,2}
-    nlp_soltime::SharedVector{Float64}
+    nlp_opt_sol::Array{Float64,2}
+    nlp_soltime::Vector{Float64}
     wall_time_elapsed_actual::Float64
     wall_time_elapsed_ideal::Float64
     iter
@@ -27,10 +27,13 @@ mutable struct ProxALMData
     par_order
     plt
 
-    
+    #---- MPI ----
+    comm::MPI.Comm
+
     function ProxALMData(opfdata::OPFData, rawdata::RawData,
                          modelinfo::ModelParams,
                          algparams::AlgParams,
+                         comm::MPI.Comm,
                          fullmodel::Bool = false,
                          initial_primal = nothing,
                          initial_dual = nothing)
@@ -92,9 +95,9 @@ mutable struct ProxALMData
         maxviol_d = []
         dist_x = []
         dist_λ = []
-        nlp_opt_sol = SharedArray{Float64, 2}(opfBlockData.colCount, opfBlockData.blkCount)
+        nlp_opt_sol = Array{Float64, 2}(undef, opfBlockData.colCount, opfBlockData.blkCount)
         nlp_opt_sol .= opfBlockData.colValue
-        nlp_soltime = SharedVector{Float64}(opfBlockData.blkCount)
+        nlp_soltime = Vector{Float64}(undef, opfBlockData.blkCount)
         wall_time_elapsed_actual = 0.0
         wall_time_elapsed_ideal = 0.0
         xprev = deepcopy(x)
@@ -124,7 +127,8 @@ mutable struct ProxALMData
             initial_solve,
             ser_order,
             par_order,
-            plt)
+            plt,
+            comm)
     end
 end
 
