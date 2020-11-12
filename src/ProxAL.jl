@@ -238,7 +238,7 @@ function update_dual_vars(λ::DualSolution, opfdata::OPFData,
         if algparams.updateρ_t
             increaseρ_t = (algparams.ρ_t .< algparams.maxρ_t) .& (viol_t .> algparams.ρ_t_tol)
             subρ_t = @view algparams.ρ_t[increaseρ_t]
-            subρ_t .= min.(subρ_t .+ 0.1alg.maxρ_t, algparams.maxρ_t)
+            subρ_t .= min.(subρ_t .+ 0.1algparams.maxρ_t, algparams.maxρ_t)
             subρ_t_tol = @view algparams.ρ_t_tol[(.!increaseρ_t) .& (viol_t .<= algparams.ρ_t_tol)]
             subρ_t_tol .= max.(subρ_t_tol./1.2, algparams.zero)
         end
@@ -260,7 +260,7 @@ function update_dual_vars(λ::DualSolution, opfdata::OPFData,
         if algparams.updateρ_c
             increaseρ_c = (algparams.ρ_c .< algparams.maxρ_c) .& (viol_c .> algparams.ρ_c_tol)
             subρ_c = @view algparams.ρ_c[increaseρ_c]
-            subρ_c .= min.(subρ_c .+ 0.1alg.maxρ_c, algparams.maxρ_c)
+            subρ_c .= min.(subρ_c .+ 0.1algparams.maxρ_c, algparams.maxρ_c)
             subρ_c_tol = @view algparams.ρ_c_tol[(.!increaseρ_c) .& (viol_c .<= algparams.ρ_c_tol)]
             subρ_c_tol .= max.(subρ_c_tol./1.2, algparams.zero)
         end
