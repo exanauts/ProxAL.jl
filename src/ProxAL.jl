@@ -5,8 +5,8 @@ module ProxAL
 
 using JuMP
 using Printf, CatViews
-using Distributed, SharedArrays
 using LinearAlgebra
+using MPI
 
 include("params.jl")
 include("opfdata.jl")
@@ -20,8 +20,8 @@ export opf_loaddata, solve_fullmodel, run_proxALM, set_rho!
 
 function run_proxALM(opfdata::OPFData, rawdata::RawData,
                      modelinfo::ModelParams,
-                     algparams::AlgParams)
-    runinfo = ProxALMData(opfdata, rawdata, modelinfo, algparams, true)
+                     algparams::AlgParams, comm::MPI.Comm = MPI.COMM_WORLD)
+    runinfo = ProxALMData(opfdata, rawdata, modelinfo, algparams, comm, true)
     runinfo.initial_solve &&
         (algparams_copy = deepcopy(algparams))
     opfBlockData = runinfo.opfBlockData
@@ -61,12 +61,19 @@ function run_proxALM(opfdata::OPFData, rawdata::RawData,
                     update_primal_nlpvars(x, opfBlockData, blk, modelinfo, algparams)
                 end
             end
-            @sync for blk in runinfo.par_order
-                @async @spawn begin
+            nlp_opt_sol .= 0.0
+            nlp_soltime .= 0.0
+            for blk in runinfo.par_order
+                if blk % MPI.Comm_size(comm) == MPI.Comm_rank(comm)
                     # nlp_soltime[blk] = @elapsed blocknlp_copy(blk; x_ref = x, λ_ref = λ, alg_ref = algparams)
                     nlp_soltime[blk] = @elapsed blocknlp_recreate(blk, x, λ, algparams)
                 end
             end
+
+            # Every worker sends his contribution 
+            MPI.Allreduce!(nlp_opt_sol, MPI.SUM, comm)
+            MPI.Allreduce!(nlp_soltime, MPI.SUM, comm)
+
             for blk in runinfo.par_order
                 opfBlockData.colValue[:,blk] .= nlp_opt_sol[:,blk]
                 update_primal_nlpvars(x, opfBlockData, blk, modelinfo, algparams)
