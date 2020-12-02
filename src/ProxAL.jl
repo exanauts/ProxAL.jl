@@ -5,6 +5,7 @@ module ProxAL
 
 using JuMP
 using Printf, CatViews
+using ExaPF
 using LinearAlgebra
 using MPI
 
@@ -70,7 +71,7 @@ function run_proxALM(opfdata::OPFData, rawdata::RawData,
                 end
             end
 
-            # Every worker sends his contribution 
+            # Every worker sends his contribution
             MPI.Allreduce!(nlp_opt_sol, MPI.SUM, comm)
             MPI.Allreduce!(nlp_soltime, MPI.SUM, comm)
 

@@ -1,4 +1,19 @@
+import ExaPF: ParsePSSE, ParseMAT
 using DelimitedFiles
+
+function parse_file(datafile)
+    if endswith(datafile, ".raw")
+        data_raw = ParsePSSE.parse_raw(datafile)
+        data, bus_id_to_indexes = ParsePSSE.raw_to_exapf(data_raw)
+    elseif endswith(datafile, ".m")
+        data_mat = ParseMAT.parse_mat(datafile)
+        data, bus_id_to_indexes = ParseMAT.mat_to_exapf(data_mat)
+    else
+        error("Unsupported format in file $(datafile): supported extensions are " *
+              "Matpower (.m) or PSSE (.raw)")
+    end
+    return data, bus_id_to_indexes
+end
 
 struct Bus
     bus_i::Int
@@ -78,13 +93,13 @@ end
 
 
 mutable struct RawData
-    bus_arr
-    branch_arr
-    gen_arr
-    costgen_arr
-    pd_arr
-    qd_arr
-    ctgs_arr
+    bus_arr::Array{Float64, 2}
+    branch_arr::Array{Float64, 2}
+    gen_arr::Array{Float64, 2}
+    costgen_arr::Array{Float64, 2}
+    pd_arr::Array{Float64, 2}
+    qd_arr::Array{Float64, 2}
+    ctgs_arr::Array{Int, 2}
 end
 
 ##
@@ -95,13 +110,16 @@ end
 ##
 
 function RawData(case_name, scen_file::String="")
-    bus_arr = readdlm(case_name * ".bus")
-    branch_arr = readdlm(case_name * ".branch")
-    gen_arr = readdlm(case_name * ".gen")
-    costgen_arr = readdlm(case_name * ".gencost")
+    data, _ = parse_file(case_name)
+    bus_arr = data["bus"]
+    branch_arr = data["branch"]
+    gen_arr = data["gen"]
+    costgen_arr = data["cost"]
+
     pd_arr = Array{Float64, 2}(undef, 0, 0)
     qd_arr = Array{Float64, 2}(undef, 0, 0)
-    ctgs_arr = Array{Int64, 1}(undef, 0)
+    ctgs_arr = Array{Int64, 2}(undef, 0, 0)
+
     if isfile(scen_file * ".Pd")
         pd_arr = readdlm(scen_file * ".Pd")
     end
