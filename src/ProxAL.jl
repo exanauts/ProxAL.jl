@@ -7,6 +7,7 @@ using JuMP
 using Printf, CatViews
 using ExaPF
 using LinearAlgebra
+using SparseArrays
 using MPI
 
 include("params.jl")

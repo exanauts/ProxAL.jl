@@ -276,18 +276,20 @@ function opf_model_add_real_power_balance_constraints(opfmodel::JuMP.Model, opfd
     buses = opfdata.buses
     lines = opfdata.lines
     busIdx = opfdata.BusIdx
-    FromLines = opfdata.FromLines
-    ToLines = opfdata.ToLines
     BusGeners = opfdata.BusGenerators
-    YffR,YffI,YttR,YttI,YftR,YftI,YtfR,YtfI,YshR,YshI = computeAdmitances(lines, buses, baseMVA)
+    Ybus = opfdata.Ybus
+
+    rows = Ybus.rowval
+    yvals = Ybus.nzval
+    g_ij = real.(yvals)
+    b_ij = imag.(yvals)
 
     # Power Balance Equations
     for b in 1:length(buses)
         #real part
+        b_start, b_end = Ybus.colptr[b], Ybus.colptr[b+1]-1
         @NLconstraint(opfmodel,
-            ( sum( YffR[l] for l in FromLines[b]) + sum( YttR[l] for l in ToLines[b]) + YshR[b] ) * Vm[b]^2
-            + sum( Vm[b]*Vm[busIdx[lines[l].to]]  *( YftR[l]*cos(Va[b]-Va[busIdx[lines[l].to]]  ) + YftI[l]*sin(Va[b]-Va[busIdx[lines[l].to]]  )) for l in FromLines[b] )
-            + sum( Vm[b]*Vm[busIdx[lines[l].from]]*( YtfR[l]*cos(Va[b]-Va[busIdx[lines[l].from]]) + YtfI[l]*sin(Va[b]-Va[busIdx[lines[l].from]])) for l in ToLines[b]   )
+            Vm[b] * sum(Vm[rows[c]] * (g_ij[c] * cos(Va[b] - Va[rows[c]]) + b_ij[c] * sin(Va[b] - Va[rows[c]])) for c in b_start:b_end)
             - ( sum(baseMVA*Pg[g] for g in BusGeners[b]) - Pd[b] + sigma_real[b]) / baseMVA      # Sbus part
             ==0
         )
@@ -300,18 +302,20 @@ function opf_model_add_imag_power_balance_constraints(opfmodel::JuMP.Model, opfd
     buses = opfdata.buses
     lines = opfdata.lines
     busIdx = opfdata.BusIdx
-    FromLines = opfdata.FromLines
-    ToLines = opfdata.ToLines
     BusGeners = opfdata.BusGenerators
-    YffR,YffI,YttR,YttI,YftR,YftI,YtfR,YtfI,YshR,YshI = computeAdmitances(lines, buses, baseMVA)
+    Ybus = opfdata.Ybus
+
+    rows = Ybus.rowval
+    yvals = Ybus.nzval
+    g_ij = real.(yvals)
+    b_ij = imag.(yvals)
 
     # Power Balance Equations
     for b in 1:length(buses)
         #imaginary part
+        b_start, b_end = Ybus.colptr[b], Ybus.colptr[b+1]-1
         @NLconstraint(opfmodel,
-            ( sum(-YffI[l] for l in FromLines[b]) + sum(-YttI[l] for l in ToLines[b]) - YshI[b] ) * Vm[b]^2
-            + sum( Vm[b]*Vm[busIdx[lines[l].to]]  *(-YftI[l]*cos(Va[b]-Va[busIdx[lines[l].to]]  ) + YftR[l]*sin(Va[b]-Va[busIdx[lines[l].to]]  )) for l in FromLines[b] )
-            + sum( Vm[b]*Vm[busIdx[lines[l].from]]*(-YtfI[l]*cos(Va[b]-Va[busIdx[lines[l].from]]) + YtfR[l]*sin(Va[b]-Va[busIdx[lines[l].from]])) for l in ToLines[b]   )
+            Vm[b] * sum(Vm[rows[c]] * (g_ij[c] * sin(Va[b] - Va[rows[c]]) - b_ij[c] * cos(Va[b] - Va[rows[c]])) for c in b_start:b_end)
             - ( sum(baseMVA*Qg[g] for g in BusGeners[b]) - Qd[b] + sigma_imag[b]) / baseMVA      #Sbus part
             ==0
         )

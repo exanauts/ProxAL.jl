@@ -80,15 +80,15 @@ mutable struct Gener
     alpha::Float64
 end
 
+# Update
 struct OPFData
     buses::Array{Bus}
     lines::Array{Line}
     generators::Array{Gener}
     bus_ref::Int
     baseMVA::Float64
+    Ybus::SparseMatrixCSC{Complex{Float64},Int} # bus-admittance matrix
     BusIdx::Dict{Int,Int}    #map from bus ID to bus index
-    FromLines::Array         #From lines for each bus (Array of Array)
-    ToLines::Array           #To lines for each bus (Array of Array)
     BusGenerators::Array     #list of generators for each bus (Array of Array)
     Pd::Array                #2d array of active power demands over a time horizon
     Qd::Array                #2d array of reactive power demands
@@ -120,6 +120,9 @@ function RawData(case_name, scen_file::String="")
     gen_arr = data["gen"]
     costgen_arr = data["cost"]
     baseMVA = data["baseMVA"][1]
+
+    # Sanity checks
+    @assert size(gen_arr, 1) == size(costgen_arr, 1)
 
     pd_arr = Array{Float64, 2}(undef, 0, 0)
     qd_arr = Array{Float64, 2}(undef, 0, 0)
@@ -183,11 +186,10 @@ function opf_loaddata(raw::RawData;
         # println("opf_loaddata: ", num_lines-length(findall(branch_arr[:,11].>0)), " lines are off and will be discarded (out of ", num_lines, ")")
     end
 
-
     lines = Array{Line}(undef, num_on)
     ncols_lines = size(branch_arr, 2)
 
-    lit=0
+    lit = 0
     for i in lines_on
         @assert branch_arr[i,11] == 1  #should be on since we discarded all other
         lit += 1
@@ -207,9 +209,6 @@ function opf_loaddata(raw::RawData;
     num_gens = size(gen_arr, 1)
     ncols_gens = size(gen_arr, 2)
 
-
-
-    @assert num_gens == size(costgen_arr,1)
 
     gens_on = findall(gen_arr[:, 8].!=0); num_on = length(gens_on)
     if num_gens-num_on > 0
@@ -263,8 +262,7 @@ function opf_loaddata(raw::RawData;
     # build a dictionary between buses ids and their indexes
     busIdx = ParseMAT.get_bus_id_to_indexes(bus_arr)
 
-    # set up the FromLines and ToLines for each bus
-    FromLines,ToLines = mapLinesToBuses(buses, lines, busIdx)
+    Ybus = PS.makeYbus(bus_arr, branch_arr, baseMVA, busIdx)
 
     # generators at each bus
     BusGeners = mapGenersToBuses(buses, generators, busIdx)
@@ -277,7 +275,7 @@ function opf_loaddata(raw::RawData;
         Qd = Qd[:,time_horizon_start:time_horizon_end] .* load_scale
     end
 
-    return OPFData(buses, lines, generators, bus_ref, baseMVA, busIdx, FromLines, ToLines, BusGeners, Pd, Qd)
+    return OPFData(buses, lines, generators, bus_ref, baseMVA, Ybus, busIdx, BusGeners, Pd, Qd)
 end
 
 function computeAdmitances(lines, buses, baseMVA; lossless::Bool=false, fixedtaps::Bool=false, zeroshunts::Bool=false)
@@ -356,27 +354,6 @@ function computeAdmitances(lines, buses, baseMVA; lossless::Bool=false, fixedtap
 
     return YffR, YffI, YttR, YttI, YftR, YftI, YtfR, YtfI, YshR, YshI
 end
-
-
-# Builds a map from lines to buses.
-# For each line we store an array with zero or one element containing
-# the  'From' and 'To'  bus number.
-function mapLinesToBuses(buses, lines, busDict)
-    nbus = length(buses)
-    FromLines = [Int[] for b in 1:nbus]
-    ToLines   = [Int[] for b in 1:nbus]
-    for i in 1:length(lines)
-        busID = busDict[lines[i].from]
-        @assert 1<= busID <= nbus
-        push!(FromLines[busID], i)
-
-        busID = busDict[lines[i].to]
-        @assert 1<= busID  <= nbus
-        push!(ToLines[busID], i)
-    end
-    return FromLines,ToLines
-end
-
 
 # Builds a map between buses and generators.
 # For each bus we keep an array of corresponding generators number (as array).
