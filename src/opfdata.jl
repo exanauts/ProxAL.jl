@@ -89,7 +89,7 @@ struct OPFData
     baseMVA::Float64
     Ybus::SparseMatrixCSC{Complex{Float64},Int} # bus-admittance matrix
     BusIdx::Dict{Int,Int}    #map from bus ID to bus index
-    BusGenerators::Array     #list of generators for each bus (Array of Array)
+    BusGenerators::Dict{Int, Array{Int}}     #list of generators for each bus (Array of Array)
     Pd::Array                #2d array of active power demands over a time horizon
     Qd::Array                #2d array of reactive power demands
 end
@@ -260,12 +260,10 @@ function opf_loaddata(raw::RawData;
     end
 
     # build a dictionary between buses ids and their indexes
-    busIdx = ParseMAT.get_bus_id_to_indexes(bus_arr)
-
+    busIdx = PS.get_bus_id_to_indexes(bus_arr)
     Ybus = PS.makeYbus(bus_arr, branch_arr, baseMVA, busIdx)
-
     # generators at each bus
-    BusGeners = mapGenersToBuses(buses, generators, busIdx)
+    BusGeners = PS.get_bus_generators(bus_arr, gen_arr, busIdx)
 
     # demands for multiperiod OPF
     Pd = raw.pd_arr
@@ -353,18 +351,5 @@ function computeAdmitances(lines, buses, baseMVA; lossless::Bool=false, fixedtap
     end
 
     return YffR, YffI, YttR, YttI, YftR, YftI, YtfR, YtfI, YshR, YshI
-end
-
-# Builds a map between buses and generators.
-# For each bus we keep an array of corresponding generators number (as array).
-#
-# (Can be more than one generator per bus)
-function mapGenersToBuses(buses, generators,busDict)
-    gen2bus = [Int[] for b in 1:length(buses)]
-    for g in 1:length(generators)
-        busID = busDict[ generators[g].bus ]
-        push!(gen2bus[busID], g)
-    end
-    return gen2bus
 end
 

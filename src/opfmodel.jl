@@ -290,7 +290,7 @@ function opf_model_add_real_power_balance_constraints(opfmodel::JuMP.Model, opfd
         b_start, b_end = Ybus.colptr[b], Ybus.colptr[b+1]-1
         @NLconstraint(opfmodel,
             Vm[b] * sum(Vm[rows[c]] * (g_ij[c] * cos(Va[b] - Va[rows[c]]) + b_ij[c] * sin(Va[b] - Va[rows[c]])) for c in b_start:b_end)
-            - ( sum(baseMVA*Pg[g] for g in BusGeners[b]) - Pd[b] + sigma_real[b]) / baseMVA      # Sbus part
+            - ( sum(baseMVA*Pg[g] for g in get(BusGeners, b, Int[])) - Pd[b] + sigma_real[b]) / baseMVA      # Sbus part
             ==0
         )
     end
@@ -316,7 +316,7 @@ function opf_model_add_imag_power_balance_constraints(opfmodel::JuMP.Model, opfd
         b_start, b_end = Ybus.colptr[b], Ybus.colptr[b+1]-1
         @NLconstraint(opfmodel,
             Vm[b] * sum(Vm[rows[c]] * (g_ij[c] * sin(Va[b] - Va[rows[c]]) - b_ij[c] * cos(Va[b] - Va[rows[c]])) for c in b_start:b_end)
-            - ( sum(baseMVA*Qg[g] for g in BusGeners[b]) - Qd[b] + sigma_imag[b]) / baseMVA      #Sbus part
+            - ( sum(baseMVA*Qg[g] for g in get(BusGeners, b, Int[])) - Qd[b] + sigma_imag[b]) / baseMVA      #Sbus part
             ==0
         )
     end
