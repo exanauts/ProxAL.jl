@@ -283,3 +283,4 @@ TSWLatexianTemp*
 # Uncomment the next line to have this generated file ignored.
 #*Notes.bib
 docs/build
+jacobi_proximal_admm.pdf
