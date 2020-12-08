@@ -1,13 +1,11 @@
 # ProxAL
 
-This is a Julia implementation of a parallel <ins>Prox</ins>imal <ins>A</ins>ugmented <ins>L</ins>agrangian solver for solving multiperiod contingency-constrained ACOPF problems.
+This is a Julia implementation of a parallel *Prox*imal *A*ugmented *L*agrangian solver for solving multiperiod contingency-constrained ACOPF problems.
 
 ## Formulation
 The package is designed to solve ACOPF formulations over multiple time periods. The different time periods may have different active and reactive demands, and are linked together via active power ramping constraints: 
 
 ``-r_g \leq p^0_{g,t-1} - p^0_{g,t} \leq r_g \qquad \forall g \in G, \; \forall t \in T \setminus \{1\}.``
-
-Here, ``p^0_{gt}`` denotes the 'base-case' active power generation level of generator ``g \in G`` in time period ``t \in T``, and ``r_g`` denotes its ramping capacity (per unit of time in which ``T`` is defined).
 
 Here, ``p^0_{gt}`` denotes the 'base-case' active power generation level of generator ``g \in G`` in time period ``t \in T``, and ``r_g`` denotes its ramping capacity (per unit of time in which ``T`` is defined).
 
