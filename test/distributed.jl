@@ -18,7 +18,7 @@ quad_penalty = 0.1
 rtol = 1e-4
 
 # Load case
-case_file = joinpath(DATA_DIR, "$case")
+case_file = joinpath(DATA_DIR, "$(case).m")
 load_file = joinpath(DATA_DIR, "mp_demand", "$(case)_oneweek_168")
 rawdata = RawData(case_file, load_file)
 ctgs_arr = deepcopy(rawdata.ctgs_arr)
