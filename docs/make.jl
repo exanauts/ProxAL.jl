@@ -1,3 +1,9 @@
+using Pkg
+
+Pkg.develop(PackageSpec(path=joinpath(dirname(@__FILE__), "..")))
+# when first running instantiate
+Pkg.instantiate()
+
 using Documenter, ProxAL
 
 makedocs(
