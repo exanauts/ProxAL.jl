@@ -142,6 +142,10 @@ function set_objective!(block::JuMPBlockModel, algparams::AlgParams,
     return
 end
 
+function get_solution(block::JuMPBlockModel)
+    return value.(all_variables(block.model))
+end
+
 function optimize!(block::JuMPBlockModel, x0)
     blk = block.id
     opfmodel = block.model
@@ -155,8 +159,8 @@ function optimize!(block::JuMPBlockModel, x0)
     if !has_values(opfmodel)
         error("no solution vector available in block $blk subproblem")
     end
-    solution = value.(all_variables(opfmodel))
-    return solution
+
+    return get_solution(block)
 end
 
 function add_variables!(block::JuMPBlockModel, algparams::AlgParams)
@@ -171,3 +175,85 @@ function add_ctgs_linking_constraints!(block::JuMPBlockModel)
     )
 end
 
+### Implementation of ExaBlockModel
+struct ExaBlockModel <: AbstractBlockModel
+    id::Int
+    k::Int
+    t::Int
+    model::ExaPF.AbstractNLPEvaluator
+    data::OPFData
+    params::ModelParams
+end
+
+function ExaBlockModel(blk, opfdata, modelinfo, indexes)
+    model = JuMP.Model()
+    k = indexes[block.id][1]
+    t = indexes[block.id][2]
+    data = opfdata.raw_data
+
+    power_network = PS.PowerNetwork(data)
+    # Instantiate model in memory
+    model = ExaPF.ReducedSpaceEvaluator(power_network)
+    return JuMPBlockModel(blk, k, t, model, opfdata, modelinfo)
+end
+
+function init!(block::ExaBlockModel, algparams::AlgParams)
+    opfmodel = block.model
+    # Reset optimizer
+    # TODO
+    Base.empty!(opfmodel)
+
+    # Get params
+    opfdata = block.data
+    modelinfo = block.params
+    Kblock = modelinfo.num_ctgs + 1
+    t, k = block.t, block.k
+
+    # Sanity check
+    @assert modelinfo.num_time_periods == 1
+    @assert !algparams.decompCtgs || Kblock == 1
+
+    add_variables!(block, algparams)
+
+    # TODO: currently, only one contingency is supported
+    j = 1
+    pg = opfmodel[:Pg][:,j,1]
+    qg = opfmodel[:Qg][:,j,1]
+    ExaPF.setvalues!(opfmodel, PS.ActiveLoad(), pg)
+    ExaPF.setvalues!(opfmodel, PS.ReactiveLoad(), qg)
+
+    return opfmodel
+end
+
+function add_variables!(block::ExaBlockModel, algparams::AlgParams)
+    # TODO
+    # Add variables Sₜ and Sₖ into the ExaPF's model
+end
+
+function add_ctgs_linking_constraints!(block::ExaBlockModel)
+    error("Contingencies are not supported in ExaPF")
+end
+
+function set_objective!(block::ExaBlockModel, algparams::AlgParams,
+                        primal::PrimalSolution, dual::DualSolution)
+    examodel = block.model
+    opfdata = block.data
+    modelinfo = block.params
+
+    # TODO: implement auglag penalty into ExaPF
+    update_penalty!(examodel, primal, dual)
+    auglag_penalty = opf_block_get_auglag_penalty_expr(blk, opfmodel, opfblocks, algparams, primal, dual)
+    return
+end
+
+function optimize!(block::ExaBlockModel, x0)
+    blk = block.id
+    opfmodel = block.model
+
+    # TODO
+    #
+    if status ∉ MOI_OPTIMAL_STATUSES
+        @warn("Block $blk subproblem not solved to optimality. status: $status")
+    end
+    return get_solution(block)
+end
