@@ -71,7 +71,7 @@ end
         if solver == "MadNLPGPU"
             using MadNLP
             algparams.optimizer = () ->
-                MadNLP.Optimizer(linear_solver="LapackCUDA",
+                MadNLP.Optimizer(linear_solver="LapackGPU",
                                  print_level=MadNLP.ERROR,
                                  max_iter=300)
         end
