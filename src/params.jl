@@ -1,3 +1,12 @@
+## Constant params
+const MOI_OPTIMAL_STATUSES = [
+    MOI.OPTIMAL,
+    MOI.ALMOST_OPTIMAL,
+    MOI.LOCALLY_SOLVED,
+    MOI.ALMOST_LOCALLY_SOLVED,
+]
+
+#
 #
 # Algorithmic parameters
 #

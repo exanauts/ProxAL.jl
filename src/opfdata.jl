@@ -4,6 +4,20 @@ using DelimitedFiles
 
 const PS = PowerSystem
 
+"""
+    parse_file(datafile::String)
+
+Parse MATPOWER or PSSE instances using ExaPF's parsers.
+Return full dataset as `Dict{String, Array{Float64, 2}`,
+with entries
+
+- "bus": specifications for all buses in the network
+- "branch": specifications for all branches in the network
+- "gen": specifications for all generators in the network
+- "costs": costs coefficients.
+- "baseMVA": baseMVA of the network
+
+"""
 function parse_file(datafile)
     if endswith(datafile, ".raw")
         data_raw = ParsePSSE.parse_raw(datafile)

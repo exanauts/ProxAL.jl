@@ -14,6 +14,7 @@ include("params.jl")
 include("opfdata.jl")
 include("opfsolution.jl")
 include("opfmodel.jl")
+include("full_model.jl")
 include("opfblocks.jl")
 include("proxALMutil.jl")
 

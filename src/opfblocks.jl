@@ -253,7 +253,7 @@ function opf_block_solve_model(blk::Int, opfmodel::JuMP.Model, opfblocks::OPFBlo
     set_start_value.(all_variables(opfmodel), opfblocks.colValue[:,blk])
     optimize!(opfmodel)
     status = termination_status(opfmodel)
-    if status ∉ [MOI.OPTIMAL, MOI.ALMOST_OPTIMAL, MOI.LOCALLY_SOLVED, MOI.ALMOST_LOCALLY_SOLVED]
+    if status ∉ MOI_OPTIMAL_STATUSES
         println("warning: block $blk subproblem not solved to optimality. status: $status")
     end
     if !has_values(opfmodel)

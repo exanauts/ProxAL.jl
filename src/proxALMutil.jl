@@ -1,6 +1,6 @@
 mutable struct ProxALMData
     opfBlockData::OPFBlockData
-    
+
     #---- iterate information ----
     x::PrimalSolution
     λ::DualSolution
@@ -18,7 +18,7 @@ mutable struct ProxALMData
     wall_time_elapsed_actual::Float64
     wall_time_elapsed_ideal::Float64
     iter
-    
+
     #---- other/static information ----
     opt_sol::Dict
     lyapunov_sol::Dict
@@ -68,6 +68,7 @@ mutable struct ProxALMData
         # NLP blocks
         opfBlockData = OPFBlockData(opfdata, rawdata, modelinfo, algparams)
         blkLinIndex = LinearIndices(opfBlockData.blkIndex)
+        # TODO EXA
         for blk in blkLinIndex
             opfBlockData.blkModel[blk] = opf_block_model_initialize(blk, opfBlockData, rawdata, algparams)
             opfBlockData.colValue[:,blk] .= get_block_view(x, opfBlockData.blkIndex[blk], modelinfo, algparams)
