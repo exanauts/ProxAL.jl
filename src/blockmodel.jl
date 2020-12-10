@@ -191,17 +191,27 @@ function ExaBlockModel(blk, opfdata, modelinfo, indexes)
     t = indexes[block.id][2]
     data = opfdata.raw_data
 
+    horizon = size(opfdata.Pg, 2)
     power_network = PS.PowerNetwork(data)
+
+    if t == 1
+        time = ExaPF.Origin
+    elseif t == horizon
+        time = ExaPF.Final
+    else
+        time = ExaPF.Normal
+    end
+
     # Instantiate model in memory
-    model = ExaPF.ReducedSpaceEvaluator(power_network)
-    return JuMPBlockModel(blk, k, t, model, opfdata, modelinfo)
+    model = ExaPF.ProxALEvaluator(power_network, time)
+    return ExaBlockModel(blk, k, t, model, opfdata, modelinfo)
 end
 
 function init!(block::ExaBlockModel, algparams::AlgParams)
     opfmodel = block.model
     # Reset optimizer
     # TODO
-    Base.empty!(opfmodel)
+    ExaPF.reset!(opfmodel)
 
     # Get params
     opfdata = block.data
@@ -213,21 +223,14 @@ function init!(block::ExaBlockModel, algparams::AlgParams)
     @assert modelinfo.num_time_periods == 1
     @assert !algparams.decompCtgs || Kblock == 1
 
-    add_variables!(block, algparams)
-
     # TODO: currently, only one contingency is supported
     j = 1
-    pg = opfmodel[:Pg][:,j,1]
-    qg = opfmodel[:Qg][:,j,1]
+    pg = opfmodel[:Pg][:, j, 1]
+    qg = opfmodel[:Qg][:, j, 1]
     ExaPF.setvalues!(opfmodel, PS.ActiveLoad(), pg)
     ExaPF.setvalues!(opfmodel, PS.ReactiveLoad(), qg)
 
     return opfmodel
-end
-
-function add_variables!(block::ExaBlockModel, algparams::AlgParams)
-    # TODO
-    # Add variables Sₜ and Sₖ into the ExaPF's model
 end
 
 function add_ctgs_linking_constraints!(block::ExaBlockModel)
@@ -239,21 +242,61 @@ function set_objective!(block::ExaBlockModel, algparams::AlgParams,
     examodel = block.model
     opfdata = block.data
     modelinfo = block.params
+    # Generators
+    gens = block.data.generators
 
-    # TODO: implement auglag penalty into ExaPF
-    update_penalty!(examodel, primal, dual)
-    auglag_penalty = opf_block_get_auglag_penalty_expr(blk, opfmodel, opfblocks, algparams, primal, dual)
+    t, k = block.t, block.k
+    ramp_agc = [gens[g].ramp_agc for g in in gens]
+
+    λf = dual.ramping[g, t]
+    λt = dual.ramping[g, t+1]
+    pgf = primal.Pg[:, 1, t-1] .+ primal.Zt[:, t] .- ramp_agc
+    pgc = primal.Pg[:, k, t]
+    pgt = primal.Pg[:, 1, t+1] .- primal.St[:, t+1] .+ ramp_agc
+
+    ExaPF.update_multipliers!(examodel, λf, λt)
+    ExaPF.update_primal!(examodel, pgf, pgc, pgt)
     return
 end
 
 function optimize!(block::ExaBlockModel, x0)
     blk = block.id
     opfmodel = block.model
+    optimizer = algparams.optimizer
 
-    # TODO
-    #
+    # Convert ExaPF to MOI model
+    block_data = MOI.NLPBlockData(opfmodel)
+    x♭, x♯ = ExaPF.bounds(opfmodel, ExaPF.Variables())
+    x0 = ExaPF.initial(opfmodel)
+    n = ExaPF.n_variables(opfmodel)
+    vars = MOI.add_variables(optimizer, n)
+    # Set bounds and initial values
+    for i in 1:n
+        MOI.add_constraint(
+            optimizer,
+            MOI.SingleVariable(vars[i]),
+            MOI.LessThan(x♯[i])
+        )
+        MOI.add_constraint(
+            optimizer,
+            MOI.SingleVariable(vars[i]),
+            MOI.GreaterThan(x♭[i])
+        )
+        MOI.set(optimizer, MOI.VariablePrimalStart(), vars[i], x0[i])
+    end
+    MOI.set(optimizer, MOI.NLPBlock(), block_data)
+    MOI.set(optimizer, MOI.ObjectiveSense(), MOI.MIN_SENSE)
+    MOI.optimize!(optimizer)
+    status = MOI.get(optimizer, MOI.TerminationStatus)
+    x_opt = [MOI.get(optimizer, MOI.VariablePrimal(), v) for v in vars]
+    solution = (
+        status=status,
+        minimum=MOI.get(optimizer, MOI.ObjectiveValue()),
+        minimizer=x_opt
+    )
+    MOI.empty!(optimizer)
     if status ∉ MOI_OPTIMAL_STATUSES
         @warn("Block $blk subproblem not solved to optimality. status: $status")
     end
-    return get_solution(block)
+    return solution
 end
