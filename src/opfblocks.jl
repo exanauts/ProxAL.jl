@@ -1,6 +1,16 @@
-#
-# Algorithm data
-#
+"""
+    OPFBlockData
+
+Specifies individual NLP block data.
+
+- `blkCount::Int64`: number of decomposed NLP blocks
+- `blkIndex::CartesianIndices`: each element is a tuple (k,t) where `k` is the contingency and `t` is the time period of that NLP block
+- `blkModel::Vector{JuMP.Model}`: the JuMP representation of each NLP block
+- `blkOpfdt::Vector{OPFData}`: the ACOPF instance data corresponding to each  NLP block
+- `blkMInfo::Vector{ModelParams}`: the [Model parameters](@ref) corresponding to each NLP block
+- `colCount::Int64`: the number of decision variables in each NLP block (must be equal across blocks)
+- `colValue::Array{Float64,2}`: `colCount` ``\\times`` `blkCount` array representing the solution vector 
+"""
 mutable struct OPFBlockData
     blkCount::Int64
     blkIndex::CartesianIndices
@@ -62,6 +72,23 @@ mutable struct OPFBlockData
     end
 end
 
+"""
+    opf_block_model_initialize(blk::Int
+                               opfblocks::OPFBlockData,
+                               rawdata::RawData,
+                               algparams::AlgParams)
+
+Initializes the JuMP model representation of
+NLP block `blk` (this is guaranteed to be in the range
+`[1, opfblocks.blkCount]`) using the instance data
+`raw` and algorithm parameters `algparams`.
+The contingency number `k` and  time period `t` of the
+NLP block can be extracted as follows:
+```julia
+k = opfblocks.blkIndex[blk][1]
+t = opfblocks.blkIndex[blk][2]
+```
+"""
 function opf_block_model_initialize(blk::Int, opfblocks::OPFBlockData, rawdata::RawData,
                                     algparams::AlgParams)
     @assert blk >= 1 && blk <= opfblocks.blkCount
@@ -120,6 +147,22 @@ function opf_block_model_initialize(blk::Int, opfblocks::OPFBlockData, rawdata::
     return opfmodel
 end
 
+"""
+    opf_block_set_objective(blk::Int,
+                            opfmodel::JuMP.Model,
+                            opfblocks::OPFBlockData,
+                            algparams::AlgParams,
+                            primal::PrimalSolution,
+                            dual::DualSolution)
+
+Sets the  objective function in `opfmodel` of the
+NLP block `blk` using the algorithm parameters `algparams`,
+and corresponding to a reference primal solution `primal`
+and reference dual solution `dual`. 
+The objective function is the sum of the single-period ACOPF
+corresponding to NLP block `blk`'s time period and the
+expression returned by `opf_block_get_auglag_penalty_expr`.
+"""
 function opf_block_set_objective(blk::Int, opfmodel::JuMP.Model, opfblocks::OPFBlockData,
                                  algparams::AlgParams,
                                  primal::PrimalSolution,
@@ -134,6 +177,85 @@ function opf_block_set_objective(blk::Int, opfmodel::JuMP.Model, opfblocks::OPFB
     return nothing
 end
 
+"""
+    opf_block_get_auglag_penalty_expr(blk::Int,
+                                      opfmodel::JuMP.Model,
+                                      opfblocks::OPFBlockData,
+                                      algparams::AlgParams,
+                                      primal::PrimalSolution,
+                                      dual::DualSolution)
+
+Let `k` and `t` denote the contingency number and time period of
+the NLP block `blk` that can be extracted as follows:
+```julia
+k = opfblocks.blkIndex[blk][1]
+t = opfblocks.blkIndex[blk][2]
+```
+Then, depending on the values of `k`, `t`, `algparams.decompCtgs` and
+`opfblocks.blkMInfo[blk]`, this function must return an appropriate expression.
+
+Consider first the case where `algparams.decompCtgs == false`.
+In the following expressions, we use ``\\mathbb{I}[...]`` to denote the indicator function.
+Also, unless otherwise indicated, 
+- the values of ``z_g`` are always parameters in this expression and must be taken from `primal.Zt`
+- the values of ``p_g`` and ``s_g`` variables that are not indexed with `t` are parameters in this expression and must be taken from `primal.Pg` and `primal.St`
+- the values of ``\\lambda``, ``\\lambda^p``, and ``\\lambda^n`` (without contingency subscript) must be taken from `dual.ramping`, `dual.ramping_p` and `dual.ramping_n`, respectively
+- the values of ``\\rho`` (without contingency subscript) must be taken from `algparams.ρ_t`
+- the values of ``\\tau`` must be taken from `algparams.τ`
+
+
+We consider the following cases.
+
+* If `opfblocks.blkMInfo[blk] == :inequality`, then this function must return:
+```math
+\\begin{aligned}
+\\sum_{g \\in G} \\Bigg\\{
+& 0.5\\tau [p^0_{g,t} - \\mathrm{primal}.p^0_{g,t}]^2 \\\\
+&+\\mathbb{I}[t > 1]\\Big(
+\\lambda^p_{gt}[p^0_{g,t-1} - p^0_{g,t} - r_g] -
+\\lambda^n_{gt}[p^0_{g,t-1} - p^0_{g,t} - r_g] +
+0.5\\rho_{gt}[p^0_{g,t-1} - p^0_{g,t} + s_{g,t} - r_g]^2
+\\Big) \\\\
+&+\\mathbb{I}[t < T]\\Big(
+\\lambda^p_{g,t+1}[p^0_{g,t} - p^0_{g,t+1} - r_g] -
+\\lambda^n_{g,t+1}[p^0_{g,t} - p^0_{g,t+1} - r_g] +
+0.5\\rho_{g,t+1}[p^0_{g,t} - p^0_{g,t+1} + s_{g,t+1} - r_g]^2
+\\Big) \\Bigg\\}
+\\end{aligned}
+```
+
+* If `opfblocks.blkMInfo[blk] == :equality`, then this function must return:
+```math
+\\begin{aligned}
+\\sum_{g \\in G} \\Bigg\\{
+& 0.5\\tau [p^0_{g,t} - \\mathrm{primal}.p^0_{g,t}]^2 \\\\
+&+\\mathbb{I}[t > 1]\\Big(
+\\lambda_{gt}[p^0_{g,t-1} - p^0_{g,t} + s_{g,t} - r_g] +
+0.5\\rho_{gt}[p^0_{g,t-1} - p^0_{g,t} + s_{g,t} - r_g]^2
+\\Big) \\\\
+&+\\mathbb{I}[t < T]\\Big(
+\\lambda_{g,t+1}[p^0_{g,t} - p^0_{g,t+1} + s_{g,t+1} - r_g] +
+0.5\\rho_{g,t+1}[p^0_{g,t} - p^0_{g,t+1} + s_{g,t+1} - r_g]^2
+\\Big) \\Bigg\\}
+\\end{aligned}
+```
+
+* If `opfblocks.blkMInfo[blk] == :penalty`, then this function must return:
+```math
+\\begin{aligned}
+\\sum_{g \\in G} \\Bigg\\{
+& 0.5\\tau [p^0_{g,t} - \\mathrm{primal}.p^0_{g,t}]^2 \\\\
+&+\\mathbb{I}[t > 1]\\Big(
+\\lambda_{gt}[p^0_{g,t-1} - p^0_{g,t} + s_{g,t} + z_{g,t} - r_g] +
+0.5\\rho_{gt}[p^0_{g,t-1} - p^0_{g,t} + s_{g,t} + z_{g,t} - r_g]^2
+\\Big) \\\\
+&+\\mathbb{I}[t < T]\\Big(
+\\lambda_{g,t+1}[p^0_{g,t} - p^0_{g,t+1} + s_{g,t+1} + z_{g,t+1} - r_g] +
+0.5\\rho_{g,t+1}[p^0_{g,t} - p^0_{g,t+1} + s_{g,t+1} + z_{g,t+1} - r_g]^2
+\\Big) \\Bigg\\}
+\\end{aligned}
+```
+"""
 function opf_block_get_auglag_penalty_expr(blk::Int, opfmodel::JuMP.Model, opfblocks::OPFBlockData,
                                            algparams::AlgParams,
                                            primal::PrimalSolution,
@@ -248,6 +370,15 @@ function opf_block_get_auglag_penalty_expr(blk::Int, opfmodel::JuMP.Model, opfbl
     return auglag_penalty
 end
 
+"""
+    opf_block_solve_model(blk::Int,
+                          opfmodel::JuMP.Model,
+                          opfblocks::OPFBlockData)
+
+Solve the NLP block `blk`'s JuMP model `opfmodel` and 
+return the (locally optimal) solution vector.
+The model will be initialized using `opfblocks.colValue[:,blk]`.
+"""
 function opf_block_solve_model(blk::Int, opfmodel::JuMP.Model, opfblocks::OPFBlockData)
     @assert blk >= 1 && blk <= opfblocks.blkCount
     set_start_value.(all_variables(opfmodel), opfblocks.colValue[:,blk])

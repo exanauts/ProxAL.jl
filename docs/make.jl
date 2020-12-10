@@ -23,6 +23,8 @@ makedocs(
         "Library" => [
             "Model parameters" => "lib/modelparams.md",
             "Algorithm parameters" => "lib/algparams.md",
+            "Main functions" => "lib/algorithm.md",
+            "Developer reference" => "lib/developer.md",
         ]
     ]
 )
