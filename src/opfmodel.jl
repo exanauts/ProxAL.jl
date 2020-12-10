@@ -274,7 +274,6 @@ function opf_model_add_real_power_balance_constraints(opfmodel::JuMP.Model, opfd
     # Network data short-hands
     baseMVA = opfdata.baseMVA
     buses = opfdata.buses
-    lines = opfdata.lines
     busIdx = opfdata.BusIdx
     BusGeners = opfdata.BusGenerators
     Ybus = opfdata.Ybus
@@ -300,7 +299,6 @@ function opf_model_add_imag_power_balance_constraints(opfmodel::JuMP.Model, opfd
     # Network data short-hands
     baseMVA = opfdata.baseMVA
     buses = opfdata.buses
-    lines = opfdata.lines
     busIdx = opfdata.BusIdx
     BusGeners = opfdata.BusGenerators
     Ybus = opfdata.Ybus

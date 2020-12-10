@@ -261,7 +261,7 @@ function opf_loaddata(raw::RawData;
 
     # build a dictionary between buses ids and their indexes
     busIdx = PS.get_bus_id_to_indexes(bus_arr)
-    Ybus = PS.makeYbus(bus_arr, branch_arr, baseMVA, busIdx)
+    Ybus = PS.makeYbus(bus_arr, branch_arr[lines_on,:], baseMVA, busIdx)
     # generators at each bus
     BusGeners = PS.get_bus_generators(bus_arr, gen_arr, busIdx)
 
