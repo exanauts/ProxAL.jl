@@ -13,6 +13,7 @@ using MPI
 include("params.jl")
 include("opfdata.jl")
 include("opfsolution.jl")
+include("blockmodel.jl")
 include("opfmodel.jl")
 include("full_model.jl")
 include("opfblocks.jl")

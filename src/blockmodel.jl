@@ -1,4 +1,5 @@
 
+import MathOptInterface: MOI
 abstract type AbstractBlockModel end
 
 """
@@ -59,10 +60,10 @@ struct JuMPBlockModel <: AbstractBlockModel
     params::ModelParams
 end
 
-function JuMPBlockModel(blk, opfdata, modelinfo, indexes)
+function JuMPBlockModel(blk, opfdata, modelinfo, t, k)
     model = JuMP.Model()
-    k = indexes[block.id][1]
-    t = indexes[block.id][2]
+    # k = indexes[block.id][1]
+    # t = indexes[block.id][2]
     return JuMPBlockModel(blk, k, t, model, opfdata, modelinfo)
 end
 
@@ -86,7 +87,7 @@ function init!(block::JuMPBlockModel, algparams::AlgParams)
 
     add_variables!(block, algparams)
     if !algparams.decompCtgs
-        add_ctgs_linking_constraints!(block)
+        add_ctgs_linking_constraints!(block, algparams)
     end
 
     t, k = block.t, block.k
@@ -123,21 +124,24 @@ function init!(block::JuMPBlockModel, algparams::AlgParams)
     @views for j=1:Kblock
         opfdata_c = (j == 1) ? opfdata :
             opf_loaddata(rawdata; lineOff = opfdata.lines[rawdata.ctgs_arr[j - 1]], time_horizon_start = t, time_horizon_end = t, load_scale = modelinfo.load_scale, ramp_scale = modelinfo.ramp_scale)
-        add_real_power_balance_constraints!(opfmodel, opfdata_c, opfmodel[:Pg][:,j,1], opfdata_c.Pd[:,1], opfmodel[:Vm][:,j,1], opfmodel[:Va][:,j,1], σ_re)
-        add_imag_power_balance_constraints!(opfmodel, opfdata_c, opfmodel[:Qg][:,j,1], opfdata_c.Qd[:,1], opfmodel[:Vm][:,j,1], opfmodel[:Va][:,j,1], σ_im)
-        add_line_power_constraints!(opfmodel, opfdata_c, opfmodel[:Vm][:,j,1], opfmodel[:Va][:,j,1], σ_fr, σ_to)
+        opf_model_add_real_power_balance_constraints(opfmodel, opfdata_c, opfmodel[:Pg][:,j,1], opfdata_c.Pd[:,1], opfmodel[:Vm][:,j,1], opfmodel[:Va][:,j,1], σ_re)
+        opf_model_add_imag_power_balance_constraints(opfmodel, opfdata_c, opfmodel[:Qg][:,j,1], opfdata_c.Qd[:,1], opfmodel[:Vm][:,j,1], opfmodel[:Va][:,j,1], σ_im)
+        opf_model_add_line_power_constraints(opfmodel, opfdata_c, opfmodel[:Vm][:,j,1], opfmodel[:Va][:,j,1], σ_fr, σ_to)
     end
     return opfmodel
 end
 
 function set_objective!(block::JuMPBlockModel, algparams::AlgParams,
                         primal::PrimalSolution, dual::DualSolution)
+    blk = block.id
     opfmodel = block.model
     opfdata = block.data
     modelinfo = block.params
+    k, t = block.k, block.t
 
-    obj_expr = objective_function(opfmodel, opfdata, modelinfo)
-    auglag_penalty = opf_block_get_auglag_penalty_expr(blk, opfmodel, opfblocks, algparams, primal, dual)
+    obj_expr = compute_objective_function(opfmodel, opfdata, modelinfo)
+    auglag_penalty = opf_block_get_auglag_penalty_expr(
+        blk, opfmodel, modelinfo, opfdata, k, t, algparams, primal, dual)
     @objective(opfmodel, Min, obj_expr + auglag_penalty)
     return
 end
@@ -150,7 +154,7 @@ function optimize!(block::JuMPBlockModel, x0)
     blk = block.id
     opfmodel = block.model
     set_start_value.(all_variables(opfmodel), x0)
-    optimize!(opfmodel)
+    JuMP.optimize!(opfmodel)
 
     status = termination_status(opfmodel)
     if status ∉ MOI_OPTIMAL_STATUSES
@@ -169,9 +173,9 @@ function add_variables!(block::JuMPBlockModel, algparams::AlgParams)
     )
 end
 
-function add_ctgs_linking_constraints!(block::JuMPBlockModel)
+function add_ctgs_linking_constraints!(block::JuMPBlockModel, algparams)
     opf_model_add_ctgs_linking_constraints(
-        block.model, block.data, block.params, algparams,
+        block.model, block.data, block.params,
     )
 end
 
@@ -186,7 +190,6 @@ struct ExaBlockModel <: AbstractBlockModel
 end
 
 function ExaBlockModel(blk, opfdata, modelinfo, indexes)
-    model = JuMP.Model()
     k = indexes[block.id][1]
     t = indexes[block.id][2]
     data = opfdata.raw_data
@@ -246,7 +249,7 @@ function set_objective!(block::ExaBlockModel, algparams::AlgParams,
     gens = block.data.generators
 
     t, k = block.t, block.k
-    ramp_agc = [gens[g].ramp_agc for g in in gens]
+    ramp_agc = [gens[g].ramp_agc for g in gens]
 
     λf = dual.ramping[g, t]
     λt = dual.ramping[g, t+1]
@@ -287,7 +290,7 @@ function optimize!(block::ExaBlockModel, x0)
     MOI.set(optimizer, MOI.NLPBlock(), block_data)
     MOI.set(optimizer, MOI.ObjectiveSense(), MOI.MIN_SENSE)
     MOI.optimize!(optimizer)
-    status = MOI.get(optimizer, MOI.TerminationStatus)
+    status = MOI.get(optimizer, MOI.TerminationStatus())
     x_opt = [MOI.get(optimizer, MOI.VariablePrimal(), v) for v in vars]
     solution = (
         status=status,

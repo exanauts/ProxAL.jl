@@ -28,7 +28,7 @@ end
 function opf_solve_nondecomposed(opfmodel::JuMP.Model, opfdata::OPFData,
                                  modelinfo::ModelParams,
                                  algparams::AlgParams)
-    optimize!(opfmodel)
+    JuMP.optimize!(opfmodel)
     status = termination_status(opfmodel)
     if status ∉ MOI_OPTIMAL_STATUSES
         (algparams.verbose > 0) &&
