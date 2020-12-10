@@ -189,12 +189,16 @@ struct ExaBlockModel <: AbstractBlockModel
     params::ModelParams
 end
 
-function ExaBlockModel(blk, opfdata, modelinfo, indexes)
-    k = indexes[block.id][1]
-    t = indexes[block.id][2]
-    data = opfdata.raw_data
+function ExaBlockModel(blk, raw_data, opfdata, modelinfo, t, k)
 
-    horizon = size(opfdata.Pg, 2)
+    horizon = size(opfdata.Pd, 2)
+    data = Dict{String, Array}()
+    data["bus"] = raw_data.bus_arr
+    data["branch"] = raw_data.branch_arr
+    data["gen"] = raw_data.gen_arr
+    data["cost"] = raw_data.costgen_arr
+    data["baseMVA"] = [raw_data.baseMVA]
+
     power_network = PS.PowerNetwork(data)
 
     if t == 1
@@ -228,10 +232,10 @@ function init!(block::ExaBlockModel, algparams::AlgParams)
 
     # TODO: currently, only one contingency is supported
     j = 1
-    pg = opfmodel[:Pg][:, j, 1]
-    qg = opfmodel[:Qg][:, j, 1]
-    ExaPF.setvalues!(opfmodel, PS.ActiveLoad(), pg)
-    ExaPF.setvalues!(opfmodel, PS.ReactiveLoad(), qg)
+    pd = opfdata.Pd[:,1]
+    qd = opfdata.Qd[:,1]
+    ExaPF.setvalues!(opfmodel, PS.ActiveLoad(), pd)
+    ExaPF.setvalues!(opfmodel, PS.ReactiveLoad(), qd)
 
     return opfmodel
 end
@@ -249,10 +253,10 @@ function set_objective!(block::ExaBlockModel, algparams::AlgParams,
     gens = block.data.generators
 
     t, k = block.t, block.k
-    ramp_agc = [gens[g].ramp_agc for g in gens]
+    ramp_agc = [g.ramp_agc for g in gens]
 
-    λf = dual.ramping[g, t]
-    λt = dual.ramping[g, t+1]
+    λf = dual.ramping[:, t]
+    λt = dual.ramping[:, t+1]
     pgf = primal.Pg[:, 1, t-1] .+ primal.Zt[:, t] .- ramp_agc
     pgc = primal.Pg[:, k, t]
     pgt = primal.Pg[:, 1, t+1] .- primal.St[:, t+1] .+ ramp_agc
@@ -262,10 +266,9 @@ function set_objective!(block::ExaBlockModel, algparams::AlgParams,
     return
 end
 
-function optimize!(block::ExaBlockModel, x0)
+function optimize!(block::ExaBlockModel, x0, optimizer)
     blk = block.id
     opfmodel = block.model
-    optimizer = algparams.optimizer
 
     # Convert ExaPF to MOI model
     block_data = MOI.NLPBlockData(opfmodel)

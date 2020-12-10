@@ -139,7 +139,6 @@ function opf_block_get_auglag_penalty_expr(blk::Int, opfmodel::JuMP.Model, opfbl
                                            primal::PrimalSolution,
                                            dual::DualSolution)
     modelinfo = opfblocks.blkMInfo[blk]
-    gens = opfblocks.blkOpfdt[blk].generators
     k = opfblocks.blkIndex[blk][1]
     t = opfblocks.blkIndex[blk][2]
 
@@ -161,6 +160,7 @@ function opf_block_get_auglag_penalty_expr(
 )
 
     (ngen, K, T) = size(primal.Pg)
+    gens = opfdata.generators
     @assert t >= 1 && t <= T
     @assert k >= 1 && k <= K
     @assert modelinfo.num_time_periods == 1

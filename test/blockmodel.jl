@@ -1,12 +1,13 @@
 using Test
 using Ipopt
+using ExaPF
 using JuMP
 using ProxAL
 using DelimitedFiles, Printf
 
 DATA_DIR = joinpath(dirname(@__FILE__), "..", "data")
 case = "case9"
-T = 2
+T = 3
 ramp_scale = 0.5
 load_scale = 1.0
 maxρ = 0.1
@@ -23,12 +24,12 @@ opfdata = opf_loaddata(rawdata;
                        load_scale = load_scale,
                        ramp_scale = ramp_scale)
 
-@testset "Model Formulation" begin
+@testset "Block Model Formulation" begin
     ctgs_arr = deepcopy(rawdata.ctgs_arr)
 
     # Model/formulation settings
     modelinfo = ModelParams()
-    modelinfo.num_time_periods = 1
+    modelinfo.num_time_periods = T
     modelinfo.load_scale = load_scale
     modelinfo.ramp_scale = ramp_scale
     modelinfo.allow_obj_gencost = true
@@ -46,19 +47,39 @@ opfdata = opf_loaddata(rawdata;
 
     K = 0
 
-    @testset "Block model" begin
-        blockmodel = ProxAL.JuMPBlockModel(1, opfdata, modelinfo, 1, 1)
-        ProxAL.init!(blockmodel, algparams)
+    # Instantiate primal and dual buffers
+    primal = ProxAL.PrimalSolution(opfdata, modelinfo)
+    dual = ProxAL.DualSolution(opfdata, modelinfo)
 
-        # Instantiate primal and dual buffers
-        primal = ProxAL.PrimalSolution(opfdata, modelinfo)
-        dual = ProxAL.DualSolution(opfdata, modelinfo)
+    set_rho!(algparams;
+                ngen = length(opfdata.generators),
+                modelinfo = modelinfo,
+                maxρ_t = maxρ,
+                maxρ_c = maxρ)
+
+    modelinfo_local = deepcopy(modelinfo)
+    modelinfo_local.num_time_periods = 1
+
+    @testset "JuMP Block model" begin
+        blockmodel = ProxAL.JuMPBlockModel(1, opfdata, modelinfo_local, 2, 1)
+        ProxAL.init!(blockmodel, algparams)
 
         ProxAL.set_objective!(blockmodel, algparams, primal, dual)
         n = JuMP.num_variables(blockmodel.model)
         x0 = zeros(n)
         ProxAL.optimize!(blockmodel, x0)
+    end
 
+    @testset "ExaPF Block model" begin
+        # TODO: currently, we need to build directly ExaPF object
+        # with rawdata, as ExaPF is dealing only with struct of arrays objects.
+        blockmodel = ProxAL.ExaBlockModel(1, rawdata, opfdata, modelinfo_local, 2, 1)
+        ProxAL.init!(blockmodel, algparams)
+        ProxAL.set_objective!(blockmodel, algparams, primal, dual)
+        n = ExaPF.n_variables(blockmodel.model)
+        x0 = zeros(n)
+        optimizer = Ipopt.Optimizer()
+        ProxAL.optimize!(blockmodel, x0, optimizer)
     end
 end
 
