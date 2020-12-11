@@ -13,10 +13,11 @@ using MPI
 include("params.jl")
 include("opfdata.jl")
 include("opfsolution.jl")
-include("blockmodel.jl")
 include("opfmodel.jl")
+include("blockmodel.jl")
 include("full_model.jl")
-include("opfblocks.jl")
+include("blocks.jl")
+# include("opfblocks.jl")
 include("proxALMutil.jl")
 
 export RawData, ModelParams, AlgParams
@@ -37,21 +38,20 @@ function run_proxALM(opfdata::OPFData, rawdata::RawData,
 
     #------------------------------------------------------------------------------------
     function blocknlp_copy(blk, x_ref, λ_ref, alg_ref)
-        opf_block_set_objective(blk, opfBlockData.blkModel[blk], opfBlockData,
-                                alg_ref,
-                                x_ref,
-                                λ_ref)
-        nlp_opt_sol[:,blk] .= opf_block_solve_model(blk, opfBlockData.blkModel[blk], opfBlockData)
+        model = opfBlockData[blk]
+        # Update objective
+        set_objective!(model, alg_ref, x_ref, λ_ref)
+        x0 = opfBlockData.colValue[:, blk]
+        nlp_opt_sol[:,blk] .= optimize!(model, x0)
     end
     #------------------------------------------------------------------------------------
     function blocknlp_recreate(blk, x_ref, λ_ref, alg_ref)
-        opfmodel = opf_block_model_initialize(blk, opfBlockData, rawdata,
-                                              alg_ref)
-        opf_block_set_objective(blk, opfmodel, opfBlockData,
-                                alg_ref,
-                                x_ref,
-                                λ_ref)
-        nlp_opt_sol[:,blk] .= opf_block_solve_model(blk, opfmodel, opfBlockData)
+        model = opfBlockData[blk]
+        init!(model, alg_ref)
+        # Update objective
+        set_objective!(model, alg_ref, x_ref, λ_ref)
+        x0 = opfBlockData.colValue[:, blk]
+        nlp_opt_sol[:,blk] .= optimize!(model, x0)
     end
     #------------------------------------------------------------------------------------
     function primal_update()
@@ -165,7 +165,7 @@ function run_proxALM(opfdata::OPFData, rawdata::RawData,
     return runinfo
 end
 
-function update_primal_nlpvars(x::PrimalSolution, opfBlockData::OPFBlockData, blk::Int,
+function update_primal_nlpvars(x::PrimalSolution, opfBlockData::OPFBlocks, blk::Int,
                                modelinfo::ModelParams,
                                algparams::AlgParams)
     solution = get_block_view(x, opfBlockData.blkIndex[blk],

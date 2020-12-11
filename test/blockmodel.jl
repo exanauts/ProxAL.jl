@@ -60,7 +60,7 @@ opfdata = opf_loaddata(rawdata;
     modelinfo_local.num_time_periods = 1
 
     @testset "JuMP Block model" begin
-        blockmodel = ProxAL.JuMPBlockModel(1, opfdata, modelinfo_local, 2, 1)
+        blockmodel = ProxAL.JuMPBlockModel(1, opfdata, rawdata, modelinfo_local, 2, 1)
         ProxAL.init!(blockmodel, algparams)
 
         ProxAL.set_objective!(blockmodel, algparams, primal, dual)
@@ -72,7 +72,7 @@ opfdata = opf_loaddata(rawdata;
     @testset "ExaPF Block model" begin
         # TODO: currently, we need to build directly ExaPF object
         # with rawdata, as ExaPF is dealing only with struct of arrays objects.
-        blockmodel = ProxAL.ExaBlockModel(1, rawdata, opfdata, modelinfo_local, 2, 1)
+        blockmodel = ProxAL.ExaBlockModel(1, opfdata, rawdata, modelinfo_local, 2, 1)
         ProxAL.init!(blockmodel, algparams)
         ProxAL.set_objective!(blockmodel, algparams, primal, dual)
 
@@ -88,6 +88,16 @@ opfdata = opf_loaddata(rawdata;
         MOI.set(optimizer, MOI.RawParameter("tol"), 1e-6)
 
         solution = ProxAL.optimize!(blockmodel, x0, optimizer)
+    end
+
+    @testset "OPFBlocks" begin
+        blocks = ProxAL.OPFBlocks(
+            opfdata, rawdata;
+            modelinfo=modelinfo,
+            algparams=algparams,
+        )
+
+        @test length(blocks.blkModel) == modelinfo.num_time_periods
     end
 end
 

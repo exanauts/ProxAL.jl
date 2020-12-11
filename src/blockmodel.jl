@@ -59,10 +59,12 @@ struct JuMPBlockModel <: AbstractBlockModel
     params::ModelParams
 end
 
-function JuMPBlockModel(blk, opfdata, modelinfo, t, k)
+function JuMPBlockModel(
+    blk::Int,
+    opfdata::OPFData, raw_data::RawData,
+    modelinfo::ModelParams, t::Int, k::Int,
+)
     model = JuMP.Model()
-    # k = indexes[block.id][1]
-    # t = indexes[block.id][2]
     return JuMPBlockModel(blk, k, t, model, opfdata, modelinfo)
 end
 
@@ -199,8 +201,9 @@ struct ExaBlockModel <: AbstractBlockModel
 end
 
 function ExaBlockModel(
-    blk::Int, raw_data::RawData,
-    opfdata::OPFData, modelinfo::ModelParams, t::Int, k::Int,
+    blk::Int,
+    opfdata::OPFData, raw_data::RawData,
+    modelinfo::ModelParams, t::Int, k::Int,
 )
 
     horizon = size(opfdata.Pd, 2)
