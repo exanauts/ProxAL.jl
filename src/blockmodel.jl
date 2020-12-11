@@ -1,5 +1,4 @@
 
-import MathOptInterface: MOI
 abstract type AbstractBlockModel end
 
 """
@@ -147,15 +146,7 @@ function set_objective!(block::JuMPBlockModel, algparams::AlgParams,
 end
 
 function get_solution(block::JuMPBlockModel)
-    return value.(all_variables(block.model))
-end
-
-function optimize!(block::JuMPBlockModel, x0)
-    blk = block.id
     opfmodel = block.model
-    set_start_value.(all_variables(opfmodel), x0)
-    JuMP.optimize!(opfmodel)
-
     status = termination_status(opfmodel)
     if status ∉ MOI_OPTIMAL_STATUSES
         @warn("Block $blk subproblem not solved to optimality. status: $status")
@@ -163,6 +154,24 @@ function optimize!(block::JuMPBlockModel, x0)
     if !has_values(opfmodel)
         error("no solution vector available in block $blk subproblem")
     end
+
+    solution = (
+        status=status,
+        objective=JuMP.objective_value(opfmodel),
+        vm=JuMP.value.(opfmodel[:Vm]),
+        va=JuMP.value.(opfmodel[:Va]),
+        pg=JuMP.value.(opfmodel[:Pg]),
+        qg=JuMP.value.(opfmodel[:Qg]),
+        st=JuMP.value.(opfmodel[:St]),
+    )
+    return solution
+end
+
+function optimize!(block::JuMPBlockModel, x0)
+    blk = block.id
+    opfmodel = block.model
+    set_start_value.(all_variables(opfmodel), x0)
+    JuMP.optimize!(opfmodel)
 
     return get_solution(block)
 end
@@ -189,7 +198,10 @@ struct ExaBlockModel <: AbstractBlockModel
     params::ModelParams
 end
 
-function ExaBlockModel(blk, raw_data, opfdata, modelinfo, t, k)
+function ExaBlockModel(
+    blk::Int, raw_data::RawData,
+    opfdata::OPFData, modelinfo::ModelParams, t::Int, k::Int,
+)
 
     horizon = size(opfdata.Pd, 2)
     data = Dict{String, Array}()
@@ -217,7 +229,6 @@ end
 function init!(block::ExaBlockModel, algparams::AlgParams)
     opfmodel = block.model
     # Reset optimizer
-    # TODO
     ExaPF.reset!(opfmodel)
 
     # Get params
@@ -225,6 +236,9 @@ function init!(block::ExaBlockModel, algparams::AlgParams)
     modelinfo = block.params
     Kblock = modelinfo.num_ctgs + 1
     t, k = block.t, block.k
+    # Generators
+    gens = block.data.generators
+    ramp_agc = [g.ramp_agc for g in gens]
 
     # Sanity check
     @assert modelinfo.num_time_periods == 1
@@ -236,6 +250,9 @@ function init!(block::ExaBlockModel, algparams::AlgParams)
     qd = opfdata.Qd[:,1]
     ExaPF.setvalues!(opfmodel, PS.ActiveLoad(), pd)
     ExaPF.setvalues!(opfmodel, PS.ReactiveLoad(), qd)
+    # Set bounds on slack variables s
+    copyto!(opfmodel.s_max, 2 .* ramp_agc)
+    opfmodel.scale_objective = modelinfo.obj_scale
 
     return opfmodel
 end
@@ -244,8 +261,8 @@ function add_ctgs_linking_constraints!(block::ExaBlockModel)
     error("Contingencies are not supported in ExaPF")
 end
 
-function set_objective!(block::ExaBlockModel, algparams::AlgParams,
-                        primal::PrimalSolution, dual::DualSolution)
+function update_penalty!(block::ExaBlockModel, algparams::AlgParams,
+                         primal::PrimalSolution, dual::DualSolution)
     examodel = block.model
     opfdata = block.data
     modelinfo = block.params
@@ -255,6 +272,7 @@ function set_objective!(block::ExaBlockModel, algparams::AlgParams,
     t, k = block.t, block.k
     ramp_agc = [g.ramp_agc for g in gens]
 
+    # Update values
     λf = dual.ramping[:, t]
     λt = dual.ramping[:, t+1]
     pgf = primal.Pg[:, 1, t-1] .+ primal.Zt[:, t] .- ramp_agc
@@ -263,7 +281,51 @@ function set_objective!(block::ExaBlockModel, algparams::AlgParams,
 
     ExaPF.update_multipliers!(examodel, λf, λt)
     ExaPF.update_primal!(examodel, pgf, pgc, pgt)
+
+    # Update parameters
+    examodel.τ = algparams.τ
+    examodel.ρf = algparams.ρ_c[1, 1, t]
+    examodel.ρt = algparams.ρ_c[1, 1, t+1]
+end
+
+function set_objective!(block::ExaBlockModel, algparams::AlgParams,
+                        primal::PrimalSolution, dual::DualSolution)
+    update_penalty!(block, algparams, primal, dual)
     return
+end
+
+function get_solution(block::ExaBlockModel, optimizer, vars)
+    opfmodel = block.model
+
+    # Check optimization status
+    status = MOI.get(optimizer, MOI.TerminationStatus())
+    if status ∉ MOI_OPTIMAL_STATUSES
+        @warn("Block $(block.id) subproblem not solved to optimality. status: $status")
+    end
+
+    # Get optimal solution in reduced space
+    nu = opfmodel.nu
+    x♯ = [MOI.get(optimizer, MOI.VariablePrimal(), v) for v in vars]
+    u♯ = x♯[1:nu]
+    s♯ = x♯[nu+1:end]
+    # Unroll solution in full space
+    ## i) Project in null-space of equality constraints
+    ExaPF.update!(opfmodel, x♯)
+    pg = get(opfmodel, PS.ActivePower())
+    qg = get(opfmodel, PS.ReactivePower())
+    vm = get(opfmodel, PS.VoltageMagnitude())
+    va = get(opfmodel, PS.VoltageAngle())
+
+    solution = (
+        status=status,
+        minimum=MOI.get(optimizer, MOI.ObjectiveValue()),
+        vm=vm,
+        va=va,
+        pg=pg,
+        qg=qg,
+        st=s♯,
+    )
+    return solution
 end
 
 function optimize!(block::ExaBlockModel, x0, optimizer)
@@ -293,16 +355,8 @@ function optimize!(block::ExaBlockModel, x0, optimizer)
     MOI.set(optimizer, MOI.NLPBlock(), block_data)
     MOI.set(optimizer, MOI.ObjectiveSense(), MOI.MIN_SENSE)
     MOI.optimize!(optimizer)
-    status = MOI.get(optimizer, MOI.TerminationStatus())
-    x_opt = [MOI.get(optimizer, MOI.VariablePrimal(), v) for v in vars]
-    solution = (
-        status=status,
-        minimum=MOI.get(optimizer, MOI.ObjectiveValue()),
-        minimizer=x_opt
-    )
+    solution = get_solution(block, optimizer, vars)
     MOI.empty!(optimizer)
-    if status ∉ MOI_OPTIMAL_STATUSES
-        @warn("Block $blk subproblem not solved to optimality. status: $status")
-    end
     return solution
 end
+

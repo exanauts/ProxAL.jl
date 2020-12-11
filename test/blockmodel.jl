@@ -34,12 +34,11 @@ opfdata = opf_loaddata(rawdata;
     modelinfo.ramp_scale = ramp_scale
     modelinfo.allow_obj_gencost = true
     modelinfo.allow_constr_infeas = false
-    modelinfo.weight_quadratic_penalty_time = quad_penalty
 
     # Algorithm settings
     algparams = AlgParams()
     algparams.parallel = false #algparams.parallel = (nprocs() > 1)
-    algparams.verbose = 0
+    algparams.verbose = 1
 
     modelinfo.case_name = case
     algparams.optimizer = optimizer_with_attributes(Ipopt.Optimizer,
@@ -52,10 +51,10 @@ opfdata = opf_loaddata(rawdata;
     dual = ProxAL.DualSolution(opfdata, modelinfo)
 
     set_rho!(algparams;
-                ngen = length(opfdata.generators),
-                modelinfo = modelinfo,
-                maxρ_t = maxρ,
-                maxρ_c = maxρ)
+             ngen = length(opfdata.generators),
+             modelinfo = modelinfo,
+             maxρ_t = maxρ,
+             maxρ_c = maxρ)
 
     modelinfo_local = deepcopy(modelinfo)
     modelinfo_local.num_time_periods = 1
@@ -67,7 +66,7 @@ opfdata = opf_loaddata(rawdata;
         ProxAL.set_objective!(blockmodel, algparams, primal, dual)
         n = JuMP.num_variables(blockmodel.model)
         x0 = zeros(n)
-        ProxAL.optimize!(blockmodel, x0)
+        solution = ProxAL.optimize!(blockmodel, x0)
     end
 
     @testset "ExaPF Block model" begin
@@ -76,10 +75,19 @@ opfdata = opf_loaddata(rawdata;
         blockmodel = ProxAL.ExaBlockModel(1, rawdata, opfdata, modelinfo_local, 2, 1)
         ProxAL.init!(blockmodel, algparams)
         ProxAL.set_objective!(blockmodel, algparams, primal, dual)
+
         n = ExaPF.n_variables(blockmodel.model)
         x0 = zeros(n)
+
+        # Set up optimizer
         optimizer = Ipopt.Optimizer()
-        ProxAL.optimize!(blockmodel, x0, optimizer)
+        MOI.set(optimizer, MOI.RawParameter("print_level"), 5)
+        MOI.set(optimizer, MOI.RawParameter("limited_memory_max_history"), 50)
+        MOI.set(optimizer, MOI.RawParameter("hessian_approximation"), "limited-memory")
+        MOI.set(optimizer, MOI.RawParameter("derivative_test"), "first-order")
+        MOI.set(optimizer, MOI.RawParameter("tol"), 1e-6)
+
+        solution = ProxAL.optimize!(blockmodel, x0, optimizer)
     end
 end
 
