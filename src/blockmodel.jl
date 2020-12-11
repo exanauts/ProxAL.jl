@@ -164,6 +164,7 @@ function get_solution(block::JuMPBlockModel)
         va=JuMP.value.(opfmodel[:Va]),
         pg=JuMP.value.(opfmodel[:Pg]),
         qg=JuMP.value.(opfmodel[:Qg]),
+        ωt=JuMP.value.(opfmodel[:ωt]),
         st=JuMP.value.(opfmodel[:St]),
     )
     return solution

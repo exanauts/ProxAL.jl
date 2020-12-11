@@ -17,7 +17,6 @@ include("opfmodel.jl")
 include("blockmodel.jl")
 include("full_model.jl")
 include("blocks.jl")
-# include("opfblocks.jl")
 include("proxALMutil.jl")
 
 export RawData, ModelParams, AlgParams
@@ -32,26 +31,51 @@ function run_proxALM(opfdata::OPFData, rawdata::RawData,
     opfBlockData = runinfo.opfBlockData
     nlp_opt_sol = runinfo.nlp_opt_sol
     nlp_soltime = runinfo.nlp_soltime
+    ngen = length(opfdata.generators)
+    nbus = length(opfdata.buses)
+    T = modelinfo.num_time_periods
+    K = modelinfo.num_ctgs + 1 # base case counted separately
     x = runinfo.x
     λ = runinfo.λ
 
-
+    function transfer!(blk, opt_sol, solution)
+        # Pg
+        fr = 1 ; to = ngen * K
+        nlp_opt_sol[fr:to, blk] .= solution.pg[:]
+        # Qg
+        fr = to + 1 ; to += ngen * K
+        nlp_opt_sol[fr:to, blk] .= solution.qg[:]
+        # vm
+        fr = to +1 ; to = fr + nbus * K - 1
+        nlp_opt_sol[fr:to, blk] .= solution.vm[:]
+        # va
+        fr = to + 1 ; to = fr + nbus * K - 1
+        nlp_opt_sol[fr:to, blk] .= solution.va[:]
+        # wt
+        fr = to +1  ; to = fr + K -1
+        nlp_opt_sol[fr:to, blk] .= solution.ωt[:]
+        # St
+        fr = to +1  ; to = fr + ngen - 1
+        nlp_opt_sol[fr:to, blk] .= solution.st[:]
+    end
     #------------------------------------------------------------------------------------
     function blocknlp_copy(blk, x_ref, λ_ref, alg_ref)
-        model = opfBlockData[blk]
+        model = opfBlockData.blkModel[blk]
         # Update objective
         set_objective!(model, alg_ref, x_ref, λ_ref)
         x0 = opfBlockData.colValue[:, blk]
-        nlp_opt_sol[:,blk] .= optimize!(model, x0)
+        solution = optimize!(model, x0)
+        transfer!(blk, nlp_opt_sol, solution)
     end
     #------------------------------------------------------------------------------------
     function blocknlp_recreate(blk, x_ref, λ_ref, alg_ref)
-        model = opfBlockData[blk]
+        model = opfBlockData.blkModel[blk]
         init!(model, alg_ref)
         # Update objective
         set_objective!(model, alg_ref, x_ref, λ_ref)
         x0 = opfBlockData.colValue[:, blk]
-        nlp_opt_sol[:,blk] .= optimize!(model, x0)
+        solution = optimize!(model, x0)
+        transfer!(blk, nlp_opt_sol, solution)
     end
     #------------------------------------------------------------------------------------
     function primal_update()

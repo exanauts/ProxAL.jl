@@ -99,7 +99,7 @@ mutable struct ProxALMData
         dist_x = []
         dist_λ = []
         nlp_opt_sol = Array{Float64, 2}(undef, blocks.colCount, blocks.blkCount)
-        nlp_opt_sol .= opfBlockData.colValue
+        nlp_opt_sol .= blocks.colValue
         nlp_soltime = Vector{Float64}(undef, blocks.blkCount)
         wall_time_elapsed_actual = 0.0
         wall_time_elapsed_ideal = 0.0
