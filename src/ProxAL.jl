@@ -20,9 +20,22 @@ include("proxALMutil.jl")
 export RawData, ModelParams, AlgParams
 export opf_loaddata, solve_fullmodel, run_proxALM, set_rho!
 
+"""
+    run_proxALM(opfdata::OPFData,
+                rawdata::RawData,
+                modelinfo::ModelParams,
+                algparams::AlgParams,
+                comm::MPI.Comm = MPI.COMM_WORLD)
+
+Use ProxAL to solve the multi-period ACOPF instance
+specified in `opfdata` and `rawdata` with model parameters
+`modelinfo` and algorithm parameters `algparams`, and 
+an MPI communicator `comm`.
+"""
 function run_proxALM(opfdata::OPFData, rawdata::RawData,
                      modelinfo::ModelParams,
-                     algparams::AlgParams, comm::MPI.Comm = MPI.COMM_WORLD)
+                     algparams::AlgParams,
+                     comm::MPI.Comm = MPI.COMM_WORLD)
     runinfo = ProxALMData(opfdata, rawdata, modelinfo, algparams, comm, true)
     runinfo.initial_solve &&
         (algparams_copy = deepcopy(algparams))

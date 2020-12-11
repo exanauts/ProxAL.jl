@@ -23,6 +23,8 @@ Depth = 1
 Pages = [
     "lib/modelparams.md",
     "lib/algparams.md",
+    "lib/algorithm.md",
+    "lib/developer.md",
 ]
 Depth = 1
 ```
