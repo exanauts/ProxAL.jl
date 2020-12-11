@@ -69,6 +69,7 @@ mutable struct ProxALMData
         blocks = OPFBlocks(
             opfdata, rawdata;
             modelinfo=modelinfo, algparams=algparams,
+            backend=ExaBlockModel,
         )
 
         blkLinIndex = LinearIndices(blocks.blkIndex)

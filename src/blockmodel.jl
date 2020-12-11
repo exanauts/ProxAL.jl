@@ -170,7 +170,7 @@ function get_solution(block::JuMPBlockModel)
     return solution
 end
 
-function optimize!(block::JuMPBlockModel, x0)
+function optimize!(block::JuMPBlockModel, x0, algparams::AlgParams)
     blk = block.id
     opfmodel = block.model
     set_start_value.(all_variables(opfmodel), x0)
@@ -276,20 +276,29 @@ function update_penalty!(block::ExaBlockModel, algparams::AlgParams,
     t, k = block.t, block.k
     ramp_agc = [g.ramp_agc for g in gens]
 
-    # Update values
-    λf = dual.ramping[:, t]
-    λt = dual.ramping[:, t+1]
-    pgf = primal.Pg[:, 1, t-1] .+ primal.Zt[:, t] .- ramp_agc
-    pgc = primal.Pg[:, k, t]
-    pgt = primal.Pg[:, 1, t+1] .- primal.St[:, t+1] .+ ramp_agc
+    time = examodel.time
 
-    ExaPF.update_multipliers!(examodel, λf, λt)
-    ExaPF.update_primal!(examodel, pgf, pgc, pgt)
+    # Update values
+    if time != ExaPF.Origin
+        pgf = primal.Pg[:, 1, t-1] .+ primal.Zt[:, t] .- ramp_agc
+        ExaPF.update_primal!(examodel, ExaPF.Previous(), pgf)
+    end
+    if time != ExaPF.Final
+        λt = dual.ramping[:, t+1]
+        ExaPF.update_multipliers!(examodel, ExaPF.Next(), λt)
+        pgt = primal.Pg[:, 1, t+1] .- primal.St[:, t+1] .+ ramp_agc
+        ExaPF.update_primal!(examodel, ExaPF.Next(), pgt)
+        examodel.ρt = algparams.ρ_c[1, 1, t+1]
+    end
+
+    λf = dual.ramping[:, t]
+    ExaPF.update_multipliers!(examodel, ExaPF.Current(), λf)
+    pgc = primal.Pg[:, k, t]
+    ExaPF.update_primal!(examodel, ExaPF.Current(), pgc)
 
     # Update parameters
     examodel.τ = algparams.τ
     examodel.ρf = algparams.ρ_c[1, 1, t]
-    examodel.ρt = algparams.ρ_c[1, 1, t+1]
 end
 
 function set_objective!(block::ExaBlockModel, algparams::AlgParams,
@@ -327,14 +336,16 @@ function get_solution(block::ExaBlockModel, optimizer, vars)
         va=va,
         pg=pg,
         qg=qg,
+        ωt=[0.0], # At the moment, no frequency variable in ExaPF
         st=s♯,
     )
     return solution
 end
 
-function optimize!(block::ExaBlockModel, x0, optimizer)
+function optimize!(block::ExaBlockModel, x0, algparams::AlgParams)
     blk = block.id
     opfmodel = block.model
+    optimizer = MOI.instantiate(algparams.optimizer)
 
     # Convert ExaPF to MOI model
     block_data = MOI.NLPBlockData(opfmodel)
@@ -354,7 +365,8 @@ function optimize!(block::ExaBlockModel, x0, optimizer)
             MOI.SingleVariable(vars[i]),
             MOI.GreaterThan(x♭[i])
         )
-        MOI.set(optimizer, MOI.VariablePrimalStart(), vars[i], x0[i])
+        # TODO: check starting val
+        # MOI.set(optimizer, MOI.VariablePrimalStart(), vars[i], x0[i])
     end
     MOI.set(optimizer, MOI.NLPBlock(), block_data)
     MOI.set(optimizer, MOI.ObjectiveSense(), MOI.MIN_SENSE)

@@ -66,7 +66,7 @@ opfdata = opf_loaddata(rawdata;
         ProxAL.set_objective!(blockmodel, algparams, primal, dual)
         n = JuMP.num_variables(blockmodel.model)
         x0 = zeros(n)
-        solution = ProxAL.optimize!(blockmodel, x0)
+        solution = ProxAL.optimize!(blockmodel, x0, algparams)
     end
 
     @testset "ExaPF Block model" begin
@@ -80,14 +80,16 @@ opfdata = opf_loaddata(rawdata;
         x0 = zeros(n)
 
         # Set up optimizer
-        optimizer = Ipopt.Optimizer()
-        MOI.set(optimizer, MOI.RawParameter("print_level"), 5)
-        MOI.set(optimizer, MOI.RawParameter("limited_memory_max_history"), 50)
-        MOI.set(optimizer, MOI.RawParameter("hessian_approximation"), "limited-memory")
-        MOI.set(optimizer, MOI.RawParameter("derivative_test"), "first-order")
-        MOI.set(optimizer, MOI.RawParameter("tol"), 1e-6)
+        algparams.optimizer = optimizer_with_attributes(
+            Ipopt.Optimizer,
+            "print_level" => 5,
+            "limited_memory_max_history" => 50,
+            "hessian_approximation" => "limited-memory",
+            "derivative_test" => "first-order",
+            "tol" => 1e-6,
+        )
 
-        solution = ProxAL.optimize!(blockmodel, x0, optimizer)
+        solution = ProxAL.optimize!(blockmodel, x0, algparams)
     end
 
     @testset "OPFBlocks" begin

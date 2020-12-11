@@ -41,22 +41,22 @@ function run_proxALM(opfdata::OPFData, rawdata::RawData,
     function transfer!(blk, opt_sol, solution)
         # Pg
         fr = 1 ; to = ngen * K
-        nlp_opt_sol[fr:to, blk] .= solution.pg[:]
+        opt_sol[fr:to, blk] .= solution.pg[:]
         # Qg
         fr = to + 1 ; to += ngen * K
-        nlp_opt_sol[fr:to, blk] .= solution.qg[:]
+        opt_sol[fr:to, blk] .= solution.qg[:]
         # vm
         fr = to +1 ; to = fr + nbus * K - 1
-        nlp_opt_sol[fr:to, blk] .= solution.vm[:]
+        opt_sol[fr:to, blk] .= solution.vm[:]
         # va
         fr = to + 1 ; to = fr + nbus * K - 1
-        nlp_opt_sol[fr:to, blk] .= solution.va[:]
+        opt_sol[fr:to, blk] .= solution.va[:]
         # wt
         fr = to +1  ; to = fr + K -1
-        nlp_opt_sol[fr:to, blk] .= solution.ωt[:]
+        opt_sol[fr:to, blk] .= solution.ωt[:]
         # St
         fr = to +1  ; to = fr + ngen - 1
-        nlp_opt_sol[fr:to, blk] .= solution.st[:]
+        opt_sol[fr:to, blk] .= solution.st[:]
     end
     #------------------------------------------------------------------------------------
     function blocknlp_copy(blk, x_ref, λ_ref, alg_ref)
@@ -64,7 +64,7 @@ function run_proxALM(opfdata::OPFData, rawdata::RawData,
         # Update objective
         set_objective!(model, alg_ref, x_ref, λ_ref)
         x0 = opfBlockData.colValue[:, blk]
-        solution = optimize!(model, x0)
+        solution = optimize!(model, x0, alg_ref)
         transfer!(blk, nlp_opt_sol, solution)
     end
     #------------------------------------------------------------------------------------
@@ -74,7 +74,7 @@ function run_proxALM(opfdata::OPFData, rawdata::RawData,
         # Update objective
         set_objective!(model, alg_ref, x_ref, λ_ref)
         x0 = opfBlockData.colValue[:, blk]
-        solution = optimize!(model, x0)
+        solution = optimize!(model, x0, alg_ref)
         transfer!(blk, nlp_opt_sol, solution)
     end
     #------------------------------------------------------------------------------------
