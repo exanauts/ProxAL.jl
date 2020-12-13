@@ -62,7 +62,7 @@ end
 function JuMPBlockModel(
     blk::Int,
     opfdata::OPFData, raw_data::RawData,
-    modelinfo::ModelParams, t::Int, k::Int,
+    modelinfo::ModelParams, t::Int, k::Int, T::Int,
 )
     model = JuMP.Model()
     return JuMPBlockModel(blk, k, t, model, opfdata, modelinfo)
@@ -149,6 +149,7 @@ end
 
 function get_solution(block::JuMPBlockModel)
     opfmodel = block.model
+    blk = block.id
     status = termination_status(opfmodel)
     if status ∉ MOI_OPTIMAL_STATUSES
         @warn("Block $blk subproblem not solved to optimality. status: $status")
@@ -204,10 +205,9 @@ end
 function ExaBlockModel(
     blk::Int,
     opfdata::OPFData, raw_data::RawData,
-    modelinfo::ModelParams, t::Int, k::Int,
+    modelinfo::ModelParams, t::Int, k::Int, T::Int,
 )
 
-    horizon = size(opfdata.Pd, 2)
     data = Dict{String, Array}()
     data["bus"] = raw_data.bus_arr
     data["branch"] = raw_data.branch_arr
@@ -219,7 +219,7 @@ function ExaBlockModel(
 
     if t == 1
         time = ExaPF.Origin
-    elseif t == horizon
+    elseif t == T
         time = ExaPF.Final
     else
         time = ExaPF.Normal
@@ -233,9 +233,9 @@ end
 function init!(block::ExaBlockModel, algparams::AlgParams)
     opfmodel = block.model
     baseMVA = block.data.baseMVA
+
     # Reset optimizer
     ExaPF.reset!(opfmodel)
-
     # Get params
     opfdata = block.data
     modelinfo = block.params
@@ -287,7 +287,7 @@ function update_penalty!(block::ExaBlockModel, algparams::AlgParams,
     if time != ExaPF.Final
         λt = dual.ramping[:, t+1]
         ExaPF.update_multipliers!(examodel, ExaPF.Next(), λt)
-        pgt = primal.Pg[:, 1, t+1] .- primal.St[:, t+1] .+ ramp_agc
+        pgt = primal.Pg[:, 1, t+1] .- primal.St[:, t+1] .- primal.Zt[:, t+1] .+ ramp_agc
         ExaPF.update_primal!(examodel, ExaPF.Next(), pgt)
         examodel.ρt = algparams.ρ_c[1, 1, t+1]
     end
