@@ -159,7 +159,7 @@ function get_solution(block::JuMPBlockModel)
 
     solution = (
         status=status,
-        objective=JuMP.objective_value(opfmodel),
+        minimum=JuMP.objective_value(opfmodel),
         vm=JuMP.value.(opfmodel[:Vm]),
         va=JuMP.value.(opfmodel[:Va]),
         pg=JuMP.value.(opfmodel[:Pg]),
@@ -232,6 +232,7 @@ end
 
 function init!(block::ExaBlockModel, algparams::AlgParams)
     opfmodel = block.model
+    baseMVA = block.data.baseMVA
     # Reset optimizer
     ExaPF.reset!(opfmodel)
 
@@ -250,8 +251,8 @@ function init!(block::ExaBlockModel, algparams::AlgParams)
 
     # TODO: currently, only one contingency is supported
     j = 1
-    pd = opfdata.Pd[:,1]
-    qd = opfdata.Qd[:,1]
+    pd = opfdata.Pd[:,1] / baseMVA
+    qd = opfdata.Qd[:,1] / baseMVA
     ExaPF.setvalues!(opfmodel, PS.ActiveLoad(), pd)
     ExaPF.setvalues!(opfmodel, PS.ReactiveLoad(), qd)
     # Set bounds on slack variables s
