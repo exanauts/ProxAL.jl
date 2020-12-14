@@ -308,7 +308,7 @@ function set_objective!(block::ExaBlockModel, algparams::AlgParams,
     return
 end
 
-function get_solution(block::ExaBlockModel, optimizer, vars)
+function get_solution(block::ExaBlockModel, optimizer)
     opfmodel = block.model
 
     # Check optimization status
@@ -319,7 +319,8 @@ function get_solution(block::ExaBlockModel, optimizer, vars)
 
     # Get optimal solution in reduced space
     nu = opfmodel.nu
-    x♯ = [MOI.get(optimizer, MOI.VariablePrimal(), v) for v in vars]
+    vars = MOI.get(optimizer, MOI.ListOfVariableIndices())
+    x♯ = MOI.get(optimizer, MOI.VariablePrimal(), vars)
     u♯ = x♯[1:nu]
     s♯ = x♯[nu+1:end]
     # Unroll solution in full space
@@ -347,32 +348,10 @@ function optimize!(block::ExaBlockModel, x0, algparams::AlgParams)
     blk = block.id
     opfmodel = block.model
     optimizer = MOI.instantiate(algparams.optimizer)
-
-    # Convert ExaPF to MOI model
-    block_data = MOI.NLPBlockData(opfmodel)
-    x♭, x♯ = ExaPF.bounds(opfmodel, ExaPF.Variables())
-    x0 = ExaPF.initial(opfmodel)
-    n = ExaPF.n_variables(opfmodel)
-    vars = MOI.add_variables(optimizer, n)
-    # Set bounds and initial values
-    for i in 1:n
-        MOI.add_constraint(
-            optimizer,
-            MOI.SingleVariable(vars[i]),
-            MOI.LessThan(x♯[i])
-        )
-        MOI.add_constraint(
-            optimizer,
-            MOI.SingleVariable(vars[i]),
-            MOI.GreaterThan(x♭[i])
-        )
-        # TODO: check starting val
-        # MOI.set(optimizer, MOI.VariablePrimalStart(), vars[i], x0[i])
-    end
-    MOI.set(optimizer, MOI.NLPBlock(), block_data)
-    MOI.set(optimizer, MOI.ObjectiveSense(), MOI.MIN_SENSE)
-    MOI.optimize!(optimizer)
-    solution = get_solution(block, optimizer, vars)
+    # Optimize with optimizer, using ExaPF model
+    ExaPF.optimize!(optimizer, opfmodel)
+    # Recover solution
+    solution = get_solution(block, optimizer)
     MOI.empty!(optimizer)
     return solution
 end
