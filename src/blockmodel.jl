@@ -205,7 +205,8 @@ end
 function ExaBlockModel(
     blk::Int,
     opfdata::OPFData, raw_data::RawData,
-    modelinfo::ModelParams, t::Int, k::Int, T::Int,
+    modelinfo::ModelParams, t::Int, k::Int, T::Int;
+    device::TargetDevice=CPU,
 )
 
     data = Dict{String, Array}()
@@ -226,7 +227,15 @@ function ExaBlockModel(
     end
 
     # Instantiate model in memory
-    model = ExaPF.ProxALEvaluator(power_network, time)
+    if device == CPU
+        target = ExaPF.CPU()
+    elseif device == CUDADevice
+        target = ExaPF.CUDADevice()
+    else
+        error("Device $(device) is not supported by ExaPF")
+    end
+    model = ExaPF.ProxALEvaluator(power_network, time;
+                                  device=target)
     return ExaBlockModel(blk, k, t, model, opfdata, modelinfo)
 end
 
@@ -308,19 +317,18 @@ function set_objective!(block::ExaBlockModel, algparams::AlgParams,
     return
 end
 
-function get_solution(block::ExaBlockModel, optimizer)
+function get_solution(block::ExaBlockModel, output)
     opfmodel = block.model
 
     # Check optimization status
-    status = MOI.get(optimizer, MOI.TerminationStatus())
+    status = output.status
     if status ∉ MOI_OPTIMAL_STATUSES
         @warn("Block $(block.id) subproblem not solved to optimality. status: $status")
     end
 
     # Get optimal solution in reduced space
     nu = opfmodel.nu
-    vars = MOI.get(optimizer, MOI.ListOfVariableIndices())
-    x♯ = MOI.get(optimizer, MOI.VariablePrimal(), vars)
+    x♯ = output.minimizer
     u♯ = x♯[1:nu]
     s♯ = x♯[nu+1:end]
     # Unroll solution in full space
@@ -333,7 +341,7 @@ function get_solution(block::ExaBlockModel, optimizer)
 
     solution = (
         status=status,
-        minimum=MOI.get(optimizer, MOI.ObjectiveValue()),
+        minimum=output.minimum,
         vm=vm,
         va=va,
         pg=pg,
@@ -347,12 +355,17 @@ end
 function optimize!(block::ExaBlockModel, x0, algparams::AlgParams)
     blk = block.id
     opfmodel = block.model
-    optimizer = MOI.instantiate(algparams.optimizer)
+    optimizer = algparams.optimizer
+    if isa(optimizer, MOI.OptimizerWithAttributes)
+        optimizer = MOI.instantiate(optimizer)
+    end
     # Optimize with optimizer, using ExaPF model
-    ExaPF.optimize!(optimizer, opfmodel)
+    output = ExaPF.optimize!(optimizer, opfmodel)
     # Recover solution
-    solution = get_solution(block, optimizer)
-    MOI.empty!(optimizer)
+    solution = get_solution(block, output)
+    if isa(optimizer, MOI.OptimizerWithAttributes)
+        MOI.empty!(optimizer)
+    end
     return solution
 end
 

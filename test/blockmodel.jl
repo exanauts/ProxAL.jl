@@ -1,6 +1,7 @@
 using Test
 using Ipopt
 using ExaPF
+using ExaOpt
 using JuMP
 using ProxAL
 using DelimitedFiles, Printf
@@ -38,7 +39,7 @@ opfdata = opf_loaddata(rawdata;
     # Algorithm settings
     algparams = AlgParams()
     algparams.parallel = false #algparams.parallel = (nprocs() > 1)
-    algparams.verbose = 0
+    algparams.verbose = 1
 
     modelinfo.case_name = case
     algparams.optimizer = optimizer_with_attributes(Ipopt.Optimizer,
@@ -59,28 +60,32 @@ opfdata = opf_loaddata(rawdata;
     modelinfo_local = deepcopy(modelinfo)
     modelinfo_local.num_time_periods = 1
 
-    t = 1
+    t = 3
     opfdata_c = opf_loaddata(rawdata;
                         time_horizon_start = t,
                         time_horizon_end = t,
                         load_scale = load_scale,
                         ramp_scale = ramp_scale)
 
+    @info("JuMP block + Ipopt")
     @testset "JuMP Block model" begin
-        blockmodel = ProxAL.JuMPBlockModel(1, opfdata_c, rawdata, modelinfo_local, t, 1)
+        blockmodel = ProxAL.JuMPBlockModel(1, opfdata_c, rawdata, modelinfo_local, t, 1, T)
         ProxAL.init!(blockmodel, algparams)
 
         ProxAL.set_objective!(blockmodel, algparams, primal, dual)
         n = JuMP.num_variables(blockmodel.model)
         x0 = zeros(n)
         solution = ProxAL.optimize!(blockmodel, x0, algparams)
-        println(solution.minimum)
+        println("obj: ", solution.minimum)
+        println("sol: ", solution.pg)
     end
 
+    println()
+    @info("Exa block + Ipopt")
     @testset "ExaPF Block model" begin
         # TODO: currently, we need to build directly ExaPF object
         # with rawdata, as ExaPF is dealing only with struct of arrays objects.
-        blockmodel = ProxAL.ExaBlockModel(1, opfdata_c, rawdata, modelinfo_local, t, 1)
+        blockmodel = ProxAL.ExaBlockModel(1, opfdata_c, rawdata, modelinfo_local, t, 1, T)
         ProxAL.init!(blockmodel, algparams)
         ProxAL.set_objective!(blockmodel, algparams, primal, dual)
 
@@ -90,7 +95,7 @@ opfdata = opf_loaddata(rawdata;
         # Set up optimizer
         algparams.optimizer = optimizer_with_attributes(
             Ipopt.Optimizer,
-            "print_level" => 0,
+            "print_level" => 5,
             "limited_memory_max_history" => 50,
             "hessian_approximation" => "limited-memory",
             "derivative_test" => "first-order",
@@ -98,8 +103,28 @@ opfdata = opf_loaddata(rawdata;
         )
 
         solution = ProxAL.optimize!(blockmodel, x0, algparams)
-        println(solution.minimum)
+        println("obj: ", solution.minimum)
+        println("sol: ", solution.pg)
     end
+
+    # println()
+    # @info("Exa block + AugLag")
+    # @testset "ExaPF Block model" begin
+    #     blockmodel = ProxAL.ExaBlockModel(1, opfdata_c, rawdata, modelinfo_local, t, 1, T)
+    #     ProxAL.init!(blockmodel, algparams)
+    #     ProxAL.set_objective!(blockmodel, algparams, primal, dual)
+    #     n = ExaPF.n_variables(blockmodel.model)
+    #     x0 = zeros(n)
+
+    #     # Set up optimizer
+    #     algparams.optimizer = ExaOpt.AugLagSolver(; max_iter=20, ωtol=1e-4, verbose=1)
+
+    #     solution = ProxAL.optimize!(blockmodel, x0, algparams)
+    #     println("obj: ", solution.minimum)
+    #     println("sol: ", solution.pg)
+    # end
+
+    println()
 
     @testset "OPFBlocks" begin
         blocks = ProxAL.OPFBlocks(

@@ -6,6 +6,12 @@ const MOI_OPTIMAL_STATUSES = [
     MOI.ALMOST_LOCALLY_SOLVED,
 ]
 
+@enum(TargetDevice,
+    CPU,
+    CUDADevice,
+    Mixed,
+)
+
 #
 #
 # Algorithmic parameters
@@ -32,6 +38,8 @@ mutable struct AlgParams
     verbose::Int    # level of output: 0 (none), 1 (stdout), 2 (+plots), 3 (+outfiles)
     mode::Symbol    # computation mode [:nondecomposed, :coldstart, :lyapunov_bound]
     optimizer::Any  # NLP solver for fullmodel and subproblems
+    gpu_optimizer::Any  # GPU-compatible NLP solver for fullmodel and subproblems
+    device::TargetDevice
 
     function AlgParams()
         new(false,  # decompCtgs
@@ -54,7 +62,9 @@ mutable struct AlgParams
             false,  # updateτ
             0,      # verbose
             :nondecomposed, # mode
-            nothing # optimizer
+            nothing, # optimizer
+            nothing, # GPU optimizer
+            CPU,
         )
     end
 end
