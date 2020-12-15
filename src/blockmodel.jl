@@ -288,27 +288,31 @@ function update_penalty!(block::ExaBlockModel, algparams::AlgParams,
 
     time = examodel.time
 
-    # Update values
+    # Update current values
+    λf = dual.ramping[:, t]
+    pgc = primal.Pg[:, k, t]
+    ExaPF.update_multipliers!(examodel, ExaPF.Current(), λf)
+    ExaPF.update_primal!(examodel, ExaPF.Current(), pgc)
+    # Update parameters
+    examodel.τ = algparams.τ
+
+    # Update previous values
     if time != ExaPF.Origin
         pgf = primal.Pg[:, 1, t-1] .+ primal.Zt[:, t] .- ramp_agc
         ExaPF.update_primal!(examodel, ExaPF.Previous(), pgf)
+        # Update parameters
+        examodel.ρf = algparams.ρ_t[1, t]
     end
+
+    # Update next values
     if time != ExaPF.Final
         λt = dual.ramping[:, t+1]
-        ExaPF.update_multipliers!(examodel, ExaPF.Next(), λt)
         pgt = primal.Pg[:, 1, t+1] .- primal.St[:, t+1] .- primal.Zt[:, t+1] .+ ramp_agc
+        ExaPF.update_multipliers!(examodel, ExaPF.Next(), λt)
         ExaPF.update_primal!(examodel, ExaPF.Next(), pgt)
-        examodel.ρt = algparams.ρ_c[1, 1, t+1]
+        # Update parameters
+        examodel.ρt = algparams.ρ_t[1, t+1]
     end
-
-    λf = dual.ramping[:, t]
-    ExaPF.update_multipliers!(examodel, ExaPF.Current(), λf)
-    pgc = primal.Pg[:, k, t]
-    ExaPF.update_primal!(examodel, ExaPF.Current(), pgc)
-
-    # Update parameters
-    examodel.τ = algparams.τ
-    examodel.ρf = algparams.ρ_c[1, 1, t]
 end
 
 function set_objective!(block::ExaBlockModel, algparams::AlgParams,
