@@ -1,23 +1,46 @@
 
+"""
+    AbstractBlockModel
+
+Abstract supertype for the definition of block subproblems.
+"""
 abstract type AbstractBlockModel end
 
 """
-    init!(block::AbstractBlockModel, algparams::AlgParams, indexes)
+    init!(block::AbstractBlockModel, algparams::AlgParams)
 
-Feed the optimization model by creating variables and constraints
+Init the optimization model by creating variables and constraints
 inside the model.
 
 """
 function init! end
 
 """
-    optimize!(block::AbstractBlockModel, x0)
+    optimize!(block::AbstractBlockModel, x0::AbstractArray, algparams::AlgParams)
 
 Solve the optimization problem, starting from an initial
-variable `x0`.
+variable `x0`. The optimization solver is specified in
+`algparams.optimizer`.
 
 """
 function optimize! end
+
+"""
+    get_solution(block::AbstractBlockModel, output)
+
+Return the solution of the optimization as a named tuple `solution`,
+with fields
+
+- `status::MOI.TerminationStatus`: final status returned by the solver
+- `minimum::Float64`: optimal objective found
+- `vm::AbstractArray`: optimal values of voltage magnitudes
+- `va::AbstractArray`: optimal values of voltage angles
+- `pg::AbstractArray`: optimal values of active power generations
+- `qg::AbstractArray`: optimal values of reactive power generations
+- `ωt::AbstractArray`: optimal values of frequency
+- `st::AbstractArray`: optimal values of slack variables
+"""
+function get_solution end
 
 # Objective
 """
@@ -28,8 +51,8 @@ function optimize! end
         dual::DualSolution
     )
 
-Update the objective inside `block`'s optimization problem.
-The new objective update the coefficients of the penalty
+Update the objective inside `block`'s optimization subproblem.
+The new objective updates the coefficients of the penalty
 terms, to reflect the new `primal` and `dual` solutions
 passed in the arguments.
 
@@ -50,6 +73,28 @@ function add_variables! end
 function add_ctgs_linking_constraints! end
 
 ### Implementation of JuMPBlockModel
+"""
+    JuMPBlockModel(
+        blk::Int,
+        opfdata::OPFData, raw_data::RawData,
+        modelinfo::ModelParams, t::Int, k::Int, T::Int,
+    )
+)
+
+Block model using the modeler JuMP to define the optimal power flow
+problem. Used inside `OPFBlocks`, for decomposition purpose.
+
+# Arguments
+
+- `blk::Int`: ID of the block represented by this model
+- `opfdata::OPFData`: data used to build the optimal power flow problem.
+- `raw_data::RawData`: same data, in raw format
+- `modelinfo::ModelParams`: parameters related to specification of the optimization model
+- `t::Int`: current time-step. Value should be between `1` and `T`.
+- `k::Int`: current contingency
+- `T::Int`: final horizon
+
+"""
 struct JuMPBlockModel <: AbstractBlockModel
     id::Int
     k::Int
@@ -171,7 +216,7 @@ function get_solution(block::JuMPBlockModel)
     return solution
 end
 
-function optimize!(block::JuMPBlockModel, x0, algparams::AlgParams)
+function optimize!(block::JuMPBlockModel, x0::AbstractArray, algparams::AlgParams)
     blk = block.id
     opfmodel = block.model
     set_start_value.(all_variables(opfmodel), x0)
@@ -193,6 +238,28 @@ function add_ctgs_linking_constraints!(block::JuMPBlockModel, algparams)
 end
 
 ### Implementation of ExaBlockModel
+"""
+    ExaBlockModel(
+        blk::Int,
+        opfdata::OPFData, raw_data::RawData,
+        modelinfo::ModelParams, t::Int, k::Int, T::Int,
+    )
+)
+
+Block model using the package ExaPF to define the optimal power flow
+problem. Used inside `OPFBlocks`, for decomposition purpose.
+
+# Arguments
+
+- `blk::Int`: ID of the block represented by this model
+- `opfdata::OPFData`: data used to build the optimal power flow problem.
+- `raw_data::RawData`: same data, in raw format
+- `modelinfo::ModelParams`: parameters related to specification of the optimization model
+- `t::Int`: current time-step. Value should be between `1` and `T`.
+- `k::Int`: current contingency
+- `T::Int`: final horizon
+
+"""
 struct ExaBlockModel <: AbstractBlockModel
     id::Int
     k::Int
@@ -356,20 +423,24 @@ function get_solution(block::ExaBlockModel, output)
     return solution
 end
 
-function optimize!(block::ExaBlockModel, x0, algparams::AlgParams)
+function optimize!(block::ExaBlockModel, x0::AbstractArray, algparams::AlgParams)
     blk = block.id
     opfmodel = block.model
     optimizer = algparams.optimizer
+
     if isa(optimizer, MOI.OptimizerWithAttributes)
         optimizer = MOI.instantiate(optimizer)
     end
+
     # Optimize with optimizer, using ExaPF model
     output = ExaPF.optimize!(optimizer, opfmodel)
     # Recover solution
     solution = get_solution(block, output)
+
     if isa(optimizer, MOI.OptimizerWithAttributes)
         MOI.empty!(optimizer)
     end
+
     return solution
 end
 
