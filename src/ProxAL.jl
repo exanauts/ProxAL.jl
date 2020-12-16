@@ -63,7 +63,7 @@ function run_proxALM(opfdata::OPFData, rawdata::RawData,
         model = opfBlockData.blkModel[blk]
         # Update objective
         set_objective!(model, alg_ref, x_ref, λ_ref)
-        x0 = opfBlockData.colValue[:, blk]
+        x0 = @view opfBlockData.colValue[:, blk]
         solution = optimize!(model, x0, alg_ref)
         transfer!(blk, nlp_opt_sol, solution)
     end
@@ -73,7 +73,7 @@ function run_proxALM(opfdata::OPFData, rawdata::RawData,
         init!(model, alg_ref)
         # Update objective
         set_objective!(model, alg_ref, x_ref, λ_ref)
-        x0 = opfBlockData.colValue[:, blk]
+        x0 = @view opfBlockData.colValue[:, blk]
         solution = optimize!(model, x0, alg_ref)
         transfer!(blk, nlp_opt_sol, solution)
     end

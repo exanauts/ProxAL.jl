@@ -1,7 +1,6 @@
 using Test
 using Ipopt
 using ExaPF
-using ExaOpt
 using JuMP
 using ProxAL
 using DelimitedFiles, Printf
@@ -68,7 +67,7 @@ opfdata = opf_loaddata(rawdata;
                             load_scale = load_scale,
                             ramp_scale = ramp_scale)
 
-        local solution
+        local solution, n
         @testset "JuMP Block model" begin
             blockmodel = ProxAL.JuMPBlockModel(1, opfdata_c, rawdata, modelinfo_local, t, 1, T)
             ProxAL.init!(blockmodel, algparams)
@@ -90,7 +89,6 @@ opfdata = opf_loaddata(rawdata;
             ProxAL.init!(blockmodel, algparams)
             ProxAL.set_objective!(blockmodel, algparams, primal, dual)
 
-            n = ExaPF.n_variables(blockmodel.model)
             x0 = zeros(n)
 
             # Set up optimizer

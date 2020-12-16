@@ -216,12 +216,15 @@ function get_solution(block::JuMPBlockModel)
     return solution
 end
 
+function set_start_values!(block::JuMPBlockModel, x0)
+    JuMP.set_start_value.(all_variables(block.model), x0)
+end
+
 function optimize!(block::JuMPBlockModel, x0::AbstractArray, algparams::AlgParams)
     blk = block.id
     opfmodel = block.model
-    set_start_value.(all_variables(opfmodel), x0)
-    JuMP.optimize!(opfmodel)
-
+    set_start_values!(block, x0)
+    JuMP.optimize!(block.model)
     return get_solution(block)
 end
 
@@ -421,6 +424,20 @@ function get_solution(block::ExaBlockModel, output)
         st=s♯,
     )
     return solution
+end
+
+function set_start_values!(block::ExaBlockModel, x0)
+    ngen = length(block.data.generators)
+    nbus = length(block.data.buses)
+    # Only one contingency, at the moment
+    K = 1
+    # Extract values from array x0
+    pg = x0[1:ngen*K]
+    qg = x0[ngen*K+1:2*ngen*K]
+    vm = x0[2*ngen*K+1:2*ngen*K+nbus*K]
+    va = x0[2*ngen*K+nbus*K+1:2*ngen*K+2*nbus*K]
+    # Transfer them to ExaPF. Initial control will be automatically updated
+    ExaPF.transfer!(block.model, vm, va, pg, qg)
 end
 
 function optimize!(block::ExaBlockModel, x0::AbstractArray, algparams::AlgParams)
