@@ -109,6 +109,19 @@ struct OPFData
 end
 
 
+"""
+    RawData
+
+Specifies the ACOPF instance data.
+
+- `bus_arr`: read from `.bus` file
+- `branch_arr`: read from `.branch` file
+- `gen_arr`: read from `.gen` file
+- `costgen_arr`: read from `.gencost` file
+- `pd_arr`: read from `.Pd` file
+- `qd_arr`: read from `.Qd` file
+- `ctgs_arr`: read from `.Ctgs` file
+"""
 mutable struct RawData
     baseMVA::Float64
     bus_arr::Array{Float64, 2}
@@ -158,6 +171,28 @@ function ctgs_loaddata(raw::RawData, n)
     return raw.ctgs_arr[1:n]
 end
 
+"""
+    opf_loaddata(raw::RawData;
+                 time_horizon_start::Int=1,
+                 time_horizon_end::Int=0,
+                 load_scale::Float64=1.0,
+                 ramp_scale::Float64=0.0,
+                 lineOff=Line())
+
+Loads the multi-period ACOPF instance data from `raw`
+with the time horizon defined to be
+[`time_horizon_start`,  `time_horizon_end`].
+Note that `time_horizon_end = 0` indicates as many
+as possible (the number of columns in `raw.pd_arr`).
+
+All loads in all time periods will be multiplied by `load_scale`.
+The `ramp_scale` is the factor which multiplies ``p_{g}^{max}``
+to get generator ramping ``r_g``.
+These are set in `ModelParams`.  See [Model parameters](@ref).
+
+`lineOff` is a transmission line that can be deleted to
+represent a contingency.
+"""
 function opf_loaddata(raw::RawData;
                       time_horizon_start::Int=1,
                       time_horizon_end::Int=0,

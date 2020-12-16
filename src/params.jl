@@ -1,3 +1,4 @@
+#
 ## Constant params
 const MOI_OPTIMAL_STATUSES = [
     MOI.OPTIMAL,
@@ -16,6 +17,35 @@ const MOI_OPTIMAL_STATUSES = [
 #
 # Algorithmic parameters
 #
+"""
+    AlgParams
+
+Specifies ProxAL's algorithmic parameters.
+
+| Parameter | Description | Default value |
+| :--- | :--- | :--- |
+| `decompCtgs::Bool` | if true: decompose across contingencies (along with time) | false
+| `jacobi::Bool` |     if true: do Jacobi updates, else do Gauss-Siedel updates | true
+| `parallel::Bool` |   run NLP subproblems in parallel (needs MPI) | true
+| `iterlim::Int` |     maximum number of ProxAL iterations | 100
+| `nlpiterlim::Int` |  maximum number of NLP subproblem iterations | 100
+| `tol::Float64` |     tolerance used for ProxAL termination | 1.0e-4
+| `zero::Float64` |    tolerance below which is regarded as zero | 1.0e-8
+| `ρ_t::Any` |         AL parameters for ramp constraints (can be different for different constraints) | 1.0
+| `ρ_c::Any` |         AL parameters for ctgs constraints (can be different for different constraints) | 1.0
+| `maxρ_t::Float64` |  Maximum value of `ρ_t` | 1.0
+| `maxρ_c::Float64` |  Maximum value of `ρ_c` | 1.0
+| `updateρ_t::Bool` |  if true: dynamically update `ρ_t` | false
+| `updateρ_c::Bool` |  if true: dynamically update `ρ_c` | false
+| `ρ_t_tol::Any` |     Tolerance for dynamic update of `ρ_t` | 1.0e-3
+| `ρ_c_tol::Any` |     Tolerance for dynamic update of `ρ_c` | 1.0e-3
+| `τ::Float64`       | Proximal weight parameter | 3.0
+| `θ::Float64`       | Relaxation parameter for update of dual variables | 1.0
+| `updateτ::Bool` |    if true: dynamically update `τ` | false
+| `verbose::Int` |     level of output: 0 (none), 1 (stdout), 2 (+plots), 3 (+outfiles) | 0
+| `mode::Symbol` |     computation mode `∈ [:nondecomposed, :coldstart, :lyapunov_bound]` | `:nondecomposed`
+| `optimizer::Any` |   NLP solver | `nothing`
+"""
 mutable struct AlgParams
     decompCtgs::Bool# decompose contingencies (along with time)
     jacobi::Bool    # if true: do jacobi, else do gauss-siedel
@@ -69,9 +99,30 @@ mutable struct AlgParams
     end
 end
 
-#
-# Model parameters and modelinfo
-#
+"""
+    ModelParams
+
+Specifies the ACOPF model structure.
+
+| Parameter | Description | Default value |
+| :--- | :--- | :--- |
+| `num_time_periods::Int` | number of time periods | 1
+| `num_ctgs::Int` | number of line contingencies | 0
+| `load_scale::Float64` | load multiplication factor | 1.0
+| `ramp_scale::Float64` | multiply this with ``p_{g}^{max}`` to get generator ramping ``r_g`` | 1.0
+| `obj_scale::Float64` | objective multiplication factor | 1.0e-3
+| `allow_obj_gencost::Bool` | model generator cost | true
+| `allow_constr_infeas::Bool` | allow constraint infeasibility | false
+| `weight_constr_infeas::Float64` | quadratic penalty weight for constraint infeasibilities | 1.0
+| `weight_freq_ctrl::Float64` | quadratic penalty weight for frequency violations | 1.0
+| `weight_ctgs::Float64` | linear weight of contingency objective function | 1.0
+| `weight_quadratic_penalty_time::Float64` | see [Formulation](@ref) | 1.0
+| `weight_quadratic_penalty_ctgs::Float64` | see [Formulation](@ref) | 1.0
+| `case_name::String` | name of case file | ""
+| `savefile::String` | name of save file | ""
+| `time_link_constr_type::Symbol` | `∈ [:penalty, :equality, :inequality]` see [Formulation](@ref) | `:penalty`
+| `ctgs_link_constr_type::Symbol` | `∈ [:frequency_ctrl, :preventive_penalty, :preventive_equality, :corrective_penalty, :corrective_equality, :corrective_penalty]`, see [Formulation](@ref) | `:preventive_equality`
+"""
 mutable struct ModelParams
     num_time_periods::Int
     num_ctgs::Int
@@ -118,7 +169,19 @@ mutable struct ModelParams
     end
 end
 
+"""
+    set_rho!(algparams::AlgParams;
+             ngen::Int,
+             maxρ_t::Float64,
+             maxρ_c::Float64,
+             modelinfo::ModelParams)
 
+Initialize `algparams` for an ACOPF instance with `ngen` generators,
+maximum augmented lagrangian parameter value of
+`maxρ_t` (for ramping constraints),
+`maxρ_c` (for contingency constraints),
+and with model parameters specified in `modelinfo`.
+"""
 function set_rho!(algparams::AlgParams;
                   ngen::Int,
                   maxρ_t::Float64,

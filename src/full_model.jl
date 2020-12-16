@@ -1,3 +1,13 @@
+"""
+    solve_fullmodel(opfdata::OPFData,
+                    rawdata::RawData,
+                    modelinfo::ModelParams,
+                    algparams::AlgParams)
+
+Solves the nondecomposed multi-period ACOPF instance
+specified in `opfdata` and `rawdata` with model parameters
+`modelinfo` and algorithm parameters `algparams`.
+"""
 function solve_fullmodel(opfdata::OPFData, rawdata::RawData, modelinfo::ModelParams, algparams::AlgParams)
     opfmodel = opf_model_nondecomposed(opfdata, rawdata, modelinfo, algparams)
     return opf_solve_nondecomposed(opfmodel, opfdata, modelinfo, algparams)
@@ -87,3 +97,4 @@ function opf_solve_nondecomposed(opfmodel::JuMP.Model, opfdata::OPFData,
 
     return result
 end
+
