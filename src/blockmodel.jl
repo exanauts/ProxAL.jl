@@ -443,7 +443,7 @@ end
 function optimize!(block::ExaBlockModel, x0::AbstractArray, algparams::AlgParams)
     blk = block.id
     opfmodel = block.model
-    optimizer = algparams.optimizer
+    optimizer = algparams.gpu_optimizer
 
     if isa(optimizer, MOI.OptimizerWithAttributes)
         optimizer = MOI.instantiate(optimizer)
