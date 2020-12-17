@@ -3,7 +3,7 @@
 #
 module ProxAL
 
-using JuMP
+using Ipopt, JuMP
 using Printf, CatViews
 using ExaPF
 using LinearAlgebra
@@ -37,7 +37,7 @@ an MPI communicator `comm`.
 function run_proxALM(opfdata::OPFData, rawdata::RawData,
                      modelinfo::ModelParams,
                      algparams::AlgParams,
-                     comm::MPI.Comm = MPI.COMM_WORLD)
+                     comm::MPI.Comm = MPI.COMM_WORLD; init_opf::Bool = false)
     runinfo = ProxALMData(opfdata, rawdata, modelinfo, algparams, comm, false)
     runinfo.initial_solve &&
         (algparams_copy = deepcopy(algparams))
@@ -159,6 +159,38 @@ function run_proxALM(opfdata::OPFData, rawdata::RawData,
         runinfo.wall_time_elapsed_ideal += elapsed_t
     end
     #------------------------------------------------------------------------------------
+
+    # Initialization of Pg, Qg, Vm, Va via a OPF solve
+    function initialization!(runinfo::ProxALMData, modelinfo::ModelParams, opfdata::OPFData, rawdata::RawData)
+        modelinfo_single = deepcopy(modelinfo)
+        modelinfo_single.num_time_periods = 1
+        primal = ProxAL.PrimalSolution(opfdata, modelinfo_single)
+        dual = ProxAL.DualSolution(opfdata, modelinfo_single)
+        algparams = AlgParams()
+        algparams.parallel = false #algparams.parallel = (nprocs() > 1)
+        algparams.mode = :coldstart
+        algparams.optimizer = optimizer_with_attributes(Ipopt.Optimizer,
+                "print_level" => Int64(algparams.verbose > 0)*5)
+        blockmodel = ProxAL.JuMPBlockModel(1, opfdata, rawdata, modelinfo_single, 1, 1, 0)
+        ProxAL.init!(blockmodel, algparams)
+        ProxAL.set_objective!(blockmodel, algparams, primal, dual)
+        n = JuMP.num_variables(blockmodel.model)
+        x0 = zeros(n)
+        solution = ProxAL.optimize!(blockmodel, x0, algparams)
+        for i in 1:T*(K+1)
+            @show solution.pg
+            for i=1:ngen
+                runinfo.x.Pg[i,:,:] .= solution.pg[i]
+                runinfo.x.Qg[i,:,:] .= solution.qg[i]
+            end
+            for i=1:nbus
+                runinfo.x.Vm[i,:,:] .= solution.vm[i]
+                runinfo.x.Va[i,:,:] .= solution.va[i]
+            end
+        end
+    end
+
+    init_opf && initialization!(runinfo, modelinfo, opfdata, rawdata)
 
 
     for runinfo.iter=1:algparams.iterlim
