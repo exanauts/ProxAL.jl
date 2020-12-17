@@ -177,3 +177,34 @@ function update_runinfo(runinfo::ProxALMData, opfdata::OPFData,
     end
 end
 
+function initialization!(runinfo::ProxALMData, modelinfo::ModelParams, opfdata::OPFData, rawdata::RawData)
+    modelinfo_single = deepcopy(modelinfo)
+    modelinfo_single.num_time_periods = 1
+    primal = ProxAL.PrimalSolution(opfdata, modelinfo_single)
+    dual = ProxAL.DualSolution(opfdata, modelinfo_single)
+    algparams = AlgParams()
+    algparams.parallel = false #algparams.parallel = (nprocs() > 1)
+    algparams.mode = :coldstart
+    algparams.optimizer = optimizer_with_attributes(Ipopt.Optimizer,
+            "print_level" => Int64(algparams.verbose > 0)*5)
+    blockmodel = ProxAL.JuMPBlockModel(1, opfdata, rawdata, modelinfo_single, 1, 1, 0)
+    ProxAL.init!(blockmodel, algparams)
+    ProxAL.set_objective!(blockmodel, algparams, primal, dual)
+    n = JuMP.num_variables(blockmodel.model)
+    x0 = zeros(n)
+    solution = ProxAL.optimize!(blockmodel, x0, algparams)
+    nbus = length(opfdata.buses)
+    ngen = length(opfdata.generators)
+    K = modelinfo.num_ctgs
+    T = modelinfo.num_time_periods
+    for i in 1:T*(K+1)
+        for i=1:ngen
+            runinfo.x.Pg[i,:,:] .= solution.pg[i]
+            runinfo.x.Qg[i,:,:] .= solution.qg[i]
+        end
+        for i=1:nbus
+            runinfo.x.Vm[i,:,:] .= solution.vm[i]
+            runinfo.x.Va[i,:,:] .= solution.va[i]
+        end
+    end
+end
