@@ -276,7 +276,7 @@ function ExaBlockModel(
     blk::Int,
     opfdata::OPFData, raw_data::RawData,
     modelinfo::ModelParams, t::Int, k::Int, T::Int;
-    device::TargetDevice=CPU,
+    device::TargetDevice=CPU, nr_tol=1e-10,
 )
 
     data = Dict{String, Array}()
@@ -305,7 +305,7 @@ function ExaBlockModel(
         error("Device $(device) is not supported by ExaPF")
     end
     model = ExaPF.ProxALEvaluator(power_network, time;
-                                  device=target)
+                                  device=target, ε_tol=nr_tol)
     return ExaBlockModel(blk, k, t, model, opfdata, modelinfo)
 end
 

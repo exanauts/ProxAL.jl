@@ -69,6 +69,7 @@ mutable struct AlgParams
     mode::Symbol    # computation mode [:nondecomposed, :coldstart, :lyapunov_bound]
     optimizer::Any  # NLP solver for fullmodel and subproblems
     gpu_optimizer::Any  # GPU-compatible NLP solver for fullmodel and subproblems
+    nr_tol::Float64 # Tolerance of the Newton-Raphson algorithm used in resolution of ExaBlockModel backend
     device::TargetDevice
 
     function AlgParams()
@@ -94,6 +95,7 @@ mutable struct AlgParams
             :nondecomposed, # mode
             nothing, # optimizer
             nothing, # GPU optimizer
+            1e-10,
             CPU,
         )
     end
