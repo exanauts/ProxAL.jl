@@ -38,7 +38,7 @@ function run_proxALM(opfdata::OPFData, rawdata::RawData,
                      modelinfo::ModelParams,
                      algparams::AlgParams,
                      comm::MPI.Comm = MPI.COMM_WORLD)
-    runinfo = ProxALMData(opfdata, rawdata, modelinfo, algparams, comm, true)
+    runinfo = ProxALMData(opfdata, rawdata, modelinfo, algparams, comm, false)
     runinfo.initial_solve &&
         (algparams_copy = deepcopy(algparams))
     opfBlockData = runinfo.opfBlockData
