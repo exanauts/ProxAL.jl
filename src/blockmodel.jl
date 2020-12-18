@@ -336,8 +336,6 @@ function init!(block::ExaBlockModel, algparams::AlgParams)
     opfmodel = block.model
     baseMVA = block.data.baseMVA
 
-    # Reset optimizer
-    ExaPF.reset!(opfmodel)
     # Get params
     opfdata = block.data
     modelinfo = block.params
@@ -360,6 +358,9 @@ function init!(block::ExaBlockModel, algparams::AlgParams)
     # Set bounds on slack variables s
     copyto!(opfmodel.s_max, 2 .* ramp_agc)
     opfmodel.scale_objective = modelinfo.obj_scale
+
+    # Reset optimizer
+    ExaPF.reset!(opfmodel)
 
     return opfmodel
 end
@@ -472,6 +473,7 @@ function optimize!(block::ExaBlockModel, x0::AbstractArray, algparams::AlgParams
         optimizer = MOI.instantiate(optimizer)
     end
 
+    set_start_values!(block, x0)
     # Optimize with optimizer, using ExaPF model
     output = ExaPF.optimize!(optimizer, opfmodel)
     # Recover solution
