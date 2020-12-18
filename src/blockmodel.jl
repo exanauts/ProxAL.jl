@@ -128,7 +128,9 @@ end
 function JuMPBlockModel(
     blk::Int,
     opfdata::OPFData, raw_data::RawData,
-    modelinfo::ModelParams, t::Int, k::Int, T::Int,
+    modelinfo::ModelParams, t::Int, k::Int, T::Int;
+    device = nothing,
+    nr_tol = 0.0
 )
     model = JuMP.Model()
     return JuMPBlockModel(blk, k, t, model, opfdata, modelinfo)
