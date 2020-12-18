@@ -33,6 +33,7 @@ mutable struct ProxALMData
     function ProxALMData(opfdata::OPFData, rawdata::RawData,
                          modelinfo::ModelParams,
                          algparams::AlgParams,
+                         space::AbstractSpace,
                          comm::MPI.Comm,
                          fullmodel::Bool = false,
                          initial_primal = nothing,
@@ -69,7 +70,7 @@ mutable struct ProxALMData
         blocks = OPFBlocks(
             opfdata, rawdata;
             modelinfo=modelinfo, algparams=algparams,
-            backend=ExaBlockModel,
+            backend=(space==FullSpace()) ? JuMPBlockModel : ExaBlockModel,
         )
 
         blkLinIndex = LinearIndices(blocks.blkIndex)

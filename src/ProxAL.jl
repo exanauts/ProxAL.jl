@@ -37,8 +37,9 @@ an MPI communicator `comm`.
 function run_proxALM(opfdata::OPFData, rawdata::RawData,
                      modelinfo::ModelParams,
                      algparams::AlgParams,
+                     space::AbstractSpace=FullSpace(),
                      comm::MPI.Comm = MPI.COMM_WORLD; init_opf::Bool = false)
-    runinfo = ProxALMData(opfdata, rawdata, modelinfo, algparams, comm, false)
+    runinfo = ProxALMData(opfdata, rawdata, modelinfo, algparams, space, comm, false)
     runinfo.initial_solve &&
         (algparams_copy = deepcopy(algparams))
     opfBlockData = runinfo.opfBlockData

@@ -1,3 +1,24 @@
+"""
+    AbstractBackend
+
+Abstract backend.
+"""
+abstract type AbstractSpace end
+
+"""
+    ExaBackend
+
+Reduced-space backend through ExaPF.
+"""
+struct ReducedSpace <: AbstractSpace end
+
+"""
+    JuMPBackend
+
+Full-space backend through JuMP.
+"""
+struct FullSpace <: AbstractSpace end
+
 
 """
     AbstractBlockModel
