@@ -28,7 +28,7 @@ Abstract supertype for the definition of block subproblems.
 abstract type AbstractBlockModel end
 
 """
-    init!(block::AbstractBlockModel, algparams::AlgParams)
+    init!(block::AbstractBlockModel, algparams::AlgParams, x0::Union{PrimalSolution,Nothing})
 
 Init the optimization model by creating variables and constraints
 inside the model.
@@ -136,7 +136,7 @@ function JuMPBlockModel(
     return JuMPBlockModel(blk, k, t, model, opfdata, modelinfo)
 end
 
-function init!(block::JuMPBlockModel, algparams::AlgParams)
+function init!(block::JuMPBlockModel, algparams::AlgParams, x0::Union{PrimalSolution,Nothing})
     opfmodel = block.model
     # Reset optimizer
     Base.empty!(opfmodel)
@@ -154,7 +154,7 @@ function init!(block::JuMPBlockModel, algparams::AlgParams)
     @assert modelinfo.num_time_periods == 1
     @assert !algparams.decompCtgs || Kblock == 1
 
-    add_variables!(block, algparams)
+    add_variables!(block, algparams, x0)
     if !algparams.decompCtgs
         add_ctgs_linking_constraints!(block, algparams)
     end
@@ -251,9 +251,9 @@ function optimize!(block::JuMPBlockModel, x0::AbstractArray, algparams::AlgParam
     return get_solution(block)
 end
 
-function add_variables!(block::JuMPBlockModel, algparams::AlgParams)
+function add_variables!(block::JuMPBlockModel, algparams::AlgParams, x0::Union{Nothing,PrimalSolution} = nothing)
     opf_model_add_variables(
-        block.model, block.data, block.params, algparams,
+        block.model, block.data, block.params, algparams, x0
     )
 end
 
@@ -332,7 +332,7 @@ function ExaBlockModel(
     return ExaBlockModel(blk, k, t, model, opfdata, modelinfo)
 end
 
-function init!(block::ExaBlockModel, algparams::AlgParams)
+function init!(block::ExaBlockModel, algparams::AlgParams, x0::Union{PrimalSolution,Nothing})
     opfmodel = block.model
     baseMVA = block.data.baseMVA
 
@@ -355,6 +355,10 @@ function init!(block::ExaBlockModel, algparams::AlgParams)
     j = 1
     pd = opfdata.Pd[:,1] / baseMVA
     qd = opfdata.Qd[:,1] / baseMVA
+    if isa(x0, PrimalSolution)
+        ExaPF.transfer!(block.model, x0.Vm[:,k,t], x0.Va[:,k,t], x0.Pg[:,k,t], x0.Qg[:,k,t])
+    end
+
     ExaPF.setvalues!(opfmodel, PS.ActiveLoad(), pd)
     ExaPF.setvalues!(opfmodel, PS.ReactiveLoad(), qd)
     # Set bounds on slack variables s

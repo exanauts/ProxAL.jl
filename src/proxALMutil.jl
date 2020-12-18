@@ -76,7 +76,7 @@ mutable struct ProxALMData
         blkLinIndex = LinearIndices(blocks.blkIndex)
         for blk in blkLinIndex
             model = blocks.blkModel[blk]
-            init!(model, algparams)
+            init!(model, algparams, nothing)
             blocks.colValue[:,blk] .= get_block_view(x, blocks.blkIndex[blk], modelinfo, algparams)
         end
 
@@ -189,7 +189,7 @@ function initialization!(runinfo::ProxALMData, modelinfo::ModelParams, opfdata::
     algparams.optimizer = optimizer_with_attributes(Ipopt.Optimizer,
             "print_level" => Int64(algparams.verbose > 0)*5)
     blockmodel = ProxAL.JuMPBlockModel(1, opfdata, rawdata, modelinfo_single, 1, 1, 0)
-    ProxAL.init!(blockmodel, algparams)
+    ProxAL.init!(blockmodel, algparams, nothing)
     ProxAL.set_objective!(blockmodel, algparams, primal, dual)
     n = JuMP.num_variables(blockmodel.model)
     x0 = zeros(n)

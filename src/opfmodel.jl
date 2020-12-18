@@ -1,7 +1,8 @@
 
 function opf_model_add_variables(opfmodel::JuMP.Model, opfdata::OPFData,
                                  modelinfo::ModelParams,
-                                 algparams::AlgParams)
+                                 algparams::AlgParams,
+                                 x0::Union{Nothing,PrimalSolution} = nothing)
     # shortcuts for compactness
     buses = opfdata.buses
     gens  = opfdata.generators
@@ -41,6 +42,13 @@ function opf_model_add_variables(opfmodel::JuMP.Model, opfdata::OPFData,
         set_start_value.(Qg[i,:,:], 0.5*(gens[i].Qmax + gens[i].Qmin))
     end
 
+    if isa(x0, PrimalSolution)
+        for i=1:ngen
+            set_start_value.(Pg[i,:,:], x0.Pg[i])
+            set_start_value.(Qg[i,:,:], x0.Qg[i])
+        end
+    end
+
     fix.(Va[opfdata.bus_ref,:,:], buses[opfdata.bus_ref].Va)
     for i=1:nbus
         set_lower_bound.(Vm[i,:,:], buses[i].Vmin)
@@ -54,6 +62,12 @@ function opf_model_add_variables(opfmodel::JuMP.Model, opfdata::OPFData,
                 set_lower_bound.(sigma_imag[i,k,:],-opfdata.Qd[i,:])
                 set_upper_bound.(sigma_imag[i,k,:], opfdata.Qd[i,:])
             end
+        end
+    end
+    if isa(x0, PrimalSolution)
+        for i=1:nbus
+            set_start_value.(Vm[i,:,:], x0.Vm[i,:,:])
+            set_start_value.(Va[i,:,:], x0.Va[i,:,:])
         end
     end
     fix.(ωt[1,:], 0)

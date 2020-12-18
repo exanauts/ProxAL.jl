@@ -84,7 +84,7 @@ function run_proxALM(opfdata::OPFData, rawdata::RawData,
     #------------------------------------------------------------------------------------
     function blocknlp_recreate(blk, x_ref, λ_ref, alg_ref)
         model = opfBlockData.blkModel[blk]
-        init!(model, alg_ref)
+        init!(model, alg_ref, x_ref)
         # Update objective
         set_objective!(model, alg_ref, x_ref, λ_ref)
         x0 = @view opfBlockData.colValue[:, blk]
