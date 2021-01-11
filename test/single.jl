@@ -39,11 +39,10 @@ algparams = AlgParams()
 algparams.parallel = false #algparams.parallel = (nprocs() > 1)
 algparams.verbose = 0
 
-solver_list = ["Ipopt"]
-# solver_list = ["Ipopt", "MadNLP"]
-# if CUDA.has_cuda_gpu()
-#     push!(solver_list, "MadNLPGPU")
-# end
+solver_list = ["Ipopt", "MadNLP"]
+if CUDA.has_cuda_gpu()
+    push!(solver_list, "MadNLPGPU")
+end
 if isfile(joinpath(dirname(@__FILE__), "..", "build/libhiop.so"))
     push!(solver_list, "Hiop")
     ENV["JULIA_HIOP_LIBRARY_PATH"] = joinpath(dirname(@__FILE__), "..", "build")
