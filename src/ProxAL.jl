@@ -31,7 +31,7 @@ export opf_loaddata, solve_fullmodel, run_proxALM, set_rho!
 
 Use ProxAL to solve the multi-period ACOPF instance
 specified in `opfdata` and `rawdata` with model parameters
-`modelinfo` and algorithm parameters `algparams`, and 
+`modelinfo` and algorithm parameters `algparams`, and
 an MPI communicator `comm`.
 """
 function run_proxALM(opfdata::OPFData, rawdata::RawData,
@@ -51,22 +51,24 @@ function run_proxALM(opfdata::OPFData, rawdata::RawData,
     K = modelinfo.num_ctgs + 1 # base case counted separately
     x = runinfo.x
     λ = runinfo.λ
+    # number of contingency per blocks
+    k_per_block = (algparams.decompCtgs) ? 1 : K
 
     function transfer!(blk, opt_sol, solution)
         # Pg
-        fr = 1 ; to = ngen * K
+        fr = 1 ; to = ngen * k_per_block
         opt_sol[fr:to, blk] .= solution.pg[:]
         # Qg
-        fr = to + 1 ; to += ngen * K
+        fr = to + 1 ; to += ngen * k_per_block
         opt_sol[fr:to, blk] .= solution.qg[:]
         # vm
-        fr = to +1 ; to = fr + nbus * K - 1
+        fr = to +1 ; to = fr + nbus * k_per_block - 1
         opt_sol[fr:to, blk] .= solution.vm[:]
         # va
-        fr = to + 1 ; to = fr + nbus * K - 1
+        fr = to + 1 ; to = fr + nbus * k_per_block - 1
         opt_sol[fr:to, blk] .= solution.va[:]
         # wt
-        fr = to +1  ; to = fr + K -1
+        fr = to +1  ; to = fr + k_per_block -1
         opt_sol[fr:to, blk] .= solution.ωt[:]
         # St
         fr = to +1  ; to = fr + ngen - 1

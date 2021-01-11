@@ -89,10 +89,12 @@ opfdata = opf_loaddata(rawdata;
             ProxAL.init!(blockmodel, algparams)
             ProxAL.set_objective!(blockmodel, algparams, primal, dual)
 
-            x0 = zeros(n)
+            # Better to set nothing than 0 to avoid convergence issue
+            # in the powerflow solver.
+            x0 = nothing
 
             # Set up optimizer
-            algparams.optimizer = optimizer_with_attributes(
+            algparams.gpu_optimizer = optimizer_with_attributes(
                 Ipopt.Optimizer,
                 "print_level" => 0,
                 "limited_memory_max_history" => 50,

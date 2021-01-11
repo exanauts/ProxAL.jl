@@ -123,6 +123,7 @@ struct JuMPBlockModel <: AbstractBlockModel
     model::JuMP.Model
     data::OPFData
     params::ModelParams
+    rawdata::RawData
 end
 
 function JuMPBlockModel(
@@ -133,7 +134,7 @@ function JuMPBlockModel(
     nr_tol = 0.0
 )
     model = JuMP.Model()
-    return JuMPBlockModel(blk, k, t, model, opfdata, modelinfo)
+    return JuMPBlockModel(blk, k, t, model, opfdata, modelinfo, raw_data)
 end
 
 function init!(block::JuMPBlockModel, algparams::AlgParams)
@@ -192,7 +193,7 @@ function init!(block::JuMPBlockModel, algparams::AlgParams)
 
     @views for j=1:Kblock
         opfdata_c = (j == 1) ? opfdata :
-            opf_loaddata(rawdata; lineOff = opfdata.lines[rawdata.ctgs_arr[j - 1]], time_horizon_start = t, time_horizon_end = t, load_scale = modelinfo.load_scale, ramp_scale = modelinfo.ramp_scale)
+            opf_loaddata(block.rawdata; lineOff = opfdata.lines[block.rawdata.ctgs_arr[j - 1]], time_horizon_start = t, time_horizon_end = t, load_scale = modelinfo.load_scale, ramp_scale = modelinfo.ramp_scale)
         opf_model_add_real_power_balance_constraints(opfmodel, opfdata_c, opfmodel[:Pg][:,j,1], opfdata_c.Pd[:,1], opfmodel[:Vm][:,j,1], opfmodel[:Va][:,j,1], σ_re)
         opf_model_add_imag_power_balance_constraints(opfmodel, opfdata_c, opfmodel[:Qg][:,j,1], opfdata_c.Qd[:,1], opfmodel[:Vm][:,j,1], opfmodel[:Va][:,j,1], σ_im)
         opf_model_add_line_power_constraints(opfmodel, opfdata_c, opfmodel[:Vm][:,j,1], opfmodel[:Va][:,j,1], σ_fr, σ_to)
@@ -464,7 +465,7 @@ function set_start_values!(block::ExaBlockModel, x0)
     ExaPF.transfer!(block.model, vm, va, pg, qg)
 end
 
-function optimize!(block::ExaBlockModel, x0::AbstractArray, algparams::AlgParams)
+function optimize!(block::ExaBlockModel, x0::Union{Nothing, AbstractArray}, algparams::AlgParams)
     blk = block.id
     opfmodel = block.model
     optimizer = algparams.gpu_optimizer
@@ -473,7 +474,9 @@ function optimize!(block::ExaBlockModel, x0::AbstractArray, algparams::AlgParams
         optimizer = MOI.instantiate(optimizer)
     end
 
-    set_start_values!(block, x0)
+    if isa(x0, Array)
+        set_start_values!(block, x0)
+    end
     # Optimize with optimizer, using ExaPF model
     output = ExaPF.optimize!(optimizer, opfmodel)
     # Recover solution

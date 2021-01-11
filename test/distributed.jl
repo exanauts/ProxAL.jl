@@ -5,7 +5,6 @@ using LinearAlgebra, JuMP, Ipopt
 using CatViews
 using CUDA
 using MPI
-using ExaOpt
 
 MPI.Init()
 DATA_DIR = joinpath(dirname(@__FILE__), "..", "data")
@@ -45,7 +44,6 @@ algparams.verbose = 0
 algparams.decompCtgs = false
 algparams.optimizer =
 optimizer_with_attributes(Ipopt.Optimizer, "print_level" => Int64(algparams.verbose > 0)*5)
-algparams.gpu_optimizer = ExaOpt.AugLagSolver(; max_iter=20, ωtol=1e-4, verbose=1, α0=0.00001, inner_algo=:tron)
 
 @testset "Test ProxAL on $(case) with $T-period, $K-ctgs, time_link=penalty and Ipopt" begin
 

@@ -3,6 +3,10 @@ using ProxAL
 
 testdir = @__DIR__
 
+@testset "Integration tests" begin
+    include("blockmodel.jl")
+end
+
 # Testing using 1 process
 @testset "Sequential tests" begin
     mpiexec() do cmd

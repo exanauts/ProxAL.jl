@@ -30,7 +30,7 @@ function opf_model_nondecomposed(opfdata::OPFData, rawdata::RawData, modelinfo::
         opf_model_add_ctgs_linking_constraints(opfmodel, opfdata, modelinfo)
     end
 
-    @objective(opfmodel,Min, obj_expr + lyapunov_expr)
+    @objective(opfmodel, Min, obj_expr + lyapunov_expr)
 
     return opfmodel
 end
