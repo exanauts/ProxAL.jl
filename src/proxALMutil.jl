@@ -1,6 +1,6 @@
 mutable struct ProxALMData
-    opfBlockData::OPFBlockData
-    
+    opfBlockData::OPFBlocks
+
     #---- iterate information ----
     x::PrimalSolution
     λ::DualSolution
@@ -18,7 +18,7 @@ mutable struct ProxALMData
     wall_time_elapsed_actual::Float64
     wall_time_elapsed_ideal::Float64
     iter
-    
+
     #---- other/static information ----
     opt_sol::Dict
     lyapunov_sol::Dict
@@ -33,6 +33,7 @@ mutable struct ProxALMData
     function ProxALMData(opfdata::OPFData, rawdata::RawData,
                          modelinfo::ModelParams,
                          algparams::AlgParams,
+                         space::AbstractSpace,
                          comm::MPI.Comm,
                          fullmodel::Bool = false,
                          initial_primal = nothing,
@@ -66,14 +67,18 @@ mutable struct ProxALMData
                 DualSolution(opfdata, modelinfo) :
                 deepcopy(initial_dual)
         # NLP blocks
-        opfBlockData = OPFBlockData(opfdata, rawdata, modelinfo, algparams)
-        blkLinIndex = LinearIndices(opfBlockData.blkIndex)
+        blocks = OPFBlocks(
+            opfdata, rawdata;
+            modelinfo=modelinfo, algparams=algparams,
+            backend=(space==FullSpace()) ? JuMPBlockModel : ExaBlockModel,
+        )
+
+        blkLinIndex = LinearIndices(blocks.blkIndex)
         for blk in blkLinIndex
-            opfBlockData.blkModel[blk] = opf_block_model_initialize(blk, opfBlockData, rawdata, algparams)
-            opfBlockData.colValue[:,blk] .= get_block_view(x, opfBlockData.blkIndex[blk], modelinfo, algparams)
+            model = blocks.blkModel[blk]
+            init!(model, algparams)
+            blocks.colValue[:,blk] .= get_block_view(x, blocks.blkIndex[blk], modelinfo, algparams)
         end
-
-
 
         ser_order = blkLinIndex
         par_order = []
@@ -95,17 +100,15 @@ mutable struct ProxALMData
         maxviol_d = []
         dist_x = []
         dist_λ = []
-        nlp_opt_sol = Array{Float64, 2}(undef, opfBlockData.colCount, opfBlockData.blkCount)
-        nlp_opt_sol .= opfBlockData.colValue
-        nlp_soltime = Vector{Float64}(undef, opfBlockData.blkCount)
+        nlp_opt_sol = Array{Float64, 2}(undef, blocks.colCount, blocks.blkCount)
+        nlp_opt_sol .= blocks.colValue
+        nlp_soltime = Vector{Float64}(undef, blocks.blkCount)
         wall_time_elapsed_actual = 0.0
         wall_time_elapsed_ideal = 0.0
         xprev = deepcopy(x)
         λprev = deepcopy(λ)
 
-
-
-        new(opfBlockData,
+        new(blocks,
             x,
             λ,
             xprev,
@@ -175,3 +178,34 @@ function update_runinfo(runinfo::ProxALMData, opfdata::OPFData,
     end
 end
 
+function initialization!(runinfo::ProxALMData, modelinfo::ModelParams, opfdata::OPFData, rawdata::RawData)
+    modelinfo_single = deepcopy(modelinfo)
+    modelinfo_single.num_time_periods = 1
+    primal = ProxAL.PrimalSolution(opfdata, modelinfo_single)
+    dual = ProxAL.DualSolution(opfdata, modelinfo_single)
+    algparams = AlgParams()
+    algparams.parallel = false #algparams.parallel = (nprocs() > 1)
+    algparams.mode = :coldstart
+    algparams.optimizer = optimizer_with_attributes(Ipopt.Optimizer,
+            "print_level" => Int64(algparams.verbose > 0)*5)
+    blockmodel = ProxAL.JuMPBlockModel(1, opfdata, rawdata, modelinfo_single, 1, 1, 0)
+    ProxAL.init!(blockmodel, algparams)
+    ProxAL.set_objective!(blockmodel, algparams, primal, dual)
+    n = JuMP.num_variables(blockmodel.model)
+    x0 = zeros(n)
+    solution = ProxAL.optimize!(blockmodel, x0, algparams)
+    nbus = length(opfdata.buses)
+    ngen = length(opfdata.generators)
+    K = modelinfo.num_ctgs
+    T = modelinfo.num_time_periods
+    for i in 1:T*(K+1)
+        for i=1:ngen
+            runinfo.x.Pg[i,:,:] .= solution.pg[i]
+            runinfo.x.Qg[i,:,:] .= solution.qg[i]
+        end
+        for i=1:nbus
+            runinfo.x.Vm[i,:,:] .= solution.vm[i]
+            runinfo.x.Va[i,:,:] .= solution.va[i]
+        end
+    end
+end

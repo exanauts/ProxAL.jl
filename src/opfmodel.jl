@@ -1,102 +1,3 @@
-"""
-    solve_fullmodel(opfdata::OPFData,
-                    rawdata::RawData,
-                    modelinfo::ModelParams,
-                    algparams::AlgParams)
-
-Solves the nondecomposed multi-period ACOPF instance
-specified in `opfdata` and `rawdata` with model parameters
-`modelinfo` and algorithm parameters `algparams`.
-"""
-function solve_fullmodel(opfdata::OPFData, rawdata::RawData, modelinfo::ModelParams, algparams::AlgParams)
-    opfmodel = opf_model_nondecomposed(opfdata, rawdata, modelinfo, algparams)
-    return opf_solve_nondecomposed(opfmodel, opfdata, modelinfo, algparams)
-end
-
-function opf_model_nondecomposed(opfdata::OPFData, rawdata::RawData, modelinfo::ModelParams, algparams::AlgParams)
-    opfmodel = JuMP.Model(algparams.optimizer)
-    opf_model_add_variables(opfmodel, opfdata, modelinfo, algparams)
-    opf_model_add_block_constraints(opfmodel, opfdata, rawdata, modelinfo)
-    obj_expr = compute_objective_function(opfmodel, opfdata, modelinfo)
-
-    if algparams.mode == :lyapunov_bound
-        lyapunov_expr = compute_quadratic_penalty(opfmodel, opfdata,  modelinfo, algparams)
-        if !algparams.decompCtgs
-            opf_model_add_ctgs_linking_constraints(opfmodel, opfdata, modelinfo)
-        end
-    else
-        lyapunov_expr = 0
-        opf_model_add_time_linking_constraints(opfmodel, opfdata, modelinfo)
-        opf_model_add_ctgs_linking_constraints(opfmodel, opfdata, modelinfo)
-    end
-
-    @objective(opfmodel,Min, obj_expr + lyapunov_expr)
-
-    return opfmodel
-end
-
-function opf_solve_nondecomposed(opfmodel::JuMP.Model, opfdata::OPFData,
-                                 modelinfo::ModelParams,
-                                 algparams::AlgParams)
-    optimize!(opfmodel)
-    status = termination_status(opfmodel)
-    if status ∉ [MOI.OPTIMAL, MOI.ALMOST_OPTIMAL, MOI.LOCALLY_SOLVED, MOI.ALMOST_LOCALLY_SOLVED]
-        (algparams.verbose > 0) &&
-            println("warning: $(algparams.mode) model status: $status")
-        return nothing
-    end
-
-
-    x = PrimalSolution(opfdata, modelinfo)
-    x.Pg .= value.(opfmodel[:Pg])
-    x.Qg .= value.(opfmodel[:Qg])
-    x.Vm .= value.(opfmodel[:Vm])
-    x.Va .= value.(opfmodel[:Va])
-    x.ωt .= value.(opfmodel[:ωt])
-    x.St .= value.(opfmodel[:St])
-    x.Zt .= value.(opfmodel[:Zt])
-    x.Sk .= value.(opfmodel[:Sk])
-    x.Zk .= value.(opfmodel[:Zk])
-    if modelinfo.allow_constr_infeas
-        x.sigma_real .= value.(opfmodel[:sigma_real])
-        x.sigma_imag .= value.(opfmodel[:sigma_imag])
-        x.sigma_lineFr .= value.(opfmodel[:sigma_lineFr])
-        x.sigma_lineTo .= value.(opfmodel[:sigma_lineTo])
-    end
-    # @show(maximum(abs.(x.Zt)))
-    # @show(maximum(abs.(x.Zk)))
-    # @show(maximum(abs.(x.ωt)))
-
-
-    λ = DualSolution(opfdata, modelinfo)
-    T = modelinfo.num_time_periods
-    K = modelinfo.num_ctgs + 1
-    if T > 1 && algparams.mode != :lyapunov_bound
-        if modelinfo.time_link_constr_type == :inequality
-            λ.ramping_p[:,2:T] .= collect(dual.(opfmodel[:ramping_p]))
-            λ.ramping_n[:,2:T] .= collect(dual.(opfmodel[:ramping_n]))
-        else
-            λ.ramping[:,2:T] .= collect(dual.(opfmodel[:ramping]))
-        end
-    end
-    if K > 1 && !(algparams.mode == :lyapunov_bound && algparams.decompCtgs)
-        if modelinfo.ctgs_link_constr_type == :corrective_inequality
-            λ.ctgs_p[:,2:K,:] .= collect(dual.(opfmodel[:ctgs_p]))
-            λ.ctgs_n[:,2:K,:] .= collect(dual.(opfmodel[:ctgs_n]))
-        else
-            λ.ctgs[:,2:K,:] .= collect(dual.(opfmodel[:ctgs]))
-        end
-    end
-
-
-    result = Dict()
-    result["primal"] = x
-    result["dual"] = λ
-    result["objective_value_" * String(algparams.mode)] = objective_value(opfmodel)
-    result["solve_time"] = JuMP.solve_time(opfmodel)
-
-    return result
-end
 
 function opf_model_add_variables(opfmodel::JuMP.Model, opfdata::OPFData,
                                  modelinfo::ModelParams,
@@ -111,7 +12,6 @@ function opf_model_add_variables(opfmodel::JuMP.Model, opfdata::OPFData,
     K = modelinfo.num_ctgs + 1 # base case counted separately
     @assert T >= 1
     @assert K >= 1
-
 
 
     # Variables
@@ -130,10 +30,6 @@ function opf_model_add_variables(opfmodel::JuMP.Model, opfdata::OPFData,
         @variable(opfmodel, sigma_lineFr[1:nline,1:K,1:T] >= 0, start = 0)
         @variable(opfmodel, sigma_lineTo[1:nline,1:K,1:T] >= 0, start = 0)
     end
-
-
-
-
 
     # Variable bounds and start values
     for i=1:ngen
@@ -286,19 +182,21 @@ function opf_model_add_real_power_balance_constraints(opfmodel::JuMP.Model, opfd
     buses = opfdata.buses
     lines = opfdata.lines
     busIdx = opfdata.BusIdx
-    FromLines = opfdata.FromLines
-    ToLines = opfdata.ToLines
     BusGeners = opfdata.BusGenerators
-    YffR,YffI,YttR,YttI,YftR,YftI,YtfR,YtfI,YshR,YshI = computeAdmitances(lines, buses, baseMVA)
+    Ybus = opfdata.Ybus
+
+    rows = Ybus.rowval
+    yvals = Ybus.nzval
+    g_ij = real.(yvals)
+    b_ij = imag.(yvals)
 
     # Power Balance Equations
     for b in 1:length(buses)
         #real part
+        b_start, b_end = Ybus.colptr[b], Ybus.colptr[b+1]-1
         @NLconstraint(opfmodel,
-            ( sum( YffR[l] for l in FromLines[b]) + sum( YttR[l] for l in ToLines[b]) + YshR[b] ) * Vm[b]^2
-            + sum( Vm[b]*Vm[busIdx[lines[l].to]]  *( YftR[l]*cos(Va[b]-Va[busIdx[lines[l].to]]  ) + YftI[l]*sin(Va[b]-Va[busIdx[lines[l].to]]  )) for l in FromLines[b] )
-            + sum( Vm[b]*Vm[busIdx[lines[l].from]]*( YtfR[l]*cos(Va[b]-Va[busIdx[lines[l].from]]) + YtfI[l]*sin(Va[b]-Va[busIdx[lines[l].from]])) for l in ToLines[b]   )
-            - ( sum(baseMVA*Pg[g] for g in BusGeners[b]) - Pd[b] + sigma_real[b]) / baseMVA      # Sbus part
+            Vm[b] * sum(Vm[rows[c]] * (g_ij[c] * cos(Va[b] - Va[rows[c]]) + b_ij[c] * sin(Va[b] - Va[rows[c]])) for c in b_start:b_end)
+            - ( sum(baseMVA*Pg[g] for g in get(BusGeners, b, Int[])) - Pd[b] + sigma_real[b]) / baseMVA      # Sbus part
             ==0
         )
     end
@@ -310,19 +208,21 @@ function opf_model_add_imag_power_balance_constraints(opfmodel::JuMP.Model, opfd
     buses = opfdata.buses
     lines = opfdata.lines
     busIdx = opfdata.BusIdx
-    FromLines = opfdata.FromLines
-    ToLines = opfdata.ToLines
     BusGeners = opfdata.BusGenerators
-    YffR,YffI,YttR,YttI,YftR,YftI,YtfR,YtfI,YshR,YshI = computeAdmitances(lines, buses, baseMVA)
+    Ybus = opfdata.Ybus
+
+    rows = Ybus.rowval
+    yvals = Ybus.nzval
+    g_ij = real.(yvals)
+    b_ij = imag.(yvals)
 
     # Power Balance Equations
     for b in 1:length(buses)
         #imaginary part
+        b_start, b_end = Ybus.colptr[b], Ybus.colptr[b+1]-1
         @NLconstraint(opfmodel,
-            ( sum(-YffI[l] for l in FromLines[b]) + sum(-YttI[l] for l in ToLines[b]) - YshI[b] ) * Vm[b]^2
-            + sum( Vm[b]*Vm[busIdx[lines[l].to]]  *(-YftI[l]*cos(Va[b]-Va[busIdx[lines[l].to]]  ) + YftR[l]*sin(Va[b]-Va[busIdx[lines[l].to]]  )) for l in FromLines[b] )
-            + sum( Vm[b]*Vm[busIdx[lines[l].from]]*(-YtfI[l]*cos(Va[b]-Va[busIdx[lines[l].from]]) + YtfR[l]*sin(Va[b]-Va[busIdx[lines[l].from]])) for l in ToLines[b]   )
-            - ( sum(baseMVA*Qg[g] for g in BusGeners[b]) - Qd[b] + sigma_imag[b]) / baseMVA      #Sbus part
+            Vm[b] * sum(Vm[rows[c]] * (g_ij[c] * sin(Va[b] - Va[rows[c]]) - b_ij[c] * cos(Va[b] - Va[rows[c]])) for c in b_start:b_end)
+            - ( sum(baseMVA*Qg[g] for g in get(BusGeners, b, Int[])) - Qd[b] + sigma_imag[b]) / baseMVA      #Sbus part
             ==0
         )
     end
@@ -718,4 +618,119 @@ function compute_dual_error(x::PrimalSolution, xprev::PrimalSolution, λ::DualSo
     dual_error = CatView(err_pg_view, err_ωt_view, err_st_view, err_zt_view, err_sk_view, err_zk_view)
 
     return norm(dual_error, lnorm)
+end
+
+function opf_block_get_auglag_penalty_expr(
+    blk::Int, opfmodel::JuMP.Model,
+    modelinfo::ModelParams,
+    opfdata::OPFData,
+    k, t,
+    algparams::AlgParams,
+    primal::PrimalSolution,
+    dual::DualSolution
+)
+
+    (ngen, K, T) = size(primal.Pg)
+    gens = opfdata.generators
+    @assert t >= 1 && t <= T
+    @assert k >= 1 && k <= K
+    @assert modelinfo.num_time_periods == 1
+    @assert modelinfo.num_ctgs >= 0
+    @assert k == 1 || algparams.decompCtgs
+
+    # get variables
+    Pg = opfmodel[:Pg]
+    St = opfmodel[:St]
+    Sk = opfmodel[:Sk]
+
+    auglag_penalty = @expression(opfmodel, 0.5algparams.τ*sum((Pg[g,1,1] - primal.Pg[g,k,t])^2 for g=1:ngen))
+
+    if !algparams.decompCtgs || k == 1
+        if t > 1
+            ramp_link_expr_prev =
+                @expression(opfmodel,
+                    [g=1:ngen],
+                        primal.Pg[g,1,t-1] - Pg[g,1,1] + St[g,1] + primal.Zt[g,t] - gens[g].ramp_agc
+                )
+            if modelinfo.time_link_constr_type == :inequality
+                @assert abs(norm(primal.Zt)) <= algparams.zero
+                auglag_penalty += sum(dual.ramping_p[g,t]*(+ramp_link_expr_prev[g] - St[g,1]) +
+                                      dual.ramping_n[g,t]*(-ramp_link_expr_prev[g] + St[g,1] - 2gens[g].ramp_agc) +
+                                      0.5*algparams.ρ_t[g,t]*(+ramp_link_expr_prev[g])^2
+                                    for g=1:ngen)
+            else
+                auglag_penalty += sum(  dual.ramping[g,t]*(+ramp_link_expr_prev[g])   +
+                                      0.5*algparams.ρ_t[g,t]*(+ramp_link_expr_prev[g])^2
+                                    for g=1:ngen)
+            end
+        end
+        if t < T
+            ramp_link_expr_next =
+                @expression(opfmodel,
+                    [g=1:ngen],
+                        Pg[g,1,1] - primal.Pg[g,1,t+1] + primal.St[g,t+1] + primal.Zt[g,t+1] - gens[g].ramp_agc
+                )
+            if modelinfo.time_link_constr_type == :inequality
+                @assert abs(norm(primal.Zt)) <= algparams.zero
+                auglag_penalty += sum(dual.ramping_p[g,t+1]*(+ramp_link_expr_next[g] - primal.St[g,t+1]) +
+                                      dual.ramping_n[g,t+1]*(-ramp_link_expr_next[g] + primal.St[g,t+1] - 2gens[g].ramp_agc) +
+                                      0.5*algparams.ρ_t[g,t+1]*(+ramp_link_expr_next[g])^2
+                                    for g=1:ngen)
+            else
+                auglag_penalty += sum(  dual.ramping[g,t+1]*(+ramp_link_expr_next[g]) +
+                                      0.5*algparams.ρ_t[g,t+1]*(+ramp_link_expr_next[g])^2
+                                    for g=1:ngen)
+            end
+        end
+    end
+
+
+    if algparams.decompCtgs && K > 1
+        @assert modelinfo.num_ctgs == 0
+        β = [gens[g].scen_agc for g=1:ngen]
+        (modelinfo.ctgs_link_constr_type ∉ [:corrective_inequality, :corrective_equality, :corrective_penalty]) &&
+            (β .= 0)
+
+        if k > 1
+            ctgs_link_expr_prev =
+                @expression(opfmodel,
+                    [g=1:ngen],
+                        primal.Pg[g,1,t] - Pg[g,1,1] + (gens[g].alpha*primal.ωt[k,t]) + Sk[g,1,1] + primal.Zk[g,k,t] - β[g]
+                )
+            if modelinfo.ctgs_link_constr_type == :corrective_inequality
+                @assert abs(norm(primal.ωt)) <= algparams.zero
+                @assert abs(norm(primal.Zk)) <= algparams.zero
+                auglag_penalty += sum(  dual.ctgs_p[g,k,t]*(+ctgs_link_expr_prev[g] - Sk[g,1,1]) +
+                                        dual.ctgs_n[g,k,t]*(-ctgs_link_expr_prev[g] + Sk[g,1,1] - 2β[g]) +
+                                     0.5*algparams.ρ_c[g,k,t]*(+ctgs_link_expr_prev[g])^2
+                                    for g=1:ngen)
+            else
+                auglag_penalty += sum(    dual.ctgs[g,k,t]*(+ctgs_link_expr_prev[g]) +
+                                     0.5*algparams.ρ_c[g,k,t]*(+ctgs_link_expr_prev[g])^2
+                                    for g=1:ngen)
+            end
+        else
+            ctgs_link_expr_next =
+                @expression(opfmodel,
+                    [g=1:ngen,j=2:K],
+                        Pg[g,1,1] - primal.Pg[g,j,t] + (gens[g].alpha*primal.ωt[j,t]) + primal.Sk[g,j,t] + primal.Zk[g,j,t] - β[g]
+                )
+            if modelinfo.ctgs_link_constr_type == :corrective_inequality
+                @assert abs(norm(primal.ωt)) <= algparams.zero
+                @assert abs(norm(primal.Zk)) <= algparams.zero
+                auglag_penalty += sum(   dual.ctgs_p[g,j,t]*(+ctgs_link_expr_next[g,j] - primal.Sk[g,j,t]) +
+                                         dual.ctgs_n[g,j,t]*(-ctgs_link_expr_next[g,j] + primal.Sk[g,j,t] - 2β[g]) +
+                                      0.5*algparams.ρ_c[g,j,t]*(+ctgs_link_expr_next[g,j])^2
+                                    for j=2:K, g=1:ngen)
+            else
+                auglag_penalty += sum(     dual.ctgs[g,j,t]*(+ctgs_link_expr_next[g,j]) +
+                                      0.5*algparams.ρ_c[g,j,t]*(+ctgs_link_expr_next[g,j])^2
+                                    for j=2:K, g=1:ngen)
+            end
+        end
+    end
+
+    drop_zeros!(auglag_penalty)
+
+    return auglag_penalty
 end

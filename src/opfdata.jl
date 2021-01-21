@@ -1,4 +1,36 @@
+import ExaPF: ParsePSSE, ParseMAT
+import ExaPF: PowerSystem
 using DelimitedFiles
+
+const PS = PowerSystem
+
+"""
+    parse_file(datafile::String)
+
+Parse MATPOWER or PSSE instances using ExaPF's parsers.
+Return full dataset as `Dict{String, Array{Float64, 2}`,
+with entries
+
+- "bus": specifications for all buses in the network
+- "branch": specifications for all branches in the network
+- "gen": specifications for all generators in the network
+- "costs": costs coefficients.
+- "baseMVA": baseMVA of the network
+
+"""
+function parse_file(datafile)
+    if endswith(datafile, ".raw")
+        data_raw = ParsePSSE.parse_raw(datafile)
+        data = ParsePSSE.raw_to_exapf(data_raw)
+    elseif endswith(datafile, ".m")
+        data_mat = ParseMAT.parse_mat(datafile)
+        data = ParseMAT.mat_to_exapf(data_mat)
+    else
+        error("Unsupported format in file $(datafile): supported extensions are " *
+              "Matpower (.m) or PSSE (.raw)")
+    end
+    return data
+end
 
 struct Bus
     bus_i::Int
@@ -62,16 +94,16 @@ mutable struct Gener
     alpha::Float64
 end
 
+# Update
 struct OPFData
     buses::Array{Bus}
     lines::Array{Line}
     generators::Array{Gener}
     bus_ref::Int
     baseMVA::Float64
+    Ybus::SparseMatrixCSC{Complex{Float64},Int} # bus-admittance matrix
     BusIdx::Dict{Int,Int}    #map from bus ID to bus index
-    FromLines::Array         #From lines for each bus (Array of Array)
-    ToLines::Array           #To lines for each bus (Array of Array)
-    BusGenerators::Array     #list of generators for each bus (Array of Array)
+    BusGenerators::Dict{Int, Array{Int}}     #list of generators for each bus (Array of Array)
     Pd::Array                #2d array of active power demands over a time horizon
     Qd::Array                #2d array of reactive power demands
 end
@@ -91,12 +123,13 @@ Specifies the ACOPF instance data.
 - `ctgs_arr`: read from `.Ctgs` file
 """
 mutable struct RawData
-    bus_arr
-    branch_arr
-    gen_arr
-    costgen_arr
-    pd_arr
-    qd_arr
+    baseMVA::Float64
+    bus_arr::Array{Float64, 2}
+    branch_arr::Array{Float64, 2}
+    gen_arr::Array{Float64, 2}
+    costgen_arr::Array{Float64, 2}
+    pd_arr::Array{Float64, 2}
+    qd_arr::Array{Float64, 2}
     ctgs_arr
 end
 
@@ -108,13 +141,20 @@ end
 ##
 
 function RawData(case_name, scen_file::String="")
-    bus_arr = readdlm(case_name * ".bus")
-    branch_arr = readdlm(case_name * ".branch")
-    gen_arr = readdlm(case_name * ".gen")
-    costgen_arr = readdlm(case_name * ".gencost")
+    data = parse_file(case_name)
+    bus_arr = data["bus"]
+    branch_arr = data["branch"]
+    gen_arr = data["gen"]
+    costgen_arr = data["cost"]
+    baseMVA = data["baseMVA"][1]
+
+    # Sanity checks
+    @assert size(gen_arr, 1) == size(costgen_arr, 1)
+
     pd_arr = Array{Float64, 2}(undef, 0, 0)
     qd_arr = Array{Float64, 2}(undef, 0, 0)
-    ctgs_arr = Array{Int64, 1}(undef, 0)
+    ctgs_arr = Array{Int64, 2}(undef, 0, 0)
+
     if isfile(scen_file * ".Pd")
         pd_arr = readdlm(scen_file * ".Pd")
     end
@@ -124,7 +164,7 @@ function RawData(case_name, scen_file::String="")
     if isfile(scen_file * ".Ctgs")
         ctgs_arr = readdlm(scen_file * ".Ctgs", Int)
     end
-    return RawData(bus_arr, branch_arr, gen_arr, costgen_arr, pd_arr, qd_arr, ctgs_arr)
+    return RawData(baseMVA, bus_arr, branch_arr, gen_arr, costgen_arr, pd_arr, qd_arr, ctgs_arr)
 end
 
 function ctgs_loaddata(raw::RawData, n)
@@ -162,50 +202,48 @@ function opf_loaddata(raw::RawData;
     #
     # load buses
     #
+    ncols_bus = size(raw.bus_arr, 2)
     bus_arr = raw.bus_arr
-    num_buses = size(bus_arr,1)
+    num_buses = size(bus_arr, 1)
     buses = Array{Bus}(undef, num_buses)
-    bus_ref=-1
+    bus_ref = -1
     for i in 1:num_buses
-        @assert bus_arr[i,1]>0  #don't support nonpositive bus ids
-        bus_arr[i,9] *= pi/180 # ANIRUDH: Bus is an immutable struct. Modify bus_arr itself
-        buses[i] = Bus(bus_arr[i,1:13]...)
+        @assert bus_arr[i,1] > 0  #don't support nonpositive bus ids
+        bus_arr[i,9] *= pi / 180.0 # ANIRUDH: Bus is an immutable struct. Modify bus_arr itself
+        buses[i] = Bus(bus_arr[i, 1:ncols_bus]...)
         # buses[i].Va *= pi/180 # ANIRUDH: See previous comment
-        if buses[i].bustype==3
-            if bus_ref>0
+        if buses[i].bustype == PS.REF_BUS_TYPE
+            if bus_ref > 0
                 error("More than one reference bus present in the data")
-            else
-                bus_ref=i
             end
+            bus_ref = i
         end
-        #println("bus ", i, " ", buses[i].Vmin, "      ", buses[i].Vmax)
     end
 
     #
     # load branches/lines
     #
     branch_arr = raw.branch_arr
-    num_lines = size(branch_arr,1)
-    lines_on = findall((branch_arr[:,11].>0) .& ((branch_arr[:,1].!=lineOff.from) .| (branch_arr[:,2].!=lineOff.to)) )
+    num_lines = size(branch_arr, 1)
+    lines_on = findall((branch_arr[:,11] .> 0) .& ((branch_arr[:,1].!=lineOff.from) .| (branch_arr[:,2].!=lineOff.to)) )
     num_on   = length(lines_on)
 
-    if lineOff.from>0 && lineOff.to>0
+    if lineOff.from> 0 && lineOff.to > 0
         # println("opf_loaddata: was asked to remove line from,to=", lineOff.from, ",", lineOff.to)
     end
     if length(findall(branch_arr[:,11].==0))>0
         # println("opf_loaddata: ", num_lines-length(findall(branch_arr[:,11].>0)), " lines are off and will be discarded (out of ", num_lines, ")")
     end
 
-
-
     lines = Array{Line}(undef, num_on)
+    ncols_lines = size(branch_arr, 2)
 
-    lit=0
+    lit = 0
     for i in lines_on
         @assert branch_arr[i,11] == 1  #should be on since we discarded all other
         lit += 1
-        lines[lit] = Line(branch_arr[i, 1:13]...)
-        if lines[lit].angmin>-360 || lines[lit].angmax<360
+        lines[lit] = Line(branch_arr[i, 1:ncols_lines]...)
+        if lines[lit].angmin > -360 || lines[lit].angmax < 360
             error("Bounds of voltage angles are still to be implemented.")
         end
 
@@ -217,22 +255,19 @@ function opf_loaddata(raw::RawData;
     #
     gen_arr = raw.gen_arr
     costgen_arr = raw.costgen_arr
-    num_gens = size(gen_arr,1)
+    num_gens = size(gen_arr, 1)
+    ncols_gens = size(gen_arr, 2)
 
-    baseMVA=100
 
-    @assert num_gens == size(costgen_arr,1)
-
-    gens_on=findall(gen_arr[:,8].!=0); num_on=length(gens_on)
-    if num_gens-num_on>0
+    gens_on = findall(gen_arr[:, 8].!=0); num_on = length(gens_on)
+    if num_gens-num_on > 0
         println("loaddata: ", num_gens-num_on, " generators are off and will be discarded (out of ", num_gens, ")")
     end
 
+    baseMVA = raw.baseMVA
     generators = Array{Gener}(undef, num_on)
     R = 0.04 # Droop regulation
-    i=0
-    for git in gens_on
-        i += 1
+    for (i, git) in enumerate(gens_on)
 
         generators[i] = Gener(0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,Array{Int}(undef, 0),0)
 
@@ -254,7 +289,7 @@ function opf_loaddata(raw::RawData;
         generators[i].Qc2min   = gen_arr[git,15]
         generators[i].Qc2max   = gen_arr[git,16]
         generators[i].ramp_agc = gen_arr[git,9] * ramp_scale  / baseMVA
-        generators[i].scen_agc = gen_arr[git,9] * ramp_scale * 0.1  / baseMVA
+        generators[i].scen_agc = gen_arr[git,9] * ramp_scale * 0.1 / baseMVA
         generators[i].gentype  = costgen_arr[git,1]
         generators[i].startup  = costgen_arr[git,2]
         generators[i].shutdown = costgen_arr[git,3]
@@ -274,13 +309,11 @@ function opf_loaddata(raw::RawData;
     end
 
     # build a dictionary between buses ids and their indexes
-    busIdx = mapBusIdToIdx(buses)
-
-    # set up the FromLines and ToLines for each bus
-    FromLines,ToLines = mapLinesToBuses(buses, lines, busIdx)
-
+    busIdx = PS.get_bus_id_to_indexes(bus_arr)
+    # Remove deactivated branches before building admittance matrix
+    Ybus = PS.makeYbus(bus_arr, branch_arr[lines_on, :], baseMVA, busIdx)
     # generators at each bus
-    BusGeners = mapGenersToBuses(buses, generators, busIdx)
+    BusGeners = PS.get_bus_generators(bus_arr, gen_arr, busIdx)
 
     # demands for multiperiod OPF
     Pd = raw.pd_arr
@@ -290,10 +323,10 @@ function opf_loaddata(raw::RawData;
         Qd = Qd[:,time_horizon_start:time_horizon_end] .* load_scale
     end
 
-    return OPFData(buses, lines, generators, bus_ref, baseMVA, busIdx, FromLines, ToLines, BusGeners, Pd, Qd)
+    return OPFData(buses, lines, generators, bus_ref, baseMVA, Ybus, busIdx, BusGeners, Pd, Qd)
 end
 
-function  computeAdmitances(lines, buses, baseMVA; lossless::Bool=false, fixedtaps::Bool=false, zeroshunts::Bool=false)
+function computeAdmitances(lines, buses, baseMVA; lossless::Bool=false, fixedtaps::Bool=false, zeroshunts::Bool=false)
     nlines = length(lines)
     YffR=Array{Float64}(undef, nlines)
     YffI=Array{Float64}(undef, nlines)
@@ -368,52 +401,5 @@ function  computeAdmitances(lines, buses, baseMVA; lossless::Bool=false, fixedta
     end
 
     return YffR, YffI, YttR, YttI, YftR, YftI, YtfR, YtfI, YshR, YshI
-end
-
-
-# Builds a map from lines to buses.
-# For each line we store an array with zero or one element containing
-# the  'From' and 'To'  bus number.
-function mapLinesToBuses(buses, lines, busDict)
-    nbus = length(buses)
-    FromLines = [Int[] for b in 1:nbus]
-    ToLines   = [Int[] for b in 1:nbus]
-    for i in 1:length(lines)
-        busID = busDict[lines[i].from]
-        @assert 1<= busID <= nbus
-        push!(FromLines[busID], i)
-
-        busID = busDict[lines[i].to]
-        @assert 1<= busID  <= nbus
-        push!(ToLines[busID], i)
-    end
-    return FromLines,ToLines
-end
-
-# Builds a mapping between bus ids and bus indexes
-#
-# Returns a dictionary with bus ids as keys and bus indexes as values
-function mapBusIdToIdx(buses)
-    dict = Dict{Int,Int}()
-    for b in 1:length(buses)
-        @assert !haskey(dict,buses[b].bus_i)
-        dict[buses[b].bus_i] = b
-    end
-    return dict
-end
-
-
-# Builds a map between buses and generators.
-# For each bus we keep an array of corresponding generators number (as array).
-#
-# (Can be more than one generator per bus)
-function mapGenersToBuses(buses, generators,busDict)
-    gen2bus = [Int[] for b in 1:length(buses)]
-    for g in 1:length(generators)
-        busID = busDict[ generators[g].bus ]
-        #@assert(0==length(gen2bus[busID])) #at most one generator per bus
-        push!(gen2bus[busID], g)
-    end
-    return gen2bus
 end
 

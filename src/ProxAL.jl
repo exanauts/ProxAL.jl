@@ -3,16 +3,20 @@
 #
 module ProxAL
 
-using JuMP
+using Ipopt, JuMP
 using Printf, CatViews
+using ExaPF
 using LinearAlgebra
+using SparseArrays
 using MPI
 
 include("params.jl")
 include("opfdata.jl")
 include("opfsolution.jl")
 include("opfmodel.jl")
-include("opfblocks.jl")
+include("blockmodel.jl")
+include("full_model.jl")
+include("blocks.jl")
 include("proxALMutil.jl")
 
 export RawData, ModelParams, AlgParams
@@ -27,40 +31,67 @@ export opf_loaddata, solve_fullmodel, run_proxALM, set_rho!
 
 Use ProxAL to solve the multi-period ACOPF instance
 specified in `opfdata` and `rawdata` with model parameters
-`modelinfo` and algorithm parameters `algparams`, and 
+`modelinfo` and algorithm parameters `algparams`, and
 an MPI communicator `comm`.
 """
 function run_proxALM(opfdata::OPFData, rawdata::RawData,
                      modelinfo::ModelParams,
                      algparams::AlgParams,
-                     comm::MPI.Comm = MPI.COMM_WORLD)
-    runinfo = ProxALMData(opfdata, rawdata, modelinfo, algparams, comm, true)
+                     space::AbstractSpace=FullSpace(),
+                     comm::MPI.Comm = MPI.COMM_WORLD; init_opf::Bool = false)
+    runinfo = ProxALMData(opfdata, rawdata, modelinfo, algparams, space, comm, false)
     runinfo.initial_solve &&
         (algparams_copy = deepcopy(algparams))
     opfBlockData = runinfo.opfBlockData
     nlp_opt_sol = runinfo.nlp_opt_sol
     nlp_soltime = runinfo.nlp_soltime
+    ngen = length(opfdata.generators)
+    nbus = length(opfdata.buses)
+    T = modelinfo.num_time_periods
+    K = modelinfo.num_ctgs + 1 # base case counted separately
     x = runinfo.x
     λ = runinfo.λ
+    # number of contingency per blocks
+    k_per_block = (algparams.decompCtgs) ? 1 : K
 
-
+    function transfer!(blk, opt_sol, solution)
+        # Pg
+        fr = 1 ; to = ngen * k_per_block
+        opt_sol[fr:to, blk] .= solution.pg[:]
+        # Qg
+        fr = to + 1 ; to += ngen * k_per_block
+        opt_sol[fr:to, blk] .= solution.qg[:]
+        # vm
+        fr = to +1 ; to = fr + nbus * k_per_block - 1
+        opt_sol[fr:to, blk] .= solution.vm[:]
+        # va
+        fr = to + 1 ; to = fr + nbus * k_per_block - 1
+        opt_sol[fr:to, blk] .= solution.va[:]
+        # wt
+        fr = to +1  ; to = fr + k_per_block -1
+        opt_sol[fr:to, blk] .= solution.ωt[:]
+        # St
+        fr = to +1  ; to = fr + ngen - 1
+        opt_sol[fr:to, blk] .= solution.st[:]
+    end
     #------------------------------------------------------------------------------------
     function blocknlp_copy(blk, x_ref, λ_ref, alg_ref)
-        opf_block_set_objective(blk, opfBlockData.blkModel[blk], opfBlockData,
-                                alg_ref,
-                                x_ref,
-                                λ_ref)
-        nlp_opt_sol[:,blk] .= opf_block_solve_model(blk, opfBlockData.blkModel[blk], opfBlockData)
+        model = opfBlockData.blkModel[blk]
+        # Update objective
+        set_objective!(model, alg_ref, x_ref, λ_ref)
+        x0 = @view opfBlockData.colValue[:, blk]
+        solution = optimize!(model, x0, alg_ref)
+        transfer!(blk, nlp_opt_sol, solution)
     end
     #------------------------------------------------------------------------------------
     function blocknlp_recreate(blk, x_ref, λ_ref, alg_ref)
-        opfmodel = opf_block_model_initialize(blk, opfBlockData, rawdata,
-                                              alg_ref)
-        opf_block_set_objective(blk, opfmodel, opfBlockData,
-                                alg_ref,
-                                x_ref,
-                                λ_ref)
-        nlp_opt_sol[:,blk] .= opf_block_solve_model(blk, opfmodel, opfBlockData)
+        model = opfBlockData.blkModel[blk]
+        init!(model, alg_ref)
+        # Update objective
+        set_objective!(model, alg_ref, x_ref, λ_ref)
+        x0 = @view opfBlockData.colValue[:, blk]
+        solution = optimize!(model, x0, alg_ref)
+        transfer!(blk, nlp_opt_sol, solution)
     end
     #------------------------------------------------------------------------------------
     function primal_update()
@@ -83,7 +114,7 @@ function run_proxALM(opfdata::OPFData, rawdata::RawData,
                 end
             end
 
-            # Every worker sends his contribution 
+            # Every worker sends his contribution
             MPI.Allreduce!(nlp_opt_sol, MPI.SUM, comm)
             MPI.Allreduce!(nlp_soltime, MPI.SUM, comm)
 
@@ -132,6 +163,9 @@ function run_proxALM(opfdata::OPFData, rawdata::RawData,
     end
     #------------------------------------------------------------------------------------
 
+    # Initialization of Pg, Qg, Vm, Va via a OPF solve
+    init_opf && initialization!(runinfo, modelinfo, opfdata, rawdata)
+
 
     for runinfo.iter=1:algparams.iterlim
 
@@ -174,7 +208,7 @@ function run_proxALM(opfdata::OPFData, rawdata::RawData,
     return runinfo
 end
 
-function update_primal_nlpvars(x::PrimalSolution, opfBlockData::OPFBlockData, blk::Int,
+function update_primal_nlpvars(x::PrimalSolution, opfBlockData::OPFBlocks, blk::Int,
                                modelinfo::ModelParams,
                                algparams::AlgParams)
     solution = get_block_view(x, opfBlockData.blkIndex[blk],

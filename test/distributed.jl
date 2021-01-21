@@ -18,7 +18,7 @@ quad_penalty = 0.1
 rtol = 1e-4
 
 # Load case
-case_file = joinpath(DATA_DIR, "$case")
+case_file = joinpath(DATA_DIR, "$(case).m")
 load_file = joinpath(DATA_DIR, "mp_demand", "$(case)_oneweek_168")
 rawdata = RawData(case_file, load_file)
 ctgs_arr = deepcopy(rawdata.ctgs_arr)
@@ -60,7 +60,7 @@ set_rho!(algparams;
          maxρ_c = maxρ)
 
 algparams.mode = :coldstart
-runinfo = run_proxALM(opfdata, rawdata, modelinfo, algparams)
+runinfo = run_proxALM(opfdata, rawdata, modelinfo, algparams, ProxAL.FullSpace(); init_opf=true)
 @test isapprox(runinfo.maxviol_c[end], 0.0)
 @test isapprox(runinfo.x.Pg[:], [0.8979849196165037, 1.3432106614001416, 0.9418713794662078, 0.9840203268799962, 1.4480400989162827, 1.0149638876932787], rtol = rtol)
 @test isapprox(runinfo.λ.ramping[:], [0.0, 0.0, 0.0, 2.1600093405682597e-6, -7.2856620728201185e-6, 5.051385899057505e-6], rtol = rtol)

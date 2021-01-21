@@ -1,3 +1,22 @@
+#
+## Constant params
+const MOI_OPTIMAL_STATUSES = [
+    MOI.OPTIMAL,
+    MOI.ALMOST_OPTIMAL,
+    MOI.LOCALLY_SOLVED,
+    MOI.ALMOST_LOCALLY_SOLVED,
+]
+
+@enum(TargetDevice,
+    CPU,
+    CUDADevice,
+    Mixed,
+)
+
+#
+#
+# Algorithmic parameters
+#
 """
     AlgParams
 
@@ -49,6 +68,9 @@ mutable struct AlgParams
     verbose::Int    # level of output: 0 (none), 1 (stdout), 2 (+plots), 3 (+outfiles)
     mode::Symbol    # computation mode [:nondecomposed, :coldstart, :lyapunov_bound]
     optimizer::Any  # NLP solver for fullmodel and subproblems
+    gpu_optimizer::Any  # GPU-compatible NLP solver for fullmodel and subproblems
+    nr_tol::Float64 # Tolerance of the Newton-Raphson algorithm used in resolution of ExaBlockModel backend
+    device::TargetDevice
 
     function AlgParams()
         new(false,  # decompCtgs
@@ -71,7 +93,10 @@ mutable struct AlgParams
             false,  # updateτ
             0,      # verbose
             :nondecomposed, # mode
-            nothing # optimizer
+            nothing, # optimizer
+            nothing, # GPU optimizer
+            1e-10,
+            CPU,
         )
     end
 end

@@ -261,17 +261,33 @@ function opf_block_get_auglag_penalty_expr(blk::Int, opfmodel::JuMP.Model, opfbl
                                            primal::PrimalSolution,
                                            dual::DualSolution)
     modelinfo = opfblocks.blkMInfo[blk]
-    gens = opfblocks.blkOpfdt[blk].generators
     k = opfblocks.blkIndex[blk][1]
     t = opfblocks.blkIndex[blk][2]
 
+    opf_block_get_auglag_penalty_expr(
+        blk, opfmodel,
+        modelinfo, opfdata, k, t,
+        algparams, primal, dual
+    )
+end
+
+function opf_block_get_auglag_penalty_expr(
+    blk::Int, opfmodel::JuMP.Model,
+    modelinfo::ModelParams,
+    opfdata::OPFData,
+    k, t,
+    algparams::AlgParams,
+    primal::PrimalSolution,
+    dual::DualSolution
+)
+
     (ngen, K, T) = size(primal.Pg)
+    gens = opfdata.generators
     @assert t >= 1 && t <= T
     @assert k >= 1 && k <= K
     @assert modelinfo.num_time_periods == 1
     @assert modelinfo.num_ctgs >= 0
     @assert k == 1 || algparams.decompCtgs
-
 
     # get variables
     Pg = opfmodel[:Pg]
@@ -384,7 +400,7 @@ function opf_block_solve_model(blk::Int, opfmodel::JuMP.Model, opfblocks::OPFBlo
     set_start_value.(all_variables(opfmodel), opfblocks.colValue[:,blk])
     optimize!(opfmodel)
     status = termination_status(opfmodel)
-    if status ∉ [MOI.OPTIMAL, MOI.ALMOST_OPTIMAL, MOI.LOCALLY_SOLVED, MOI.ALMOST_LOCALLY_SOLVED]
+    if status ∉ MOI_OPTIMAL_STATUSES
         println("warning: block $blk subproblem not solved to optimality. status: $status")
     end
     if !has_values(opfmodel)
