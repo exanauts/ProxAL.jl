@@ -27,12 +27,15 @@ export opf_loaddata, solve_fullmodel, run_proxALM, set_rho!
                 rawdata::RawData,
                 modelinfo::ModelParams,
                 algparams::AlgParams,
+                space::AbstractSpace,
                 comm::MPI.Comm = MPI.COMM_WORLD)
 
 Use ProxAL to solve the multi-period ACOPF instance
 specified in `opfdata` and `rawdata` with model parameters
 `modelinfo` and algorithm parameters `algparams`, and
-an MPI communicator `comm`.
+a MPI communicator `comm`.
+The argument `space` specifies whether we are working
+in the `FullSpace()` or in the `ReducedSpace()`.
 """
 function run_proxALM(opfdata::OPFData, rawdata::RawData,
                      modelinfo::ModelParams,
