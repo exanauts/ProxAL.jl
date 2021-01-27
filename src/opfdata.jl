@@ -114,10 +114,11 @@ end
 
 Specifies the ACOPF instance data.
 
-- `bus_arr`: read from `.bus` file
-- `branch_arr`: read from `.branch` file
-- `gen_arr`: read from `.gen` file
-- `costgen_arr`: read from `.gencost` file
+- `baseMVA`: imported with ExaPF parser
+- `bus_arr`: imported with ExaPF parser
+- `branch_arr`: imported with ExaPF parser
+- `gen_arr`: imported with ExaPF parser
+- `costgen_arr`: imported with ExaPF parser
 - `pd_arr`: read from `.Pd` file
 - `qd_arr`: read from `.Qd` file
 - `ctgs_arr`: read from `.Ctgs` file

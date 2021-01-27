@@ -1,21 +1,16 @@
-"""
-    AbstractBackend
-
-Abstract backend.
-"""
 abstract type AbstractSpace end
 
 """
-    ExaBackend
+    ReducedSpace <: AbstractSpace
 
-Reduced-space backend through ExaPF.
+Solve OPF in reduced-space.
 """
 struct ReducedSpace <: AbstractSpace end
 
 """
-    JuMPBackend
+    FullSpace <: AbstractSpace
 
-Full-space backend through JuMP.
+Solve OPF in full-space.
 """
 struct FullSpace <: AbstractSpace end
 
@@ -30,8 +25,8 @@ abstract type AbstractBlockModel end
 """
     init!(block::AbstractBlockModel, algparams::AlgParams)
 
-Init the optimization model by creating variables and constraints
-inside the model.
+Init the optimization model by populating the model
+with variables and constraints.
 
 """
 function init! end
@@ -40,7 +35,7 @@ function init! end
     optimize!(block::AbstractBlockModel, x0::AbstractArray, algparams::AlgParams)
 
 Solve the optimization problem, starting from an initial
-variable `x0`. The optimization solver is specified in
+variable `x0`. The optimization solver is specified in field
 `algparams.optimizer`.
 
 """
@@ -102,8 +97,10 @@ function add_ctgs_linking_constraints! end
     )
 )
 
-Block model using the modeler JuMP to define the optimal power flow
-problem. Used inside `OPFBlocks`, for decomposition purpose.
+Use the modeler JuMP to define the optimal power flow
+inside the block model.
+This function is called inside the constructor
+of the structure `OPFBlocks`, used for decomposition purpose.
 
 # Arguments
 
@@ -130,8 +127,7 @@ function JuMPBlockModel(
     blk::Int,
     opfdata::OPFData, raw_data::RawData,
     modelinfo::ModelParams, t::Int, k::Int, T::Int;
-    device = nothing,
-    nr_tol = 0.0
+    options...
 )
     model = JuMP.Model()
     return JuMPBlockModel(blk, k, t, model, opfdata, modelinfo, raw_data)
@@ -269,12 +265,15 @@ end
     ExaBlockModel(
         blk::Int,
         opfdata::OPFData, raw_data::RawData,
-        modelinfo::ModelParams, t::Int, k::Int, T::Int,
+        modelinfo::ModelParams, t::Int, k::Int, T::Int;
+        device::TargetDevice=CPU,
+        nr_tol::Float64=1e-10,
     )
-)
 
-Block model using the package ExaPF to define the optimal power flow
-problem. Used inside `OPFBlocks`, for decomposition purpose.
+Use the package ExaPF to define the optimal power flow
+inside the block model.
+This function is called inside the constructor
+of the structure `OPFBlocks`, used for decomposition purpose.
 
 # Arguments
 
@@ -474,6 +473,11 @@ function optimize!(block::ExaBlockModel, x0::Union{Nothing, AbstractArray}, algp
         optimizer = MOI.instantiate(optimizer)
     end
 
+    # Critical part: if x0 is not feasible, it is very likely
+    # that the Newton-Raphson algorithm implemented inside ExaPF
+    # would fail to converge. If we do not trust x0, it is better
+    # to pass nothing so ExaPF will compute a default starting point
+    # on its own.
     if isa(x0, Array)
         set_start_values!(block, x0)
     end

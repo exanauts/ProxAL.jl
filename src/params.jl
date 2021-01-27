@@ -45,6 +45,9 @@ Specifies ProxAL's algorithmic parameters.
 | `verbose::Int` |     level of output: 0 (none), 1 (stdout), 2 (+plots), 3 (+outfiles) | 0
 | `mode::Symbol` |     computation mode `∈ [:nondecomposed, :coldstart, :lyapunov_bound]` | `:nondecomposed`
 | `optimizer::Any` |   NLP solver | `nothing`
+| `gpu_optimizer::Any` | GPU-compatible NLP solver | `nothing`
+| `nr_tol::Float64`    | Tolerance of the Newton-Raphson algorithm (used only in `ReducedSpace()` model) | 1e-10
+| `device::TargetDevice` | Target device to deport the resolution of the optimization problem | CPU
 """
 mutable struct AlgParams
     decompCtgs::Bool# decompose contingencies (along with time)

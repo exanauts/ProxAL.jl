@@ -22,6 +22,46 @@ function load_local_data(rawdata, opfdata, modelinfo, t, k; decompCtgs=false)
     return data
 end
 
+"""
+    OPFBlocks(
+        opfdata::OPFData,
+        rawdata::RawData;
+        modelinfo::ModelParams = ModelParams(),
+        backend=JuMPBlockModel,
+        algparams::AlgParams = AlgParams()
+    )
+
+Create a structure `OPFBlocks` to decompose the original OPF problem
+specified in `opfdata` timestep by timestep, by dualizing the ramping
+constraint. One block corresponds
+to one optimization subproblem (and hence, to a particular timestep),
+and the attribute `blkCount` enumerates the total number of subproblems.
+The subproblems are specified using `AbstractBlockModel` objects,
+allowing to define them either with JuMP
+(if `backend=JuMPBlockModel` is chosen) or with ExaPF (`backend=ExaBlockModel`).
+
+
+### Decomposition by contingencies
+
+By default, OPFBlocks decomposes the problem only timestep by
+timestep (single-period multiple-contingency scheme),
+leading to a total of `T` subproblems.
+However, if the option `algparams.decompCtgs` is set to `true`,
+the original problem is also decomposed contingency by contingency
+(single-period single-contingency scheme).
+In this case the total number of subproblems is `T * K` (with `K` the
+total number of contingencies).
+
+
+### Deporting the resolution on the GPU
+
+When the backend is set to `ExaBlockModel` (and a CUDA GPU is available), the user
+could chose to deport the resolution of each subproblem directly on
+the GPU simply by setting `algparams.device=CUDADevice`. However, note that
+we could not instantiate more subproblems on the GPU than the number of GPU
+available.
+
+"""
 mutable struct OPFBlocks
     blkCount::Int64
     blkIndex::CartesianIndices
@@ -30,10 +70,13 @@ mutable struct OPFBlocks
     colValue::Array{Float64,2}
 end
 
-function OPFBlocks(opfdata::OPFData, rawdata::RawData;
-                   modelinfo::ModelParams = ModelParams(),
-                   backend=JuMPBlockModel,
-                   algparams::AlgParams = AlgParams())
+function OPFBlocks(
+    opfdata::OPFData,
+    rawdata::RawData;
+    modelinfo::ModelParams = ModelParams(),
+    backend=JuMPBlockModel,
+    algparams::AlgParams = AlgParams()
+)
     ngen  = length(opfdata.generators)
     nbus  = length(opfdata.buses)
     nline = length(opfdata.lines)
