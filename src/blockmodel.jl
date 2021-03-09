@@ -328,7 +328,7 @@ function ExaBlockModel(
         error("Device $(device) is not supported by ExaPF")
     end
     model = ExaPF.ProxALEvaluator(power_network, time;
-                                  device=target, ε_tol=nr_tol)
+                                  device=target)
     return ExaBlockModel(blk, k, t, model, opfdata, modelinfo)
 end
 
@@ -353,14 +353,12 @@ function init!(block::ExaBlockModel, algparams::AlgParams)
     j = 1
     pd = opfdata.Pd[:,1] / baseMVA
     qd = opfdata.Qd[:,1] / baseMVA
+
     ExaPF.setvalues!(opfmodel, PS.ActiveLoad(), pd)
     ExaPF.setvalues!(opfmodel, PS.ReactiveLoad(), qd)
     # Set bounds on slack variables s
     copyto!(opfmodel.s_max, 2 .* ramp_agc)
     opfmodel.scale_objective = modelinfo.obj_scale
-
-    # Reset optimizer
-    ExaPF.reset!(opfmodel)
 
     return opfmodel
 end
