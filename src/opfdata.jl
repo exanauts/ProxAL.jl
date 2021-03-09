@@ -1,5 +1,5 @@
-import ExaPF: ParsePSSE, ParseMAT
 import ExaPF: PowerSystem
+import ExaPF.PowerSystem: ParsePSSE, ParseMAT
 using DelimitedFiles
 
 const PS = PowerSystem
@@ -312,7 +312,8 @@ function opf_loaddata(raw::RawData;
     # build a dictionary between buses ids and their indexes
     busIdx = PS.get_bus_id_to_indexes(bus_arr)
     # Remove deactivated branches before building admittance matrix
-    Ybus = PS.makeYbus(bus_arr, branch_arr[lines_on, :], baseMVA, busIdx)
+    topology = PS.makeYbus(bus_arr, branch_arr[lines_on, :], baseMVA, busIdx)
+    Ybus = topology.ybus
     # generators at each bus
     BusGeners = PS.get_bus_generators(bus_arr, gen_arr, busIdx)
 

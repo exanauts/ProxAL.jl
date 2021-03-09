@@ -42,8 +42,10 @@ opfdata = opf_loaddata(rawdata;
     algparams.mode = :coldstart
 
     modelinfo.case_name = case
-    algparams.optimizer = optimizer_with_attributes(Ipopt.Optimizer,
-            "print_level" => Int64(algparams.verbose > 0)*5)
+    algparams.optimizer = optimizer_with_attributes(
+        Ipopt.Optimizer,
+        "print_level" => Int64(algparams.verbose > 0)*5,
+    )
 
     K = 0
 
@@ -104,6 +106,7 @@ opfdata = opf_loaddata(rawdata;
             )
 
             solution = ProxAL.optimize!(blockmodel, x0, algparams)
+            @test solution.status ∈ ProxAL.MOI_OPTIMAL_STATUSES
         end
         obj_exa = solution.minimum
         pg_exa = solution.pg
