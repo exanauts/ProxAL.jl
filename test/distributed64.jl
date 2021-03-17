@@ -4,6 +4,7 @@ using LinearAlgebra, JuMP, Ipopt
 using CatViews
 using CUDA
 using MPI
+using MadNLP
 
 MPI.Init()
 DATA_DIR = joinpath(dirname(@__FILE__), "..", "data")
@@ -46,6 +47,10 @@ algparams.verbose = 0
 algparams.decompCtgs = false
 algparams.optimizer =
 optimizer_with_attributes(Ipopt.Optimizer, "print_level" => 0)
+# algparams.optimizer = () ->
+#     MadNLP.Optimizer(linear_solver="LapackGPU",
+#                         print_level=MadNLP.ERROR,
+#                         max_iter=300)
 
 
 # rawdata.ctgs_arr = deepcopy(ctgs_arr[1:modelinfo.num_ctgs])
@@ -53,7 +58,18 @@ optimizer_with_attributes(Ipopt.Optimizer, "print_level" => 0)
 algparams.mode = :coldstart
 nlp = ProxALEvaluator(case_file, load_file, modelinfo, algparams)
 info = ProxAL.optimize!(nlp)
+nlp = ProxALEvaluator(case_file, load_file, modelinfo, algparams)
+info = ProxAL.optimize!(nlp)
+nlp = ProxALEvaluator(case_file, load_file, modelinfo, algparams)
+if MPI.Comm_rank(MPI.COMM_WORLD) == 0
+  np = MPI.Comm_size(MPI.COMM_WORLD)
+  @time info = ProxAL.optimize!(nlp)
+  println("AugLag iterations: $(info.iter) with $np ranks")
+else
+  info = ProxAL.optimize!(nlp)
+end
 
 @show info.iter
 
 MPI.Finalize()
+
