@@ -71,6 +71,10 @@ mutable struct PrimalSolution
     end
 end
 
+function PrimalSolution(nlp::AbstractNLPEvaluator) 
+    return PrimalSolution(nlp.opfdata, nlp.modelinfo)
+end
+
 mutable struct DualSolution
     ramping
     ramping_p
@@ -95,6 +99,10 @@ mutable struct DualSolution
 
         new(ramping,ramping_p,ramping_n,ctgs,ctgs_p,ctgs_n)
     end
+end
+
+function DualSolution(nlp::AbstractNLPEvaluator) 
+    return DualSolution(nlp.opfdata, nlp.modelinfo)
 end
 
 function get_block_view(x::PrimalSolution, block::CartesianIndex,

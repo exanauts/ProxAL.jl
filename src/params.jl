@@ -76,7 +76,8 @@ mutable struct AlgParams
     device::TargetDevice
 
     function AlgParams()
-        new(false,  # decompCtgs
+        new(
+            false,  # decompCtgs
             true,   # jacobi
             true,   # parallel
             100,    # iterlim
@@ -145,9 +146,16 @@ mutable struct ModelParams
     savefile::String
     time_link_constr_type::Symbol
     ctgs_link_constr_type::Symbol
+    # rho related
+    maxρ_t::Float64
+    maxρ_c::Float64
+    # Initialize block OPFs with base OPF solution
+    init_opf::Bool
+
 
     function ModelParams()
-        new(1,     # num_time_periods
+        new(
+            1,     # num_time_periods
             0,     # num_ctgs
             1.0,   # load_scale
             1.0,   # ramp_scale
@@ -164,18 +172,21 @@ mutable struct ModelParams
             :penalty,               # time_link_constr_type [:penalty,
                                     #                        :equality,
                                     #                        :inequality]
-            :preventive_equality    # ctgs_link_constr_type [:frequency_ctrl,
+            :preventive_equality,    # ctgs_link_constr_type [:frequency_ctrl,
                                     #                        :preventive_penalty,
                                     #                        :preventive_equality,
                                     #                        :corrective_penalty,
                                     #                        :corrective_equality,
                                     #                        :corrective_inequality]
+            0.1,
+            0.1,
+            false
         )
     end
 end
 
 """
-    set_rho!(algparams::AlgParams;
+    set_penalty!(algparams::AlgParams;
              ngen::Int,
              maxρ_t::Float64,
              maxρ_c::Float64,
@@ -187,11 +198,13 @@ maximum augmented lagrangian parameter value of
 `maxρ_c` (for contingency constraints),
 and with model parameters specified in `modelinfo`.
 """
-function set_rho!(algparams::AlgParams;
-                  ngen::Int,
-                  maxρ_t::Float64,
-                  maxρ_c::Float64,
-                  modelinfo::ModelParams)
+function set_penalty!(
+    algparams::AlgParams,
+    ngen::Int,
+    maxρ_t::Float64,
+    maxρ_c::Float64,
+    modelinfo::ModelParams
+)
     algparams.updateρ_t = (modelinfo.time_link_constr_type == :inequality)
     algparams.updateρ_c = (modelinfo.ctgs_link_constr_type == :corrective_inequality)
     algparams.ρ_t = maxρ_t*ones(ngen, modelinfo.num_time_periods)

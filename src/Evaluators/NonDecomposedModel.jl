@@ -1,16 +1,53 @@
+struct NonDecomposedModel <: AbstractNLPEvaluator
+    alminfo::ProxALMData
+    modelinfo::ModelParams
+    algparams::AlgParams
+    opfdata::OPFData
+    rawdata::RawData
+    space::AbstractSpace
+    comm::MPI.Comm
+end
+
+function NonDecomposedModel(
+    case_file::String, load_file::String,
+    modelinfo::ModelParams,
+    algparams::AlgParams,
+    space::AbstractSpace=FullSpace(),
+    comm::MPI.Comm=MPI.COMM_WORLD;
+    time_horizon_start=1
+)
+    rawdata = RawData(case_file, load_file)
+    opfdata = opf_loaddata(
+        rawdata;
+        time_horizon_start = time_horizon_start,
+        time_horizon_end = modelinfo.num_time_periods,
+        load_scale = modelinfo.load_scale,
+        ramp_scale = modelinfo.ramp_scale
+    )
+    set_penalty!(
+        algparams,
+        length(opfdata.generators),
+        modelinfo.maxρ_t,
+        modelinfo.maxρ_c,
+        modelinfo
+    )
+
+    # ctgs_arr = deepcopy(rawdata.ctgs_arr)
+    alminfo = ProxALMData(opfdata, rawdata, modelinfo, algparams, space)
+    return NonDecomposedModel(alminfo, modelinfo, algparams, opfdata, rawdata, space, comm)
+end
+
 """
-    solve_fullmodel(opfdata::OPFData,
-                    rawdata::RawData,
-                    modelinfo::ModelParams,
-                    algparams::AlgParams)
+    optimize!(nlp::FullModel)
 
 Solves the nondecomposed multi-period ACOPF instance
 specified in `opfdata` and `rawdata` with model parameters
 `modelinfo` and algorithm parameters `algparams`.
 """
-function solve_fullmodel(opfdata::OPFData, rawdata::RawData, modelinfo::ModelParams, algparams::AlgParams)
-    opfmodel = opf_model_nondecomposed(opfdata, rawdata, modelinfo, algparams)
-    return opf_solve_nondecomposed(opfmodel, opfdata, modelinfo, algparams)
+function optimize!(nlp::NonDecomposedModel)
+
+    opfmodel = opf_model_nondecomposed(nlp.opfdata, nlp.rawdata, nlp.modelinfo, nlp.algparams)
+    return opf_solve_nondecomposed(opfmodel, nlp.opfdata, nlp.modelinfo, nlp.algparams)
 end
 
 function opf_model_nondecomposed(opfdata::OPFData, rawdata::RawData, modelinfo::ModelParams, algparams::AlgParams)
