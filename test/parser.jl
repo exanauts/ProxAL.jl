@@ -17,11 +17,13 @@ rtol = 1e-4
 case_file = joinpath(DATA_DIR, "$(case).m")
 load_file = joinpath(DATA_DIR, "mp_demand", "$(case)_oneweek_168")
 rawdata = RawData(case_file, load_file)
-opfdata = opf_loaddata(rawdata;
-                       time_horizon_start = 1,
-                       time_horizon_end = T,
-                       load_scale = load_scale,
-                       ramp_scale = ramp_scale)
+opfdata = opf_loaddata(
+    rawdata;
+    time_horizon_start = 1,
+    time_horizon_end = T,
+    load_scale = load_scale,
+    ramp_scale = ramp_scale
+)
 
 @testset "Model Formulation" begin
     ctgs_arr = deepcopy(rawdata.ctgs_arr)
@@ -53,7 +55,7 @@ opfdata = opf_loaddata(rawdata;
         modelinfo.num_ctgs = K
         rawdata.ctgs_arr = deepcopy(ctgs_arr[1:modelinfo.num_ctgs])
 
-        set_rho!(algparams;
+        set_penalty!(algparams;
                  ngen = length(opfdata.generators),
                  modelinfo = modelinfo,
                  maxρ_t = maxρ,

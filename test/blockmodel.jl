@@ -17,15 +17,9 @@ rtol = 1e-4
 # Load data
 case_file = joinpath(DATA_DIR, "$(case).m")
 load_file = joinpath(DATA_DIR, "mp_demand", "$(case)_oneweek_168")
-rawdata = RawData(case_file, load_file)
-opfdata = opf_loaddata(rawdata;
-                       time_horizon_start = 1,
-                       time_horizon_end = T,
-                       load_scale = load_scale,
-                       ramp_scale = ramp_scale)
 
 @testset "Block Model Formulation" begin
-    ctgs_arr = deepcopy(rawdata.ctgs_arr)
+    # ctgs_arr = deepcopy(rawdata.ctgs_arr)
 
     # Model/formulation settings
     modelinfo = ModelParams()
@@ -34,6 +28,11 @@ opfdata = opf_loaddata(rawdata;
     modelinfo.ramp_scale = ramp_scale
     modelinfo.allow_obj_gencost = true
     modelinfo.allow_constr_infeas = false
+    # rho related
+    modelinfo.maxρ_t = maxρ
+    modelinfo.maxρ_c = maxρ
+    # Initialize block OPFs with base OPF solution
+    modelinfo.init_opf = false
 
     # Algorithm settings
     algparams = AlgParams()
@@ -50,20 +49,15 @@ opfdata = opf_loaddata(rawdata;
     K = 0
 
     # Instantiate primal and dual buffers
-    primal = ProxAL.PrimalSolution(opfdata, modelinfo)
-    dual = ProxAL.DualSolution(opfdata, modelinfo)
+    nlp = ProxALEvaluator(case_file, load_file, modelinfo, algparams)
+    primal = ProxAL.PrimalSolution(nlp)
+    dual = ProxAL.DualSolution(nlp)
 
-    set_rho!(algparams;
-             ngen = length(opfdata.generators),
-             modelinfo = modelinfo,
-             maxρ_t = maxρ,
-             maxρ_c = maxρ)
-
-    modelinfo_local = deepcopy(modelinfo)
+    modelinfo_local = deepcopy(nlp.modelinfo)
     modelinfo_local.num_time_periods = 1
 
     @testset "Timestep $t" for t in 1:T
-        opfdata_c = opf_loaddata(rawdata;
+        opfdata_c = ProxAL.opf_loaddata(nlp.rawdata;
                             time_horizon_start = t,
                             time_horizon_end = t,
                             load_scale = load_scale,
@@ -71,13 +65,13 @@ opfdata = opf_loaddata(rawdata;
 
         local solution, n
         @testset "JuMP Block model" begin
-            blockmodel = ProxAL.JuMPBlockModel(1, opfdata_c, rawdata, modelinfo_local, t, 1, T)
-            ProxAL.init!(blockmodel, algparams)
+            blockmodel = ProxAL.JuMPBlockModel(1, opfdata_c, nlp.rawdata, modelinfo_local, t, 1, T)
+            ProxAL.init!(blockmodel, nlp.algparams)
 
-            ProxAL.set_objective!(blockmodel, algparams, primal, dual)
+            ProxAL.set_objective!(blockmodel, nlp.algparams, primal, dual)
             n = JuMP.num_variables(blockmodel.model)
             x0 = zeros(n)
-            solution = ProxAL.optimize!(blockmodel, x0, algparams)
+            solution = ProxAL.optimize!(blockmodel, x0, nlp.algparams)
             @test solution.status ∈ ProxAL.MOI_OPTIMAL_STATUSES
         end
         obj_jump = solution.minimum
@@ -87,9 +81,9 @@ opfdata = opf_loaddata(rawdata;
         @testset "ExaPF Block model" begin
             # TODO: currently, we need to build directly ExaPF object
             # with rawdata, as ExaPF is dealing only with struct of arrays objects.
-            blockmodel = ProxAL.ExaBlockModel(1, opfdata_c, rawdata, modelinfo_local, t, 1, T)
-            ProxAL.init!(blockmodel, algparams)
-            ProxAL.set_objective!(blockmodel, algparams, primal, dual)
+            blockmodel = ProxAL.ExaBlockModel(1, opfdata_c, nlp.rawdata, modelinfo_local, t, 1, T)
+            ProxAL.init!(blockmodel, nlp.algparams)
+            ProxAL.set_objective!(blockmodel, nlp.algparams, primal, dual)
 
             # Better to set nothing than 0 to avoid convergence issue
             # in the powerflow solver.
@@ -137,12 +131,12 @@ opfdata = opf_loaddata(rawdata;
 
     @testset "OPFBlocks" begin
         blocks = ProxAL.OPFBlocks(
-            opfdata, rawdata;
-            modelinfo=modelinfo,
-            algparams=algparams,
+            nlp.opfdata, nlp.rawdata;
+            modelinfo=nlp.modelinfo,
+            algparams=nlp.algparams,
         )
 
-        @test length(blocks.blkModel) == modelinfo.num_time_periods
+        @test length(blocks.blkModel) == nlp.modelinfo.num_time_periods
     end
 end
 

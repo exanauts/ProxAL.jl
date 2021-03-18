@@ -18,8 +18,7 @@ quad_penalty = 0.1
 # Load case
 case_file = joinpath(DATA_DIR, "$(case).m")
 load_file = joinpath(DATA_DIR, "mp_demand", "$(case)_oneweek_168")
-rawdata = RawData(case_file, load_file)
-ctgs_arr = deepcopy(rawdata.ctgs_arr)
+# ctgs_arr = deepcopy(rawdata.ctgs_arr)
 
 # Model/formulation settings
 modelinfo = ModelParams()
@@ -34,6 +33,11 @@ modelinfo.time_link_constr_type = :penalty
 modelinfo.ctgs_link_constr_type = :frequency_ctrl
 modelinfo.case_name = case
 modelinfo.num_ctgs = K
+# rho related
+modelinfo.maxρ_t = maxρ
+modelinfo.maxρ_c = maxρ
+# Initialize block OPFs with base OPF solution
+modelinfo.init_opf = false
 
 # Algorithm settings
 algparams = AlgParams()
@@ -45,19 +49,11 @@ optimizer_with_attributes(Ipopt.Optimizer, "print_level" => 0)
 
 
 # rawdata.ctgs_arr = deepcopy(ctgs_arr[1:modelinfo.num_ctgs])
-opfdata = opf_loaddata(rawdata;
-                       time_horizon_start = 1,
-                       time_horizon_end = T,
-                       load_scale = load_scale,
-                       ramp_scale = ramp_scale)
-set_rho!(algparams;
-         ngen = length(opfdata.generators),
-         modelinfo = modelinfo,
-         maxρ_t = maxρ,
-         maxρ_c = maxρ)
 
 algparams.mode = :coldstart
-runinfo = run_proxALM(opfdata, rawdata, modelinfo, algparams)
+nlp = ProxALEvaluator(case_file, load_file, modelinfo, algparams)
+info = ProxAL.optimize!(nlp)
 
+@show info.iter
 
 MPI.Finalize()
