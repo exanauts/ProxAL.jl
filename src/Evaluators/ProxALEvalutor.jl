@@ -26,6 +26,8 @@ function ProxALEvaluator(
     case_file::String, load_file::String,
     modelinfo::ModelParams,
     algparams::AlgParams,
+    opt_sol::Dict = Dict(),
+    lyapunov_sol::Dict = Dict(),
     space::AbstractSpace=FullSpace(),
     comm::MPI.Comm = MPI.COMM_WORLD
 )
@@ -46,7 +48,7 @@ function ProxALEvaluator(
     )
 
     # ctgs_arr = deepcopy(rawdata.ctgs_arr)
-    alminfo = ProxALMData(opfdata, rawdata, modelinfo, algparams, space)
+    alminfo = ProxALMData(opfdata, rawdata, modelinfo, algparams, space, opt_sol, lyapunov_sol)
     return ProxALEvaluator(alminfo, modelinfo, algparams, opfdata, rawdata, space, comm)
 end
 
