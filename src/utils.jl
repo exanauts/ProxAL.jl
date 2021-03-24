@@ -32,10 +32,11 @@ mutable struct ProxALMData
         modelinfo::ModelParams,
         algparams::AlgParams,
         space::AbstractSpace,
+        opt_sol = Dict(),
+        lyapunov_sol = Dict(),
         initial_primal = nothing,
         initial_dual = nothing
     )
-        lyapunov_sol, opt_sol = Dict(), Dict()
         if !isempty(opt_sol)
             (algparams.verbose > 0) &&
                 @printf("Optimal objective value = %.2f\n", opt_sol["objective_value_nondecomposed"])
