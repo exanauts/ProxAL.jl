@@ -16,6 +16,11 @@ load_scale = 1.0
 maxρ = 0.1
 quad_penalty = 0.1
 
+# Select one of the following
+(case, T, ramp_scale, load_scale, maxρ, quad_penalty) = ("case9241pegase", 168, 0.3, 0.8, 0.01, 1e3)
+(case, T, ramp_scale, load_scale, maxρ, quad_penalty) = ("case118", 168, 0.2, 1.0, 0.1, 1e5)
+(case, T, ramp_scale, load_scale, maxρ, quad_penalty) = ("case9", 64, 0.04, 1.0, 0.1, 0.1)
+
 # Load case
 case_file = joinpath(DATA_DIR, "$(case).m")
 load_file = joinpath(DATA_DIR, "mp_demand", "$(case)_oneweek_168")
@@ -55,21 +60,45 @@ optimizer_with_attributes(Ipopt.Optimizer, "print_level" => 0)
 
 # rawdata.ctgs_arr = deepcopy(ctgs_arr[1:modelinfo.num_ctgs])
 
+if case in ["case9",  "case118"]
+    algparams.mode = :nondecomposed
+    nondecomposed = NonDecomposedModel(case_file, load_file, modelinfo, algparams)
+    opt_sol = ProxAL.optimize!(nondecomposed)
+    zstar = opt_sol["objective_value_nondecomposed"]
+
+    algparams.mode = :lyapunov_bound
+    nondecomposed = NonDecomposedModel(case_file, load_file, modelinfo, algparams)
+    lyapunov_sol = ProxAL.optimize!(nondecomposed)
+    lyapunov_star = lyapunov_sol["objective_value_lyapunov_bound"]
+else
+    opt_sol, lyapunov_sol = Dict(), Dict()
+    zstar, lyapunov_star = NaN, NaN
+end
+
 algparams.mode = :coldstart
-nlp = ProxALEvaluator(case_file, load_file, modelinfo, algparams)
+nlp = ProxALEvaluator(case_file, load_file, modelinfo, algparams, ProxAL.FullSpace(), opt_sol, lyapunov_sol)
 info = ProxAL.optimize!(nlp)
-nlp = ProxALEvaluator(case_file, load_file, modelinfo, algparams)
+nlp = ProxALEvaluator(case_file, load_file, modelinfo, algparams, ProxAL.FullSpace(), opt_sol, lyapunov_sol)
 info = ProxAL.optimize!(nlp)
-nlp = ProxALEvaluator(case_file, load_file, modelinfo, algparams)
+nlp = ProxALEvaluator(case_file, load_file, modelinfo, algparams, ProxAL.FullSpace(), opt_sol, lyapunov_sol)
 if MPI.Comm_rank(MPI.COMM_WORLD) == 0
-  np = MPI.Comm_size(MPI.COMM_WORLD)
-  @time info = ProxAL.optimize!(nlp)
-  println("AugLag iterations: $(info.iter) with $np ranks")
+    np = MPI.Comm_size(MPI.COMM_WORLD)
+    @time info = ProxAL.optimize!(nlp)
+    println("AugLag iterations: $(info.iter) with $np ranks")
+    optimgap = 100.0abs.(info.objvalue .- zstar)/abs(zstar)
+    lyapunov_gap = 100.0(info.lyapunov .- lyapunov_star)/abs(lyapunov_star)
+    lyapunov_gap[lyapunov_gap .< 0] .= NaN
+
+    @show info.iter
+    @show info.maxviol_t
+    @show info.maxviol_d
+    @show info.dist_x
+    @show optimgap
+    @show lyapunov_gap
 else
   info = ProxAL.optimize!(nlp)
 end
 
-@show info.iter
 
 MPI.Finalize()
 
