@@ -26,9 +26,9 @@ function ProxALEvaluator(
     case_file::String, load_file::String,
     modelinfo::ModelParams,
     algparams::AlgParams,
+    space::AbstractSpace=FullSpace(),
     opt_sol::Dict = Dict(),
     lyapunov_sol::Dict = Dict(),
-    space::AbstractSpace=FullSpace(),
     comm::MPI.Comm = MPI.COMM_WORLD
 )
     rawdata = RawData(case_file, load_file)
