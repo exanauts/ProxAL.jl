@@ -85,8 +85,8 @@ if MPI.Comm_rank(MPI.COMM_WORLD) == 0
     np = MPI.Comm_size(MPI.COMM_WORLD)
     @time info = ProxAL.optimize!(nlp)
     println("AugLag iterations: $(info.iter) with $np ranks")
-    optimgap = 100.0abs.(info.objvalue .- zstar)/abs(zstar)
-    lyapunov_gap = 100.0(info.lyapunov .- lyapunov_star)/abs(lyapunov_star)
+    optimgap = 100.0 * abs.(info.objvalue .- zstar)/abs(zstar)
+    lyapunov_gap = 100.0 * (info.lyapunov .- lyapunov_star)/abs(lyapunov_star)
     lyapunov_gap[lyapunov_gap .< 0] .= NaN
 
     @show info.iter
