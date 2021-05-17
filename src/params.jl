@@ -1,3 +1,22 @@
+#
+## Constant params
+const MOI_OPTIMAL_STATUSES = [
+    MOI.OPTIMAL,
+    MOI.ALMOST_OPTIMAL,
+    MOI.LOCALLY_SOLVED,
+    MOI.ALMOST_LOCALLY_SOLVED,
+]
+
+@enum(TargetDevice,
+    CPU,
+    CUDADevice,
+    Mixed,
+)
+
+#
+#
+# Algorithmic parameters
+#
 """
     AlgParams
 
@@ -26,6 +45,9 @@ Specifies ProxAL's algorithmic parameters.
 | `verbose::Int` |     level of output: 0 (none), 1 (stdout), 2 (+plots), 3 (+outfiles) | 0
 | `mode::Symbol` |     computation mode `∈ [:nondecomposed, :coldstart, :lyapunov_bound]` | `:nondecomposed`
 | `optimizer::Any` |   NLP solver | `nothing`
+| `gpu_optimizer::Any` | GPU-compatible NLP solver | `nothing`
+| `nr_tol::Float64`    | Tolerance of the Newton-Raphson algorithm (used only in `ReducedSpace()` model) | 1e-10
+| `device::TargetDevice` | Target device to deport the resolution of the optimization problem | CPU
 """
 mutable struct AlgParams
     decompCtgs::Bool# decompose contingencies (along with time)
@@ -49,9 +71,13 @@ mutable struct AlgParams
     verbose::Int    # level of output: 0 (none), 1 (stdout), 2 (+plots), 3 (+outfiles)
     mode::Symbol    # computation mode [:nondecomposed, :coldstart, :lyapunov_bound]
     optimizer::Any  # NLP solver for fullmodel and subproblems
+    gpu_optimizer::Any  # GPU-compatible NLP solver for fullmodel and subproblems
+    nr_tol::Float64 # Tolerance of the Newton-Raphson algorithm used in resolution of ExaBlockModel backend
+    device::TargetDevice
 
     function AlgParams()
-        new(false,  # decompCtgs
+        new(
+            false,  # decompCtgs
             true,   # jacobi
             true,   # parallel
             100,    # iterlim
@@ -71,7 +97,10 @@ mutable struct AlgParams
             false,  # updateτ
             0,      # verbose
             :nondecomposed, # mode
-            nothing # optimizer
+            nothing, # optimizer
+            nothing, # GPU optimizer
+            1e-10,
+            CPU,
         )
     end
 end
@@ -117,9 +146,16 @@ mutable struct ModelParams
     savefile::String
     time_link_constr_type::Symbol
     ctgs_link_constr_type::Symbol
+    # rho related
+    maxρ_t::Float64
+    maxρ_c::Float64
+    # Initialize block OPFs with base OPF solution
+    init_opf::Bool
+
 
     function ModelParams()
-        new(1,     # num_time_periods
+        new(
+            1,     # num_time_periods
             0,     # num_ctgs
             1.0,   # load_scale
             1.0,   # ramp_scale
@@ -136,18 +172,21 @@ mutable struct ModelParams
             :penalty,               # time_link_constr_type [:penalty,
                                     #                        :equality,
                                     #                        :inequality]
-            :preventive_equality    # ctgs_link_constr_type [:frequency_ctrl,
+            :preventive_equality,    # ctgs_link_constr_type [:frequency_ctrl,
                                     #                        :preventive_penalty,
                                     #                        :preventive_equality,
                                     #                        :corrective_penalty,
                                     #                        :corrective_equality,
                                     #                        :corrective_inequality]
+            0.1,
+            0.1,
+            false
         )
     end
 end
 
 """
-    set_rho!(algparams::AlgParams;
+    set_penalty!(algparams::AlgParams;
              ngen::Int,
              maxρ_t::Float64,
              maxρ_c::Float64,
@@ -159,11 +198,13 @@ maximum augmented lagrangian parameter value of
 `maxρ_c` (for contingency constraints),
 and with model parameters specified in `modelinfo`.
 """
-function set_rho!(algparams::AlgParams;
-                  ngen::Int,
-                  maxρ_t::Float64,
-                  maxρ_c::Float64,
-                  modelinfo::ModelParams)
+function set_penalty!(
+    algparams::AlgParams,
+    ngen::Int,
+    maxρ_t::Float64,
+    maxρ_c::Float64,
+    modelinfo::ModelParams
+)
     algparams.updateρ_t = (modelinfo.time_link_constr_type == :inequality)
     algparams.updateρ_c = (modelinfo.ctgs_link_constr_type == :corrective_inequality)
     algparams.ρ_t = maxρ_t*ones(ngen, modelinfo.num_time_periods)

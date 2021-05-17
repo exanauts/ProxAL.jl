@@ -3,25 +3,40 @@ name: Run tests
 on: [push, pull_request]
 
 jobs:
-  test:
+  test-github-cpuonly:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        julia-version: ['1.5']
+        julia-version: ['1.6']
         julia-arch: [x64]
-        os: [ubuntu-latest]
+        os: [ubuntu-20.04]
 
     steps:
-      - uses: actions/checkout@v1.0.0
-      - uses: julia-actions/setup-julia@v1
-        with:
-          version: 1.5.2
       - uses: actions/checkout@v2
       - uses: julia-actions/setup-julia@latest
         with:
           version: ${{ matrix.julia-version }}
-      - run: julia --project -e 'using Pkg; Pkg.add(url="https://github.com/exanauts/Hiop.jl", rev="master")'
+    # - run: julia --project -e 'using Pkg; Pkg.add(url="https://github.com/exanauts/Hiop.jl", rev="master")'
       - run: julia --project -e 'using Pkg; Pkg.add(url="https://github.com/sshin23/MadNLP.jl", rev="master")'
-      - run: julia --project -e 'using Pkg; Pkg.add(url="https://github.com/exanauts/ExaPF.jl", rev="fp/proxal")'
+      - uses: julia-actions/julia-buildpkg@latest
+      - uses: julia-actions/julia-runtest@latest
+
+  test-moonshot:
+    env:
+      CUDA_VISIBLE_DEVICES: 1
+    runs-on: self-hosted
+    strategy:
+      matrix:
+        julia-version: ['1.6']
+        julia-arch: [x64]
+        os: [ubuntu-20.04]
+
+    steps:
+      - uses: actions/checkout@v2
+      - uses: julia-actions/setup-julia@latest
+        with:
+          version: ${{ matrix.julia-version }}
+    # - run: julia --project -e 'using Pkg; Pkg.add(url="https://github.com/exanauts/Hiop.jl", rev="master")'
+      - run: julia --project -e 'using Pkg; Pkg.add(url="https://github.com/sshin23/MadNLP.jl", rev="master")'
       - uses: julia-actions/julia-buildpkg@latest
       - uses: julia-actions/julia-runtest@latest

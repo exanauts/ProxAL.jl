@@ -1,6 +1,6 @@
 mutable struct ProxALMData
-    opfBlockData::OPFBlockData
-    
+    opfBlockData::OPFBlocks
+
     #---- iterate information ----
     x::PrimalSolution
     λ::DualSolution
@@ -18,7 +18,7 @@ mutable struct ProxALMData
     wall_time_elapsed_actual::Float64
     wall_time_elapsed_ideal::Float64
     iter
-    
+
     #---- other/static information ----
     opt_sol::Dict
     lyapunov_sol::Dict
@@ -27,25 +27,16 @@ mutable struct ProxALMData
     par_order
     plt
 
-    #---- MPI ----
-    comm::MPI.Comm
-
-    function ProxALMData(opfdata::OPFData, rawdata::RawData,
-                         modelinfo::ModelParams,
-                         algparams::AlgParams,
-                         comm::MPI.Comm,
-                         fullmodel::Bool = false,
-                         initial_primal = nothing,
-                         initial_dual = nothing)
-        lyapunov_sol, opt_sol = Dict(), Dict()
-        if fullmodel
-            mode_oldval = algparams.mode
-            algparams.mode = :nondecomposed
-            opt_sol = solve_fullmodel(opfdata, rawdata, modelinfo, algparams)
-            algparams.mode = :lyapunov_bound
-            lyapunov_sol = solve_fullmodel(opfdata, rawdata, modelinfo,  algparams)
-            algparams.mode = mode_oldval
-        end
+    function ProxALMData(
+        opfdata::OPFData, rawdata::RawData,
+        modelinfo::ModelParams,
+        algparams::AlgParams,
+        space::AbstractSpace,
+        opt_sol = Dict(),
+        lyapunov_sol = Dict(),
+        initial_primal = nothing,
+        initial_dual = nothing
+    )
         if !isempty(opt_sol)
             (algparams.verbose > 0) &&
                 @printf("Optimal objective value = %.2f\n", opt_sol["objective_value_nondecomposed"])
@@ -66,14 +57,18 @@ mutable struct ProxALMData
                 DualSolution(opfdata, modelinfo) :
                 deepcopy(initial_dual)
         # NLP blocks
-        opfBlockData = OPFBlockData(opfdata, rawdata, modelinfo, algparams)
-        blkLinIndex = LinearIndices(opfBlockData.blkIndex)
+        blocks = OPFBlocks(
+            opfdata, rawdata;
+            modelinfo=modelinfo, algparams=algparams,
+            backend=(space==FullSpace()) ? JuMPBlockModel : ExaBlockModel,
+        )
+
+        blkLinIndex = LinearIndices(blocks.blkIndex)
         for blk in blkLinIndex
-            opfBlockData.blkModel[blk] = opf_block_model_initialize(blk, opfBlockData, rawdata, algparams)
-            opfBlockData.colValue[:,blk] .= get_block_view(x, opfBlockData.blkIndex[blk], modelinfo, algparams)
+            model = blocks.blkModel[blk]
+            init!(model, algparams)
+            blocks.colValue[:,blk] .= get_block_view(x, blocks.blkIndex[blk], modelinfo, algparams)
         end
-
-
 
         ser_order = blkLinIndex
         par_order = []
@@ -95,17 +90,16 @@ mutable struct ProxALMData
         maxviol_d = []
         dist_x = []
         dist_λ = []
-        nlp_opt_sol = Array{Float64, 2}(undef, opfBlockData.colCount, opfBlockData.blkCount)
-        nlp_opt_sol .= opfBlockData.colValue
-        nlp_soltime = Vector{Float64}(undef, opfBlockData.blkCount)
+        nlp_opt_sol = Array{Float64, 2}(undef, blocks.colCount, blocks.blkCount)
+        nlp_opt_sol .= blocks.colValue
+        nlp_soltime = Vector{Float64}(undef, blocks.blkCount)
         wall_time_elapsed_actual = 0.0
         wall_time_elapsed_ideal = 0.0
         xprev = deepcopy(x)
         λprev = deepcopy(λ)
 
-
-
-        new(opfBlockData,
+        new(
+            blocks,
             x,
             λ,
             xprev,
@@ -127,22 +121,27 @@ mutable struct ProxALMData
             initial_solve,
             ser_order,
             par_order,
-            plt,
-            comm)
+            plt
+        )
     end
 end
 
-function update_runinfo(runinfo::ProxALMData, opfdata::OPFData,
-                        modelinfo::ModelParams,
-                        algparams::AlgParams)
+function update_runinfo(
+    runinfo::ProxALMData, opfdata::OPFData,
+    modelinfo::ModelParams,
+    algparams::AlgParams
+)
     iter = runinfo.iter
-    push!(runinfo.objvalue,
+    push!(
+        runinfo.objvalue,
         compute_objective_function(runinfo.x, opfdata, modelinfo)
     )
-    push!(runinfo.lyapunov,
+    push!(
+        runinfo.lyapunov,
         compute_lyapunov_function(runinfo.x, runinfo.λ, opfdata, runinfo.xprev, modelinfo, algparams)
     )
-    push!(runinfo.maxviol_d,
+    push!(
+        runinfo.maxviol_d,
         compute_dual_error(runinfo.x, runinfo.xprev, runinfo.λ, runinfo.λprev, opfdata, modelinfo, algparams)
     )
     push!(runinfo.dist_x, NaN)
@@ -174,4 +173,3 @@ function update_runinfo(runinfo::ProxALMData, opfdata::OPFData,
                     lyapunov_gap)
     end
 end
-

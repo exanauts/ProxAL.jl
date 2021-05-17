@@ -1,7 +1,7 @@
 # Usage
-`ProxAL.jl` can be used called from existing Julia code or REPL, or also from the terminal.
+`ProxAL.jl` can be called from existing Julia code or REPL, or also from the terminal.
 
-!!! note 
+!!! note
     To do: Update documentation to show how to use MPI.
 
 ## Julia code or REPL

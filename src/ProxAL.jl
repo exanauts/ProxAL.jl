@@ -3,180 +3,29 @@
 #
 module ProxAL
 
-using JuMP
+using Ipopt, JuMP
 using Printf, CatViews
 using ExaPF
 using LinearAlgebra
 using SparseArrays
 using MPI
 
+include("Evaluators/Evaluators.jl")
 include("params.jl")
 include("opfdata.jl")
 include("opfsolution.jl")
 include("opfmodel.jl")
-include("opfblocks.jl")
-include("proxALMutil.jl")
+include("blockmodel.jl")
+include("blocks.jl")
+include("utils.jl")
+include("Evaluators/ProxALEvalutor.jl")
+include("Evaluators/NonDecomposedModel.jl")
 
-export RawData, ModelParams, AlgParams
-export opf_loaddata, solve_fullmodel, run_proxALM, set_rho!
+export ModelParams, AlgParams
+export ProxALEvaluator, NonDecomposedModel, set_penalty!
+export optimize!
 
-"""
-    run_proxALM(opfdata::OPFData,
-                rawdata::RawData,
-                modelinfo::ModelParams,
-                algparams::AlgParams,
-                comm::MPI.Comm = MPI.COMM_WORLD)
-
-Use ProxAL to solve the multi-period ACOPF instance
-specified in `opfdata` and `rawdata` with model parameters
-`modelinfo` and algorithm parameters `algparams`, and 
-an MPI communicator `comm`.
-"""
-function run_proxALM(opfdata::OPFData, rawdata::RawData,
-                     modelinfo::ModelParams,
-                     algparams::AlgParams,
-                     comm::MPI.Comm = MPI.COMM_WORLD)
-    runinfo = ProxALMData(opfdata, rawdata, modelinfo, algparams, comm, true)
-    runinfo.initial_solve &&
-        (algparams_copy = deepcopy(algparams))
-    opfBlockData = runinfo.opfBlockData
-    nlp_opt_sol = runinfo.nlp_opt_sol
-    nlp_soltime = runinfo.nlp_soltime
-    x = runinfo.x
-    λ = runinfo.λ
-
-
-    #------------------------------------------------------------------------------------
-    function blocknlp_copy(blk, x_ref, λ_ref, alg_ref)
-        opf_block_set_objective(blk, opfBlockData.blkModel[blk], opfBlockData,
-                                alg_ref,
-                                x_ref,
-                                λ_ref)
-        nlp_opt_sol[:,blk] .= opf_block_solve_model(blk, opfBlockData.blkModel[blk], opfBlockData)
-    end
-    #------------------------------------------------------------------------------------
-    function blocknlp_recreate(blk, x_ref, λ_ref, alg_ref)
-        opfmodel = opf_block_model_initialize(blk, opfBlockData, rawdata,
-                                              alg_ref)
-        opf_block_set_objective(blk, opfmodel, opfBlockData,
-                                alg_ref,
-                                x_ref,
-                                λ_ref)
-        nlp_opt_sol[:,blk] .= opf_block_solve_model(blk, opfmodel, opfBlockData)
-    end
-    #------------------------------------------------------------------------------------
-    function primal_update()
-        runinfo.wall_time_elapsed_actual += @elapsed begin
-            # Primal update except penalty vars
-            for blk in runinfo.ser_order
-                nlp_soltime[blk] = @elapsed blocknlp_copy(blk, x, λ, algparams)
-                # nlp_soltime[blk] = @elapsed blocknlp_recreate(blk; x_ref = x, λ_ref = λ, alg_ref = algparams)
-                opfBlockData.colValue[:,blk] .= nlp_opt_sol[:,blk]
-                if !algparams.jacobi
-                    update_primal_nlpvars(x, opfBlockData, blk, modelinfo, algparams)
-                end
-            end
-            nlp_opt_sol .= 0.0
-            nlp_soltime .= 0.0
-            for blk in runinfo.par_order
-                if blk % MPI.Comm_size(comm) == MPI.Comm_rank(comm)
-                    # nlp_soltime[blk] = @elapsed blocknlp_copy(blk; x_ref = x, λ_ref = λ, alg_ref = algparams)
-                    nlp_soltime[blk] = @elapsed blocknlp_recreate(blk, x, λ, algparams)
-                end
-            end
-
-            # Every worker sends his contribution
-            MPI.Allreduce!(nlp_opt_sol, MPI.SUM, comm)
-            MPI.Allreduce!(nlp_soltime, MPI.SUM, comm)
-
-            for blk in runinfo.par_order
-                opfBlockData.colValue[:,blk] .= nlp_opt_sol[:,blk]
-                update_primal_nlpvars(x, opfBlockData, blk, modelinfo, algparams)
-            end
-            if algparams.jacobi
-                for blk in runinfo.ser_order
-                    update_primal_nlpvars(x, opfBlockData, blk, modelinfo, algparams)
-                end
-            end
-
-            # Primal update of penalty vars
-            elapsed_t = @elapsed update_primal_penalty(x, opfdata, x, λ, modelinfo, algparams)
-        end
-        runinfo.wall_time_elapsed_ideal += isempty(runinfo.ser_order) ? 0.0 : sum(nlp_soltime[blk] for blk in runinfo.ser_order)
-        runinfo.wall_time_elapsed_ideal += isempty(runinfo.par_order) ? 0.0 : maximum([nlp_soltime[blk] for blk in runinfo.par_order])
-        runinfo.wall_time_elapsed_ideal += elapsed_t
-    end
-    #------------------------------------------------------------------------------------
-    function dual_update()
-        elapsed_t = @elapsed begin
-            maxviol_t, maxviol_c = update_dual_vars(λ, opfdata, x, modelinfo, algparams)
-            push!(runinfo.maxviol_t, maxviol_t)
-            push!(runinfo.maxviol_c, maxviol_c)
-        end
-        runinfo.wall_time_elapsed_actual += elapsed_t
-        runinfo.wall_time_elapsed_ideal += elapsed_t
-    end
-    #------------------------------------------------------------------------------------
-    function proximal_update()
-        elapsed_t = @elapsed begin
-            if algparams.updateτ
-                maxρ = algparams.decompCtgs ? max(maxρ_t, maxρ_c) : maxρ_t
-                # lyapunov = compute_lyapunov_function(runinfo.x, runinfo.λ, opfdata; xref = runinfo.xprev, modelinfo = modelinfo, algparams = algparams)
-                # delta_lyapunov = runinfo.lyapunovprev - lyapunov
-                # if delta_lyapunov <= 0.0 && algparams.τ < 3.0maxρ
-                if runinfo.iter%10 == 0 && algparams.τ < 3.0maxρ
-                    algparams.τ += maxρ
-                end
-            end
-        end
-        runinfo.wall_time_elapsed_actual += elapsed_t
-        runinfo.wall_time_elapsed_ideal += elapsed_t
-    end
-    #------------------------------------------------------------------------------------
-
-
-    for runinfo.iter=1:algparams.iterlim
-
-        if runinfo.initial_solve
-            if runinfo.iter == 1
-                set_rho!(algparams;
-                         maxρ_t = 0.0,
-                         maxρ_c = 0.0,
-                         ngen = length(opfdata.generators),
-                         modelinfo = modelinfo)
-                algparams.updateρ_t = false
-                algparams.updateρ_c = false
-            elseif runinfo.iter == 2
-                algparams = deepcopy(algparams_copy)
-            end
-        end
-
-        # use this to compute the KKT error at the end of the loop
-        runinfo.xprev = deepcopy(x)
-        runinfo.λprev = deepcopy(λ)
-
-        # Primal update
-        primal_update()
-
-        # Dual update
-        dual_update()
-
-        # Prox update
-        proximal_update()
-
-        # Update counters and write output
-        update_runinfo(runinfo, opfdata, modelinfo, algparams)
-
-        # Check convergence
-        if max(runinfo.maxviol_t[end], runinfo.maxviol_c[end], runinfo.maxviol_d[end]) <= algparams.tol
-            break
-        end
-    end
-
-    return runinfo
-end
-
-function update_primal_nlpvars(x::PrimalSolution, opfBlockData::OPFBlockData, blk::Int,
+function update_primal_nlpvars(x::PrimalSolution, opfBlockData::OPFBlocks, blk::Int,
                                modelinfo::ModelParams,
                                algparams::AlgParams)
     solution = get_block_view(x, opfBlockData.blkIndex[blk],

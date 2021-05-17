@@ -6,12 +6,22 @@ CurrentModule = ProxAL
 
 ## NLP Blocks
 
-The [Formulation](@ref) is decomposed into smaller nonlinear programming (NLP) blocks. Internally, each block is represented as follows.
+The [Formulation](@ref) is decomposed into smaller nonlinear programming (NLP) blocks.
+Blocks are coupled together using a `OPFBlocks` structure.
+```@docs
+OPFBlocks
+```
+
+Internally, each block is represented as follows.
 
 ```@docs
-OPFBlockData
-opf_block_model_initialize
-opf_block_set_objective
-opf_block_get_auglag_penalty_expr
-opf_block_solve_model
+AbstractBlockModel
+JuMPBlockModel
+ExaBlockModel
+init!
+optimize!
+set_objective!
+get_solution
+add_variables!
+
 ```

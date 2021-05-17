@@ -1,9 +1,23 @@
-import ExaPF: ParsePSSE, ParseMAT
 import ExaPF: PowerSystem
+import ExaPF.PowerSystem: ParsePSSE, ParseMAT
 using DelimitedFiles
 
 const PS = PowerSystem
 
+"""
+    parse_file(datafile::String)
+
+Parse MATPOWER or PSSE instances using ExaPF's parsers.
+Return full dataset as `Dict{String, Array{Float64, 2}`,
+with entries
+
+- "bus": specifications for all buses in the network
+- "branch": specifications for all branches in the network
+- "gen": specifications for all generators in the network
+- "costs": costs coefficients.
+- "baseMVA": baseMVA of the network
+
+"""
 function parse_file(datafile)
     if endswith(datafile, ".raw")
         data_raw = ParsePSSE.parse_raw(datafile)
@@ -100,10 +114,11 @@ end
 
 Specifies the ACOPF instance data.
 
-- `bus_arr`: read from `.bus` file
-- `branch_arr`: read from `.branch` file
-- `gen_arr`: read from `.gen` file
-- `costgen_arr`: read from `.gencost` file
+- `baseMVA`: imported with ExaPF parser
+- `bus_arr`: imported with ExaPF parser
+- `branch_arr`: imported with ExaPF parser
+- `gen_arr`: imported with ExaPF parser
+- `costgen_arr`: imported with ExaPF parser
 - `pd_arr`: read from `.Pd` file
 - `qd_arr`: read from `.Qd` file
 - `ctgs_arr`: read from `.Ctgs` file
@@ -296,7 +311,9 @@ function opf_loaddata(raw::RawData;
 
     # build a dictionary between buses ids and their indexes
     busIdx = PS.get_bus_id_to_indexes(bus_arr)
-    Ybus = PS.makeYbus(bus_arr, branch_arr[lines_on,:], baseMVA, busIdx)
+    # Remove deactivated branches before building admittance matrix
+    topology = PS.makeYbus(bus_arr, branch_arr[lines_on, :], baseMVA, busIdx)
+    Ybus = topology.ybus
     # generators at each bus
     BusGeners = PS.get_bus_generators(bus_arr, gen_arr, busIdx)
 
