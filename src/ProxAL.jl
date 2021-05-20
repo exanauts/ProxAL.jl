@@ -6,6 +6,7 @@ module ProxAL
 using Ipopt, JuMP
 using Printf, CatViews
 using ExaPF
+using ExaTron
 using LinearAlgebra
 using SparseArrays
 using MPI
