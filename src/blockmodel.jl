@@ -491,3 +491,154 @@ function optimize!(block::ExaBlockModel, x0::Union{Nothing, AbstractArray}, algp
     return solution
 end
 
+
+### Implementation of TronBlockModel
+"""
+    TronBlockModel(
+        blk::Int,
+        opfdata::OPFData, raw_data::RawData,
+        modelinfo::ModelParams, t::Int, k::Int, T::Int;
+    )
+
+
+# Arguments
+
+- `blk::Int`: ID of the block represented by this model
+- `opfdata::OPFData`: data used to build the optimal power flow problem.
+- `raw_data::RawData`: same data, in raw format
+- `modelinfo::ModelParams`: parameters related to specification of the optimization model
+- `t::Int`: current time-step. Value should be between `1` and `T`.
+- `k::Int`: current contingency
+- `T::Int`: final horizon
+
+"""
+struct TronBlockModel <: AbstractBlockModel
+    env::ExaTron.AdmmEnv
+    id::Int
+    k::Int
+    t::Int
+    data::OPFData
+    params::ModelParams
+    iterlim::Int
+    scale::Float64
+end
+
+# Map ProxAL's data to ExaTron's data
+Base.convert(::Type{ExaTron.Bus}, b::Bus) =
+    ExaTron.Bus(
+        b.bus_i, b.bustype, b.Pd, b.Qd, b.Gs, b.Bs, b.area,
+        b.Vm, b.Va, b.baseKV, b.zone, b.Vmax, b.Vmin,
+    )
+
+Base.convert(::Type{ExaTron.Line}, l::Line) =
+    ExaTron.Line(
+        l.from, l.to, l.r, l.x, l.b, l.rateA, l.rateB, l.rateC,
+        l.ratio, l.angle, l.status, l.angmin, l.angmax,
+    )
+
+Base.convert(::Type{ExaTron.Gener}, g::Gener) =
+    ExaTron.Gener(
+        g.bus, g.Pg, g.Qg, g.Qmax, g.Qmin, g.Vg, g.mBase, g.status,
+        g.Pmax, g.Pmin, g.Pc1, g.Pc2, g.Qc1min, g.Qc1max,
+        g.Qc2min, g.Qc2max, g.ramp_agc, g.gentype, g.startup,
+        g.shutdown, g.n, g.coeff,
+    )
+
+function ExaTron.OPFData(data::OPFData)
+    fromlines, tolines = ExaTron.mapLinesToBuses(data.buses, data.lines, data.BusIdx)
+    busGenerators = ExaTron.mapGenersToBuses(data.buses, data.generators, data.BusIdx)
+    return ExaTron.OPFData(
+        data.buses, data.lines, data.generators, data.bus_ref, data.baseMVA,
+        data.BusIdx, fromlines, tolines, busGenerators,
+    )
+end
+
+function TronBlockModel(
+    blk::Int, ::Type{VT},
+    opfdata::OPFData, raw_data::RawData,
+    modelinfo::ModelParams, t::Int, k::Int, T::Int;
+    use_gpu=false, gpu_no=1, rho_pq=400.0, rho_va=4e4, scale=1e-4,
+    use_polar=true, iterlim=800, verbose=1,
+) where VT
+    trondata = ExaTron.OPFData(opfdata)
+    env = ExaTron.AdmmEnv(trondata, VT, rho_pq, rho_va; use_gpu=use_gpu, use_polar=use_polar, gpu_no=gpu_no, verbose=verbose)
+    return TronBlockModel(env, blk, k, t, opfdata, modelinfo, iterlim, scale)
+end
+
+function init!(block::TronBlockModel, algparams::AlgParams)
+    opfmodel = block.env
+    baseMVA = block.data.baseMVA
+
+    # Get params
+    opfdata = block.data
+    modelinfo = block.params
+    Kblock = modelinfo.num_ctgs + 1
+    t, k = block.t, block.k
+    # Generators
+    gens = block.data.generators
+    ramp_agc = [g.ramp_agc for g in gens]
+
+    # Sanity check
+    @assert modelinfo.num_time_periods == 1
+    @assert !algparams.decompCtgs || Kblock == 1
+
+    # TODO: currently, only one contingency is supported
+    j = 1
+    pd = opfdata.Pd[:,1] / baseMVA
+    qd = opfdata.Qd[:,1] / baseMVA
+    # Pass load to exatron
+    ExaTron.set_active_load!(opfmodel, pd)
+    ExaTron.set_reactive_load!(opfmodel, qd)
+
+    # TODO
+    # Set bounds on slack variables s
+    # copyto!(opfmodel.s_max, 2 .* ramp_agc)
+    # opfmodel.scale_objective = modelinfo.obj_scale
+
+    return opfmodel
+end
+
+function set_objective!(block::TronBlockModel, algparams::AlgParams,
+                        primal::PrimalSolution, dual::DualSolution)
+    error("Currently not implemented")
+    return
+end
+
+function get_solution(block::TronBlockModel, output)
+
+    # Get optimal solution in reduced space
+    x♯ = output.u_curr
+    # TODO: parse ExaTron solution
+
+    solution = (
+        status=MOI.OPTIMAL,
+        minimum=output.objval,
+    )
+    return solution
+end
+
+function set_start_values!(block::TronBlockModel, x0)
+    ngen = length(block.data.generators)
+    nbus = length(block.data.buses)
+    # Only one contingency, at the moment
+    K = 1
+    # Extract values from array x0
+    pg = x0[1:ngen*K]
+    qg = x0[ngen*K+1:2*ngen*K]
+    vm = x0[2*ngen*K+1:2*ngen*K+nbus*K]
+    va = x0[2*ngen*K+nbus*K+1:2*ngen*K+2*nbus*K]
+    # TODO: pass to ExaTron
+end
+
+function optimize!(block::TronBlockModel, x0::Union{Nothing, AbstractArray}, algparams::AlgParams)
+    if isa(x0, Array)
+        set_start_values!(block, x0)
+    end
+    # Optimize with optimizer, using ExaPF model
+    ExaTron.admm_restart(block.env; iterlim=block.iterlim, scale=block.scale)
+    # Recover solution in ProxAL format
+    solution = get_solution(block, block.env.solution)
+
+    return solution
+end
+
