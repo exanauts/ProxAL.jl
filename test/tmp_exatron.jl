@@ -56,7 +56,7 @@ load_file = joinpath(DATA_DIR, "mp_demand", "$(case)_oneweek_168")
     modelinfo_local = deepcopy(nlp.modelinfo)
     modelinfo_local.num_time_periods = 1
 
-    @testset "Timestep $t" for t in 1:T
+    @testset "Timestep $t (twolevel=$two_level)" for t in 1:T, two_level in [false, true]
         opfdata_c = ProxAL.opf_loaddata(nlp.rawdata;
                             time_horizon_start = t,
                             time_horizon_end = t,
@@ -64,12 +64,26 @@ load_file = joinpath(DATA_DIR, "mp_demand", "$(case)_oneweek_168")
                             ramp_scale = ramp_scale)
 
         local solution, n
-        blockmodel = ProxAL.TronBlockModel(1, Array, opfdata_c, nlp.rawdata, modelinfo_local, t, 1, T; iterlim=100, verbose=0)
+        blockmodel = ProxAL.TronBlockModel(
+            1, Array, opfdata_c, nlp.rawdata, modelinfo_local, t, 1, T; iterlim=100, verbose=0,
+            use_twolevel=two_level, rho_pq=500.0, rho_va=500.0,
+        )
         ProxAL.init!(blockmodel, nlp.algparams)
 
+        # TODO:
         # ProxAL.set_objective!(blockmodel, nlp.algparams, primal, dual)
+
+        # Test optimization
         x0 = nothing
         solution = ProxAL.optimize!(blockmodel, x0, nlp.algparams)
         @test solution.status ∈ ProxAL.MOI_OPTIMAL_STATUSES
+        println(solution.pg)
+
+        # Test setters
+        env = blockmodel.env
+        n = 2 * env.model.ngen + 2 * env.model.nbus
+        x0 = zeros(n)
+        ProxAL.set_start_values!(blockmodel, x0)
     end
 end
+
