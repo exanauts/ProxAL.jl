@@ -558,10 +558,11 @@ function TronBlockModel(
     opfdata::OPFData, raw_data::RawData,
     modelinfo::ModelParams, t::Int, k::Int, T::Int;
     use_gpu=false, gpu_no=1, rho_pq=400.0, rho_va=4e4, scale=1e-4,
-    use_polar=true, iterlim=800, verbose=1,
+    use_polar=true, iterlim=800, verbose=1, use_twolevel=false,
 ) where VT
     trondata = ExaTron.OPFData(opfdata)
-    env = ExaTron.AdmmEnv(trondata, VT, rho_pq, rho_va; use_gpu=use_gpu, use_polar=use_polar, gpu_no=gpu_no, verbose=verbose)
+    env = ExaTron.AdmmEnv(trondata, VT, rho_pq, rho_va;
+                          use_gpu=use_gpu, use_polar=use_polar, gpu_no=gpu_no, verbose=verbose, use_twolevel=use_twolevel)
     return TronBlockModel(env, blk, k, t, opfdata, modelinfo, iterlim, scale)
 end
 
@@ -584,8 +585,8 @@ function init!(block::TronBlockModel, algparams::AlgParams)
 
     # TODO: currently, only one contingency is supported
     j = 1
-    pd = opfdata.Pd[:,1] / baseMVA
-    qd = opfdata.Qd[:,1] / baseMVA
+    pd = opfdata.Pd[:,1]
+    qd = opfdata.Qd[:,1]
     # Pass load to exatron
     ExaTron.set_active_load!(opfmodel, pd)
     ExaTron.set_reactive_load!(opfmodel, qd)
@@ -606,13 +607,23 @@ end
 
 function get_solution(block::TronBlockModel, output)
 
-    # Get optimal solution in reduced space
-    x♯ = output.u_curr
     # TODO: parse ExaTron solution
+    exatron_status = output.status
+    status = if exatron_status == ExaTron.HAS_CONVERGED
+        MOI.OPTIMAL
+    elseif exatron_status == ExaTron.MAXIMUM_ITERATIONS
+        MOI.ITERATION_LIMIT
+    end
+
+    model = block.env.model
 
     solution = (
-        status=MOI.OPTIMAL,
+        status=status,
         minimum=output.objval,
+        pg=ExaTron.active_power_generation(model, output),
+        qg=ExaTron.reactive_power_generation(model, output),
+        vm=ExaTron.voltage_magnitude(model, output),
+        va=ExaTron.voltage_angle(model, output),
     )
     return solution
 end
@@ -627,7 +638,12 @@ function set_start_values!(block::TronBlockModel, x0)
     qg = x0[ngen*K+1:2*ngen*K]
     vm = x0[2*ngen*K+1:2*ngen*K+nbus*K]
     va = x0[2*ngen*K+nbus*K+1:2*ngen*K+2*nbus*K]
-    # TODO: pass to ExaTron
+    # Pass to ExaTron
+    ExaTron.set_active_power_generation!(block.env, pg)
+    ExaTron.set_reactive_power_generation!(block.env, qg)
+    ExaTron.set_voltage_magnitude!(block.env, vm)
+    ExaTron.set_voltage_angle!(block.env, va)
+    return
 end
 
 function optimize!(block::TronBlockModel, x0::Union{Nothing, AbstractArray}, algparams::AlgParams)
@@ -635,7 +651,7 @@ function optimize!(block::TronBlockModel, x0::Union{Nothing, AbstractArray}, alg
         set_start_values!(block, x0)
     end
     # Optimize with optimizer, using ExaPF model
-    ExaTron.admm_restart(block.env; iterlim=block.iterlim, scale=block.scale)
+    ExaTron.admm_restart!(block.env; scale=block.scale)
     # Recover solution in ProxAL format
     solution = get_solution(block, block.env.solution)
 
