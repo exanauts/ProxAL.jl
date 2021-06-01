@@ -134,7 +134,7 @@ function update_runinfo(
     iter = runinfo.iter
     push!(
         runinfo.objvalue,
-        compute_objective_function(runinfo.x, opfdata, modelinfo)
+        compute_objective_function(runinfo.x, opfdata, modelinfo, algparams)
     )
     push!(
         runinfo.lyapunov,

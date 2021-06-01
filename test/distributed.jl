@@ -29,8 +29,6 @@ modelinfo.load_scale = load_scale
 modelinfo.ramp_scale = ramp_scale
 modelinfo.allow_obj_gencost = true
 modelinfo.allow_constr_infeas = false
-modelinfo.weight_quadratic_penalty_time = quad_penalty
-modelinfo.weight_freq_ctrl = quad_penalty
 modelinfo.time_link_constr_type = :penalty
 modelinfo.ctgs_link_constr_type = :frequency_ctrl
 modelinfo.case_name = case
@@ -44,6 +42,8 @@ algparams = AlgParams()
 algparams.parallel = true #algparams.parallel = (nprocs() > 1)
 algparams.verbose = 0
 algparams.init_opf = true
+algparams.θ_t = quad_penalty
+algparams.θ_c = quad_penalty
 algparams.decompCtgs = false
 algparams.optimizer =
 optimizer_with_attributes(Ipopt.Optimizer, "print_level" => Int64(algparams.verbose > 0)*5)

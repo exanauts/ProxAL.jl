@@ -35,7 +35,6 @@ opfdata = opf_loaddata(
     modelinfo.ramp_scale = ramp_scale
     modelinfo.allow_obj_gencost = true
     modelinfo.allow_constr_infeas = false
-    modelinfo.weight_quadratic_penalty_time = quad_penalty
     modelinfo.weight_freq_ctrl = quad_penalty
     modelinfo.time_link_constr_type = :penalty
     modelinfo.ctgs_link_constr_type = :frequency_ctrl
@@ -44,6 +43,7 @@ opfdata = opf_loaddata(
     algparams = AlgParams()
     algparams.parallel = false #algparams.parallel = (nprocs() > 1)
     algparams.verbose = 0
+    algparams.θ_t = quad_penalty
 
     modelinfo.case_name = case
     algparams.optimizer = optimizer_with_attributes(Ipopt.Optimizer,

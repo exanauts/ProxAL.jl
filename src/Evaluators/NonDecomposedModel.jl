@@ -54,7 +54,7 @@ function opf_model_nondecomposed(opfdata::OPFData, rawdata::RawData, modelinfo::
     opfmodel = JuMP.Model(algparams.optimizer)
     opf_model_add_variables(opfmodel, opfdata, modelinfo, algparams)
     opf_model_add_block_constraints(opfmodel, opfdata, rawdata, modelinfo)
-    obj_expr = compute_objective_function(opfmodel, opfdata, modelinfo)
+    obj_expr = compute_objective_function(opfmodel, opfdata, modelinfo, algparams)
 
     if algparams.mode == :lyapunov_bound
         lyapunov_expr = compute_quadratic_penalty(opfmodel, opfdata,  modelinfo, algparams)

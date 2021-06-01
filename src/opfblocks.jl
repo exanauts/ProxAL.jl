@@ -171,7 +171,7 @@ function opf_block_set_objective(blk::Int, opfmodel::JuMP.Model, opfblocks::OPFB
 
     opfdata = opfblocks.blkOpfdt[blk]
     modelinfo = opfblocks.blkMInfo[blk]
-    obj_expr = compute_objective_function(opfmodel, opfdata, modelinfo)
+    obj_expr = compute_objective_function(opfmodel, opfdata, modelinfo, algparams)
     auglag_penalty = opf_block_get_auglag_penalty_expr(blk, opfmodel, opfblocks, algparams, primal, dual)
     @objective(opfmodel, Min, obj_expr + auglag_penalty)
     return nothing

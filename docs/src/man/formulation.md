@@ -26,7 +26,7 @@ For numerical convergence reasons, `ProxAL` can implement the ramping constraint
 \end{aligned}\right\} \qquad \forall g \in G, \; \forall t \in T \setminus \{1\}.
 ```
 
-* _Penalty:_ In this form, `ProxAL` introduces additional continuous variables ``s_{g,t}`` and ``z_{g,t}`` along with the following constraints. Note that a penalty term ``w_t \|z\|^2`` is also added to the objective function, where the parameter ``w_t`` can be set using the `weight_quadratic_penalty_time` field of `ProxAL.ModelParams` in [Model parameters](@ref).
+* _Penalty:_ In this form, `ProxAL` introduces additional continuous variables ``s_{g,t}`` and ``z_{g,t}`` along with the following constraints. Note that a penalty term ``θ_t \|z\|^2`` is also added to the objective function, where the parameter ``θ_t`` is controlled within `ProxAL`, see [Algorithm parameters](@ref).
 ```math
 \left.\begin{aligned}
     0 \leq s_{g,t} \leq 2r_g  \\
@@ -74,7 +74,7 @@ The contingencies in each time period are linked together via their active power
     \end{aligned}\right\} \qquad \forall g \in G, \; \forall k \in K, \; \forall t \in T
   ```   
 
-    * _Corrective penalty:_ In this form, `ProxAL` introduces additional continuous variables ``s_{g,k,t}`` and ``z_{g,k,t}`` along with the following constraints. A penalty term ``w_k \|z_k  \|^2`` is also added to the objective function, where the parameter ``w_k`` can be set using the `weight_quadratic_penalty_ctgs` field of `ProxAL.ModelParams` in [Model parameters](@ref).  
+    * _Corrective penalty:_ In this form, `ProxAL` introduces additional continuous variables ``s_{g,k,t}`` and ``z_{g,k,t}`` along with the following constraints. A penalty term ``θ_c \|z_k  \|^2`` is also added to the objective function, where the parameter ``θ_c`` is controlled within `ProxAL`, see [Algorithm parameters](@ref).
   ```math
   \left.\begin{aligned}
       0 \leq s_{gkt} \leq 0.2\, r_g  \\

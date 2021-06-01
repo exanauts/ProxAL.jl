@@ -28,7 +28,6 @@ modelinfo.load_scale = load_scale
 modelinfo.ramp_scale = ramp_scale
 modelinfo.allow_obj_gencost = true
 modelinfo.allow_constr_infeas = false
-modelinfo.weight_quadratic_penalty_time = quad_penalty
 modelinfo.weight_freq_ctrl = quad_penalty
 modelinfo.time_link_constr_type = :penalty
 modelinfo.ctgs_link_constr_type = :frequency_ctrl
@@ -40,6 +39,7 @@ modelinfo.maxρ_c = 0.1
 algparams = AlgParams()
 algparams.parallel = false #algparams.parallel = (nprocs() > 1)
 algparams.verbose = 0
+algparams.θ_t = quad_penalty
 
 solver_list = ["Ipopt"]
 # TODO: MadNLP broken currently

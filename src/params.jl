@@ -31,6 +31,8 @@ Specifies ProxAL's algorithmic parameters.
 | `nlpiterlim::Int` |  maximum number of NLP subproblem iterations | 100
 | `tol::Float64` |     tolerance used for ProxAL termination | 1.0e-4
 | `zero::Float64` |    tolerance below which is regarded as zero | 1.0e-8
+| `θ_t::Float64` | see [Formulation](@ref) | 1.0
+| `θ_c::Float64` | see [Formulation](@ref) | 1.0
 | `ρ_t::Any` |         AL parameters for ramp constraints (can be different for different constraints) | 1.0
 | `ρ_c::Any` |         AL parameters for ctgs constraints (can be different for different constraints) | 1.0
 | `maxρ_t::Float64` |  Maximum value of `ρ_t` | 1.0
@@ -58,6 +60,8 @@ mutable struct AlgParams
     nlpiterlim::Int # maximum number of NLP subproblem iterations
     tol::Float64    # tolerance used for ADMM termination
     zero::Float64   # tolerance below which is regarded as zero
+    θ_t::Float64    # weight_quadratic_penalty_time
+    θ_c::Float64    # weight_quadratic_penalty_ctgs
     ρ_t::Any        # AL parameters for ramp constraints (can be different for different constraints)
     ρ_c::Any        # AL parameters for ctgs constraints (can be different for different constraints)
     maxρ_t::Float64 # Maximum value of ρ for ramp constraints
@@ -86,6 +90,8 @@ mutable struct AlgParams
             100,    # nlpiterlim
             1e-4,   # tol
             1e-8,   # zero
+            1.0,    # θ_t
+            1.0,    # θ_c
             1.0,    # ρ_t
             1.0,    # ρ_c
             1.0,    # maxρ_t
@@ -125,8 +131,6 @@ Specifies the ACOPF model structure.
 | `weight_constr_infeas::Float64` | quadratic penalty weight for constraint infeasibilities | 1.0
 | `weight_freq_ctrl::Float64` | quadratic penalty weight for frequency violations | 1.0
 | `weight_ctgs::Float64` | linear weight of contingency objective function | 1.0
-| `weight_quadratic_penalty_time::Float64` | see [Formulation](@ref) | 1.0
-| `weight_quadratic_penalty_ctgs::Float64` | see [Formulation](@ref) | 1.0
 | `case_name::String` | name of case file | ""
 | `savefile::String` | name of save file | ""
 | `time_link_constr_type::Symbol` | `∈ [:penalty, :equality, :inequality]` see [Formulation](@ref) | `:penalty`
@@ -143,8 +147,6 @@ mutable struct ModelParams
     weight_constr_infeas::Float64
     weight_freq_ctrl::Float64
     weight_ctgs::Float64
-    weight_quadratic_penalty_time::Float64
-    weight_quadratic_penalty_ctgs::Float64
     case_name::String
     savefile::String
     time_link_constr_type::Symbol
@@ -167,8 +169,6 @@ mutable struct ModelParams
             1.0,   # weight_constr_infeas
             1.0,   # weight_freq_ctrl
             1.0,   # weight_ctgs
-            1.0,   # weight_quadratic_penalty_time
-            1.0,   # weight_quadratic_penalty_ctgs
             "",    # case_name
             "",    # savefile
             :penalty,               # time_link_constr_type [:penalty,

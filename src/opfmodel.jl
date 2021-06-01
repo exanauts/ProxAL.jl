@@ -262,7 +262,7 @@ end
 
 
 
-function compute_objective_function(opfdict, opfdata::OPFData, modelinfo::ModelParams)
+function compute_objective_function(opfdict, opfdata::OPFData, modelinfo::ModelParams, algparams::AlgParams)
     Pg = opfdict[:Pg]
     ωt = opfdict[:ωt]
     Zt = opfdict[:Zt]
@@ -318,8 +318,8 @@ function compute_objective_function(opfdict, opfdata::OPFData, modelinfo::ModelP
             obj_gencost +
             (modelinfo.weight_constr_infeas*obj_constr_infeas) +
             (modelinfo.weight_freq_ctrl*obj_freq_ctrl) +
-            (modelinfo.weight_quadratic_penalty_time*obj_bigM_penalty_time) +
-            (modelinfo.weight_quadratic_penalty_ctgs*obj_bigM_penalty_ctgs)
+            (algparams.θ_t*obj_bigM_penalty_time) +
+            (algparams.θ_c*obj_bigM_penalty_ctgs)
         )
 end
 
@@ -402,7 +402,7 @@ function compute_lagrangian_function(opfdict, λ::DualSolution, opfdata::OPFData
 
     (ngen, K, T) = size(opfdict[:Pg])
 
-    obj = compute_objective_function(opfdict, opfdata, modelinfo)
+    obj = compute_objective_function(opfdict, opfdata, modelinfo, algparams)
 
     if T > 1
         link = compute_time_linking_constraints(opfdict, opfdata, modelinfo)
@@ -456,7 +456,7 @@ function compute_proximal_function(x1::PrimalSolution, x2::PrimalSolution,
 end
 
 function compute_objective_function(x::PrimalSolution, opfdata::OPFData,
-                                    modelinfo::ModelParams)
+                                    modelinfo::ModelParams, algparams::AlgParams)
     d = Dict(:Pg => x.Pg,
              :ωt => x.ωt,
              :Zt => x.Zt,
@@ -465,7 +465,7 @@ function compute_objective_function(x::PrimalSolution, opfdata::OPFData,
              :sigma_imag => x.sigma_imag,
              :sigma_lineFr => x.sigma_lineFr,
              :sigma_lineTo => x.sigma_lineTo)
-    return compute_objective_function(d, opfdata, modelinfo)
+    return compute_objective_function(d, opfdata, modelinfo, algparams)
 end
 
 function compute_lyapunov_function(x::PrimalSolution, λ::DualSolution, opfdata::OPFData,

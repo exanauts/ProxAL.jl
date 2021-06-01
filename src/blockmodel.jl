@@ -205,7 +205,7 @@ function set_objective!(block::JuMPBlockModel, algparams::AlgParams,
     modelinfo = block.params
     k, t = block.k, block.t
 
-    obj_expr = compute_objective_function(opfmodel, opfdata, modelinfo)
+    obj_expr = compute_objective_function(opfmodel, opfdata, modelinfo, algparams)
     auglag_penalty = opf_block_get_auglag_penalty_expr(
         blk, opfmodel, modelinfo, opfdata, k, t, algparams, primal, dual)
     @objective(opfmodel, Min, obj_expr + auglag_penalty)
