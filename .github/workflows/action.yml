@@ -17,8 +17,8 @@ jobs:
         with:
           version: ${{ matrix.julia-version }}
     # - run: julia --project -e 'using Pkg; Pkg.add(url="https://github.com/exanauts/Hiop.jl", rev="master")'
-      - run: julia --project -e 'using Pkg; Pkg.add(url="https://github.com/sshin23/MadNLP.jl", rev="master")'
       - run: julia --project -e 'using Pkg; Pkg.add(url="https://github.com/exanauts/ExaPF.jl", rev="develop")'
+      - run: julia --project -e 'using Pkg; Pkg.add(url="https://github.com/sshin23/MadNLP.jl", rev="master")'
       - uses: julia-actions/julia-buildpkg@latest
       - uses: julia-actions/julia-runtest@latest
 
@@ -38,7 +38,7 @@ jobs:
         with:
           version: ${{ matrix.julia-version }}
     # - run: julia --project -e 'using Pkg; Pkg.add(url="https://github.com/exanauts/Hiop.jl", rev="master")'
-      - run: julia --project -e 'using Pkg; Pkg.add(url="https://github.com/sshin23/MadNLP.jl", rev="master")'
       - run: julia --project -e 'using Pkg; Pkg.add(url="https://github.com/exanauts/ExaPF.jl", rev="develop")'
+      - run: julia --project -e 'using Pkg; Pkg.add(url="https://github.com/sshin23/MadNLP.jl", rev="master")'
       - uses: julia-actions/julia-buildpkg@latest
       - uses: julia-actions/julia-runtest@latest
