@@ -528,8 +528,9 @@ function compute_dual_error(x::PrimalSolution, xprev::PrimalSolution, λ::DualSo
             prox_pg_err = algparams.τ*(x.Pg[:,1,:] .- xprev.Pg[:,1,:])
             #----------------------------------------------------------------------------
 
-            err_pg[:,1,1:(T-1)] += -true_pg_dual .+ lagrangian_pg_err .- penalty_pg_reverse_err .- prox_pg_err[:,1:(T-1)]
-            err_pg[:,1,2:T] += true_pg_dual .- lagrangian_pg_err .- penalty_pg_forward_err .- prox_pg_err[:,2:T]
+            err_pg[:,1,1:(T-1)] += -true_pg_dual .+ lagrangian_pg_err .- penalty_pg_reverse_err
+            err_pg[:,1,2:T] += true_pg_dual .- lagrangian_pg_err .- penalty_pg_forward_err
+            err_pg[:,1,1:T] -= prox_pg_err[:,1:T]
             err_st[:,2:T] += penalty_pg_forward_err
             if modelinfo.time_link_constr_type ∈ [:equality, :penalty]
                 err_st[:,2:T] += -true_pg_dual .+ lagrangian_pg_err
