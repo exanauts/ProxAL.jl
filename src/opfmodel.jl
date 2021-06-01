@@ -518,11 +518,11 @@ function compute_dual_error(x::PrimalSolution, xprev::PrimalSolution, λ::DualSo
             lagrangian_pg_err = (modelinfo.time_link_constr_type == :inequality) ?
                                 (-λprev.ramping_p[:,2:T] .+ λprev.ramping_n[:,2:T]) :
                                 (-λprev.ramping[:,2:T])
-            penalty_pg_forward_err = -algparams.ρ_t[:,2:T].*(
+            penalty_pg_forward_err = -algparams.ρ_t*(
                                         (algparams.jacobi ? xprev.Pg[:,1,1:(T-1)] : x.Pg[:,1,1:(T-1)]) .-
                                         x.Pg[:,1,2:T] .+ x.St[:,2:T] .+ xprev.Zt[:,2:T] .- β[:,2:T]
                                     )
-            penalty_pg_reverse_err = +algparams.ρ_t[:,2:T].*(
+            penalty_pg_reverse_err = +algparams.ρ_t*(
                                         x.Pg[:,1,1:(T-1)] .- xprev.Pg[:,1,2:T] .+ xprev.St[:,2:T] .+ xprev.Zt[:,2:T] .- β[:,2:T]
                                     )
             prox_pg_err = algparams.τ*(x.Pg[:,1,:] .- xprev.Pg[:,1,:])
@@ -536,7 +536,7 @@ function compute_dual_error(x::PrimalSolution, xprev::PrimalSolution, λ::DualSo
                 err_st[:,2:T] += -true_pg_dual .+ lagrangian_pg_err
             end
             if modelinfo.time_link_constr_type == :penalty
-                err_zt[:,2:T] += -true_pg_dual .+ lagrangian_pg_err - (algparams.ρ_t[:,2:T].*(
+                err_zt[:,2:T] += -true_pg_dual .+ lagrangian_pg_err - (algparams.ρ_t*(
                                             x.Pg[:,1,1:(T-1)] .- x.Pg[:,1,2:T] .+ x.St[:,2:T] .+ x.Zt[:,2:T] .- β[:,2:T]
                                         ))
                 err_zt[:,2:T] -= (algparams.τ*(x.Zt[:,2:T] - xprev.Zt[:,2:T]))
@@ -576,8 +576,8 @@ function compute_dual_error(x::PrimalSolution, xprev::PrimalSolution, λ::DualSo
                 penalty_pg_ctgs_err[g,:,:] += opfdata.generators[g].alpha*xprev.ωt[2:K,:]
                 penalty_pg_base_err[g,:,:] += opfdata.generators[g].alpha*xprev.ωt[2:K,:]
             end
-            penalty_pg_base_err .= algparams.ρ_c[:,2:K,:].*penalty_pg_base_err
-            penalty_pg_ctgs_err .= -algparams.ρ_c[:,2:K,:].*penalty_pg_ctgs_err
+            penalty_pg_base_err .= algparams.ρ_c*penalty_pg_base_err
+            penalty_pg_ctgs_err .= -algparams.ρ_c*penalty_pg_ctgs_err
             #----------------------------------------------------------------------------
 
             err_pg[:,1,:] += dropdims(sum(-true_pg_ctgs_dual .+ lagrangian_pg_ctgs_err .- penalty_pg_base_err; dims = 2); dims = 2)
@@ -586,7 +586,7 @@ function compute_dual_error(x::PrimalSolution, xprev::PrimalSolution, λ::DualSo
                 for g=1:ngen
                     err_ωt[2:K,:] += opfdata.generators[g].alpha*(
                                         -true_pg_ctgs_dual[g,:,:].+lagrangian_pg_ctgs_err[g,:,:].-
-                                        (algparams.ρ_c[g,2:K,:].*(
+                                        (algparams.ρ_c*(
                                             pg_base[g,2:K,:] .- x.Pg[g,2:K,:] .+ (opfdata.generators[g].alpha*x.ωt[2:K,:])
                                         ))
                                     )
@@ -599,7 +599,7 @@ function compute_dual_error(x::PrimalSolution, xprev::PrimalSolution, λ::DualSo
                 err_sk[:,2:K,:] += -true_pg_ctgs_dual .+ lagrangian_pg_ctgs_err
             end
             if modelinfo.time_link_constr_type ∈ [:preventive_penalty, :corrective_penalty]
-                err_zk[:,2:K,:] += -true_pg_ctgs_dual .+ lagrangian_pg_ctgs_err - (algparams.ρ_c[:,2:K,:].*(
+                err_zk[:,2:K,:] += -true_pg_ctgs_dual .+ lagrangian_pg_ctgs_err - (algparams.ρ_c*(
                                             pg_base .- x.Pg[:,2:K,:] .+ x.Sk[:,2:K,:] .+ x.Zk[:,2:K,:] .- β[:,2:K,:]
                                         ))
                 err_zk[:,2:K,:] -= (algparams.τ*(x.Zk[:,2:K,:] - xprev.Zk[:,2:K,:]))
@@ -655,11 +655,11 @@ function opf_block_get_auglag_penalty_expr(
                 @assert abs(norm(primal.Zt)) <= algparams.zero
                 auglag_penalty += sum(dual.ramping_p[g,t]*(+ramp_link_expr_prev[g] - St[g,1]) +
                                       dual.ramping_n[g,t]*(-ramp_link_expr_prev[g] + St[g,1] - 2gens[g].ramp_agc) +
-                                      0.5*algparams.ρ_t[g,t]*(+ramp_link_expr_prev[g])^2
+                                      0.5*algparams.ρ_t*(+ramp_link_expr_prev[g])^2
                                     for g=1:ngen)
             else
                 auglag_penalty += sum(  dual.ramping[g,t]*(+ramp_link_expr_prev[g])   +
-                                      0.5*algparams.ρ_t[g,t]*(+ramp_link_expr_prev[g])^2
+                                      0.5*algparams.ρ_t*(+ramp_link_expr_prev[g])^2
                                     for g=1:ngen)
             end
         end
@@ -673,11 +673,11 @@ function opf_block_get_auglag_penalty_expr(
                 @assert abs(norm(primal.Zt)) <= algparams.zero
                 auglag_penalty += sum(dual.ramping_p[g,t+1]*(+ramp_link_expr_next[g] - primal.St[g,t+1]) +
                                       dual.ramping_n[g,t+1]*(-ramp_link_expr_next[g] + primal.St[g,t+1] - 2gens[g].ramp_agc) +
-                                      0.5*algparams.ρ_t[g,t+1]*(+ramp_link_expr_next[g])^2
+                                      0.5*algparams.ρ_t*(+ramp_link_expr_next[g])^2
                                     for g=1:ngen)
             else
                 auglag_penalty += sum(  dual.ramping[g,t+1]*(+ramp_link_expr_next[g]) +
-                                      0.5*algparams.ρ_t[g,t+1]*(+ramp_link_expr_next[g])^2
+                                      0.5*algparams.ρ_t*(+ramp_link_expr_next[g])^2
                                     for g=1:ngen)
             end
         end
@@ -701,11 +701,11 @@ function opf_block_get_auglag_penalty_expr(
                 @assert abs(norm(primal.Zk)) <= algparams.zero
                 auglag_penalty += sum(  dual.ctgs_p[g,k,t]*(+ctgs_link_expr_prev[g] - Sk[g,1,1]) +
                                         dual.ctgs_n[g,k,t]*(-ctgs_link_expr_prev[g] + Sk[g,1,1] - 2β[g]) +
-                                     0.5*algparams.ρ_c[g,k,t]*(+ctgs_link_expr_prev[g])^2
+                                     0.5*algparams.ρ_c*(+ctgs_link_expr_prev[g])^2
                                     for g=1:ngen)
             else
                 auglag_penalty += sum(    dual.ctgs[g,k,t]*(+ctgs_link_expr_prev[g]) +
-                                     0.5*algparams.ρ_c[g,k,t]*(+ctgs_link_expr_prev[g])^2
+                                     0.5*algparams.ρ_c*(+ctgs_link_expr_prev[g])^2
                                     for g=1:ngen)
             end
         else
@@ -719,11 +719,11 @@ function opf_block_get_auglag_penalty_expr(
                 @assert abs(norm(primal.Zk)) <= algparams.zero
                 auglag_penalty += sum(   dual.ctgs_p[g,j,t]*(+ctgs_link_expr_next[g,j] - primal.Sk[g,j,t]) +
                                          dual.ctgs_n[g,j,t]*(-ctgs_link_expr_next[g,j] + primal.Sk[g,j,t] - 2β[g]) +
-                                      0.5*algparams.ρ_c[g,j,t]*(+ctgs_link_expr_next[g,j])^2
+                                      0.5*algparams.ρ_c*(+ctgs_link_expr_next[g,j])^2
                                     for j=2:K, g=1:ngen)
             else
                 auglag_penalty += sum(     dual.ctgs[g,j,t]*(+ctgs_link_expr_next[g,j]) +
-                                      0.5*algparams.ρ_c[g,j,t]*(+ctgs_link_expr_next[g,j])^2
+                                      0.5*algparams.ρ_c*(+ctgs_link_expr_next[g,j])^2
                                     for j=2:K, g=1:ngen)
             end
         end

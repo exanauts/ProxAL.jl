@@ -393,7 +393,7 @@ function update_penalty!(block::ExaBlockModel, algparams::AlgParams,
         pgf = primal.Pg[:, 1, t-1] .+ primal.Zt[:, t] .- ramp_agc
         ExaPF.update_primal!(examodel, ExaPF.Previous(), pgf)
         # Update parameters
-        examodel.ρf = algparams.ρ_t[1, t]
+        examodel.ρf = algparams.ρ_t
     end
 
     # Update next values
@@ -403,7 +403,7 @@ function update_penalty!(block::ExaBlockModel, algparams::AlgParams,
         ExaPF.update_multipliers!(examodel, ExaPF.Next(), λt)
         ExaPF.update_primal!(examodel, ExaPF.Next(), pgt)
         # Update parameters
-        examodel.ρt = algparams.ρ_t[1, t+1]
+        examodel.ρt = algparams.ρ_t
     end
 end
 

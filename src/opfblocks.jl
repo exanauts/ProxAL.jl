@@ -307,11 +307,11 @@ function opf_block_get_auglag_penalty_expr(
                 @assert abs(norm(primal.Zt)) <= algparams.zero
                 auglag_penalty += sum(dual.ramping_p[g,t]*(+ramp_link_expr_prev[g] - St[g,1]) +
                                       dual.ramping_n[g,t]*(-ramp_link_expr_prev[g] + St[g,1] - 2gens[g].ramp_agc) +
-                                      0.5*algparams.ρ_t[g,t]*(+ramp_link_expr_prev[g])^2
+                                      0.5*algparams.ρ_t*(+ramp_link_expr_prev[g])^2
                                     for g=1:ngen)
             else
                 auglag_penalty += sum(  dual.ramping[g,t]*(+ramp_link_expr_prev[g])   +
-                                      0.5*algparams.ρ_t[g,t]*(+ramp_link_expr_prev[g])^2
+                                      0.5*algparams.ρ_t*(+ramp_link_expr_prev[g])^2
                                     for g=1:ngen)
             end
         end
@@ -325,11 +325,11 @@ function opf_block_get_auglag_penalty_expr(
                 @assert abs(norm(primal.Zt)) <= algparams.zero
                 auglag_penalty += sum(dual.ramping_p[g,t+1]*(+ramp_link_expr_next[g] - primal.St[g,t+1]) +
                                       dual.ramping_n[g,t+1]*(-ramp_link_expr_next[g] + primal.St[g,t+1] - 2gens[g].ramp_agc) +
-                                      0.5*algparams.ρ_t[g,t+1]*(+ramp_link_expr_next[g])^2
+                                      0.5*algparams.ρ_t*(+ramp_link_expr_next[g])^2
                                     for g=1:ngen)
             else
                 auglag_penalty += sum(  dual.ramping[g,t+1]*(+ramp_link_expr_next[g]) +
-                                      0.5*algparams.ρ_t[g,t+1]*(+ramp_link_expr_next[g])^2
+                                      0.5*algparams.ρ_t*(+ramp_link_expr_next[g])^2
                                     for g=1:ngen)
             end
         end
@@ -353,11 +353,11 @@ function opf_block_get_auglag_penalty_expr(
                 @assert abs(norm(primal.Zk)) <= algparams.zero
                 auglag_penalty += sum(  dual.ctgs_p[g,k,t]*(+ctgs_link_expr_prev[g] - Sk[g,1,1]) +
                                         dual.ctgs_n[g,k,t]*(-ctgs_link_expr_prev[g] + Sk[g,1,1] - 2β[g]) +
-                                     0.5*algparams.ρ_c[g,k,t]*(+ctgs_link_expr_prev[g])^2
+                                     0.5*algparams.ρ_c*(+ctgs_link_expr_prev[g])^2
                                     for g=1:ngen)
             else
                 auglag_penalty += sum(    dual.ctgs[g,k,t]*(+ctgs_link_expr_prev[g]) +
-                                     0.5*algparams.ρ_c[g,k,t]*(+ctgs_link_expr_prev[g])^2
+                                     0.5*algparams.ρ_c*(+ctgs_link_expr_prev[g])^2
                                     for g=1:ngen)
             end
         else
@@ -371,11 +371,11 @@ function opf_block_get_auglag_penalty_expr(
                 @assert abs(norm(primal.Zk)) <= algparams.zero
                 auglag_penalty += sum(   dual.ctgs_p[g,j,t]*(+ctgs_link_expr_next[g,j] - primal.Sk[g,j,t]) +
                                          dual.ctgs_n[g,j,t]*(-ctgs_link_expr_next[g,j] + primal.Sk[g,j,t] - 2β[g]) +
-                                      0.5*algparams.ρ_c[g,j,t]*(+ctgs_link_expr_next[g,j])^2
+                                      0.5*algparams.ρ_c*(+ctgs_link_expr_next[g,j])^2
                                     for j=2:K, g=1:ngen)
             else
                 auglag_penalty += sum(     dual.ctgs[g,j,t]*(+ctgs_link_expr_next[g,j]) +
-                                      0.5*algparams.ρ_c[g,j,t]*(+ctgs_link_expr_next[g,j])^2
+                                      0.5*algparams.ρ_c*(+ctgs_link_expr_next[g,j])^2
                                     for j=2:K, g=1:ngen)
             end
         end

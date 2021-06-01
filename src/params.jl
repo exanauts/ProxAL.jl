@@ -31,10 +31,10 @@ Specifies ProxAL's algorithmic parameters.
 | `nlpiterlim::Int` |  maximum number of NLP subproblem iterations | 100
 | `tol::Float64` |     tolerance used for ProxAL termination | 1.0e-4
 | `zero::Float64` |    tolerance below which is regarded as zero | 1.0e-8
-| `θ_t::Float64` | see [Formulation](@ref) | 1.0
-| `θ_c::Float64` | see [Formulation](@ref) | 1.0
-| `ρ_t::Any` |         AL parameters for ramp constraints (can be different for different constraints) | 1.0
-| `ρ_c::Any` |         AL parameters for ctgs constraints (can be different for different constraints) | 1.0
+| `θ_t::Float64` |     see [Formulation](@ref) | 1.0
+| `θ_c::Float64` |     see [Formulation](@ref) | 1.0
+| `ρ_t::Float64` |     AL parameter for ramp constraints | 1.0
+| `ρ_c::Float64` |     AL parameter for ctgs constraints | 1.0
 | `updateρ_t::Bool` |  if true: dynamically update `ρ_t` | false
 | `updateρ_c::Bool` |  if true: dynamically update `ρ_c` | false
 | `τ::Float64`       | Proximal weight parameter | 3.0
@@ -57,8 +57,8 @@ mutable struct AlgParams
     zero::Float64   # tolerance below which is regarded as zero
     θ_t::Float64    # weight_quadratic_penalty_time
     θ_c::Float64    # weight_quadratic_penalty_ctgs
-    ρ_t::Any        # AL parameters for ramp constraints (can be different for different constraints)
-    ρ_c::Any        # AL parameters for ctgs constraints (can be different for different constraints)
+    ρ_t::Float64    # AL parameter for ramp constraints
+    ρ_c::Float64    # AL parameter for ctgs constraints
     updateρ_t::Bool # Dynamically update ρ for ramp constraints
     updateρ_c::Bool # Dynamically update ρ for ctgs constraints
     τ::Float64      # Proximal coefficient
