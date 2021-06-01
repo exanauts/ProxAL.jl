@@ -55,14 +55,9 @@ opfdata = opf_loaddata(
         modelinfo.num_ctgs = K
         rawdata.ctgs_arr = deepcopy(ctgs_arr[1:modelinfo.num_ctgs])
 
-        set_penalty!(algparams;
-                 ngen = length(opfdata.generators),
-                 modelinfo = modelinfo,
-                 maxρ_t = maxρ,
-                 maxρ_c = maxρ)
-
         algparams.mode = :nondecomposed
-        result = solve_fullmodel(opfdata, rawdata, modelinfo, algparams)
+        nondecomposed = NonDecomposedModel(case_file, load_file, modelinfo, algparams)
+        result = ProxAL.optimize!(nondecomposed)
         @test isapprox(result["objective_value_nondecomposed"], 11.258316111585623, rtol = rtol)
         @test isapprox(result["primal"].Pg[:], [0.8979870694509675, 1.3432060120295906, 0.9418738103137331, 0.9840203268625166, 1.448040098924617, 1.0149638876964715], rtol = rtol)
         @test isapprox(result["primal"].Zt[:], [0.0, 0.0, 0.0, 2.7859277234613066e-6, 2.3533760802049378e-6, 2.0234235436650152e-6], rtol = rtol)

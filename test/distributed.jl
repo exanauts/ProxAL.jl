@@ -33,9 +33,6 @@ modelinfo.time_link_constr_type = :penalty
 modelinfo.ctgs_link_constr_type = :frequency_ctrl
 modelinfo.case_name = case
 modelinfo.num_ctgs = K
-# rho related
-modelinfo.maxρ_t = maxρ
-modelinfo.maxρ_c = maxρ
 
 # Algorithm settings
 algparams = AlgParams()
@@ -44,6 +41,8 @@ algparams.verbose = 0
 algparams.init_opf = true
 algparams.θ_t = quad_penalty
 algparams.θ_c = quad_penalty
+algparams.ρ_t = algparams.ρ_c = maxρ
+algparams.τ = 3maxρ
 algparams.decompCtgs = false
 algparams.optimizer =
 optimizer_with_attributes(Ipopt.Optimizer, "print_level" => Int64(algparams.verbose > 0)*5)

@@ -22,7 +22,7 @@ include("Evaluators/ProxALEvalutor.jl")
 include("Evaluators/NonDecomposedModel.jl")
 
 export ModelParams, AlgParams
-export ProxALEvaluator, NonDecomposedModel, set_penalty!
+export ProxALEvaluator, NonDecomposedModel
 export optimize!
 
 function update_primal_nlpvars(x::PrimalSolution, opfBlockData::OPFBlocks, blk::Int,

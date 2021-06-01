@@ -59,13 +59,6 @@ function ProxALEvaluator(
             end
         end
     end
-    set_penalty!(
-        algparams,
-        length(opfdata.generators),
-        modelinfo.maxρ_t,
-        modelinfo.maxρ_c,
-        modelinfo
-    )
 
     # ctgs_arr = deepcopy(rawdata.ctgs_arr)
     alminfo = ProxALMData(opfdata, rawdata, modelinfo, algparams, space, opt_sol, lyapunov_sol)
@@ -210,13 +203,9 @@ function optimize!(nlp::ProxALEvaluator)
 
         if runinfo.initial_solve
             if runinfo.iter == 1
-                set_penalty!(algparams,
-                         length(opfdata.generators),
-                         0.0,
-                         0.0,
-                         modelinfo)
-                algparams.updateρ_t = false
-                algparams.updateρ_c = false
+                algparams.ρ_t = 0.0
+                algparams.ρ_c = 0.0
+                algparams.τ = 0.0
             elseif runinfo.iter == 2
                 algparams = deepcopy(algparams_copy)
             end

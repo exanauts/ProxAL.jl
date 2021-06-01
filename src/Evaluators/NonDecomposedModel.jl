@@ -24,13 +24,6 @@ function NonDecomposedModel(
         load_scale = modelinfo.load_scale,
         ramp_scale = modelinfo.ramp_scale
     )
-    set_penalty!(
-        algparams,
-        length(opfdata.generators),
-        modelinfo.maxρ_t,
-        modelinfo.maxρ_c,
-        modelinfo
-    )
 
     # ctgs_arr = deepcopy(rawdata.ctgs_arr)
     alminfo = ProxALMData(opfdata, rawdata, modelinfo, algparams, space)

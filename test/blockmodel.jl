@@ -28,15 +28,15 @@ load_file = joinpath(DATA_DIR, "mp_demand", "$(case)_oneweek_168")
     modelinfo.ramp_scale = ramp_scale
     modelinfo.allow_obj_gencost = true
     modelinfo.allow_constr_infeas = false
-    # rho related
-    modelinfo.maxρ_t = maxρ
-    modelinfo.maxρ_c = maxρ
 
     # Algorithm settings
     algparams = AlgParams()
     algparams.parallel = false #algparams.parallel = (nprocs() > 1)
     algparams.verbose = 0
     algparams.mode = :coldstart
+    algparams.ρ_t = maxρ
+    algparams.ρ_c = maxρ
+    algparams.τ = 3maxρ
 
     modelinfo.case_name = case
     algparams.optimizer = optimizer_with_attributes(

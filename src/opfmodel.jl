@@ -393,8 +393,8 @@ function compute_quadratic_penalty(opfdict, opfdata::OPFData,
     end
 
 
-    return ((0.5algparams.maxρ_t*lyapunov_quadratic_penalty_time) +
-            (0.5algparams.maxρ_c*lyapunov_quadratic_penalty_ctgs))
+    return ((0.5algparams.ρ_t*lyapunov_quadratic_penalty_time) +
+            (0.5algparams.ρ_c*lyapunov_quadratic_penalty_ctgs))
 end
 
 function compute_lagrangian_function(opfdict, λ::DualSolution, opfdata::OPFData,

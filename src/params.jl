@@ -35,8 +35,6 @@ Specifies ProxAL's algorithmic parameters.
 | `θ_c::Float64` | see [Formulation](@ref) | 1.0
 | `ρ_t::Any` |         AL parameters for ramp constraints (can be different for different constraints) | 1.0
 | `ρ_c::Any` |         AL parameters for ctgs constraints (can be different for different constraints) | 1.0
-| `maxρ_t::Float64` |  Maximum value of `ρ_t` | 1.0
-| `maxρ_c::Float64` |  Maximum value of `ρ_c` | 1.0
 | `updateρ_t::Bool` |  if true: dynamically update `ρ_t` | false
 | `updateρ_c::Bool` |  if true: dynamically update `ρ_c` | false
 | `τ::Float64`       | Proximal weight parameter | 3.0
@@ -61,8 +59,6 @@ mutable struct AlgParams
     θ_c::Float64    # weight_quadratic_penalty_ctgs
     ρ_t::Any        # AL parameters for ramp constraints (can be different for different constraints)
     ρ_c::Any        # AL parameters for ctgs constraints (can be different for different constraints)
-    maxρ_t::Float64 # Maximum value of ρ for ramp constraints
-    maxρ_c::Float64 # Maximum value of ρ for ctgs constraints
     updateρ_t::Bool # Dynamically update ρ for ramp constraints
     updateρ_c::Bool # Dynamically update ρ for ctgs constraints
     τ::Float64      # Proximal coefficient
@@ -88,8 +84,6 @@ mutable struct AlgParams
             1.0,    # θ_c
             1.0,    # ρ_t
             1.0,    # ρ_c
-            1.0,    # maxρ_t
-            1.0,    # maxρ_c
             false,  # updateρ_t
             false,  # updateρ_c
             3.0,    # τ
@@ -142,9 +136,6 @@ mutable struct ModelParams
     savefile::String
     time_link_constr_type::Symbol
     ctgs_link_constr_type::Symbol
-    # rho related
-    maxρ_t::Float64
-    maxρ_c::Float64
     
 
 
@@ -171,48 +162,6 @@ mutable struct ModelParams
                                     #                        :corrective_penalty,
                                     #                        :corrective_equality,
                                     #                        :corrective_inequality]
-            0.1,
-            0.1
         )
     end
 end
-
-"""
-    set_penalty!(algparams::AlgParams;
-             ngen::Int,
-             maxρ_t::Float64,
-             maxρ_c::Float64,
-             modelinfo::ModelParams)
-
-Initialize `algparams` for an ACOPF instance with `ngen` generators,
-maximum augmented lagrangian parameter value of
-`maxρ_t` (for ramping constraints),
-`maxρ_c` (for contingency constraints),
-and with model parameters specified in `modelinfo`.
-"""
-function set_penalty!(
-    algparams::AlgParams,
-    ngen::Int,
-    maxρ_t::Float64,
-    maxρ_c::Float64,
-    modelinfo::ModelParams
-)
-    algparams.updateρ_t = (modelinfo.time_link_constr_type == :inequality)
-    algparams.updateρ_c = (modelinfo.ctgs_link_constr_type == :corrective_inequality)
-    algparams.ρ_t = maxρ_t*ones(ngen, modelinfo.num_time_periods)
-    algparams.ρ_c = maxρ_c*ones(ngen, modelinfo.num_ctgs + 1, modelinfo.num_time_periods)
-    if algparams.updateρ_t
-        algparams.ρ_t .= 0
-        algparams.ρ_t_tol = 1e-3*ones(size(algparams.ρ_t))
-    end
-    if algparams.updateρ_c
-        algparams.ρ_c .= 0
-        algparams.ρ_c_tol = 1e-3*ones(size(algparams.ρ_c))
-    end
-    algparams.maxρ_t = maxρ_t
-    algparams.maxρ_c = maxρ_c
-    algparams.τ = algparams.jacobi ? ((algparams.decompCtgs && modelinfo.num_ctgs > 0) ?
-                            3max(maxρ_t, maxρ_c) : 3maxρ_t) : 0.0
-    return nothing
-end
-
