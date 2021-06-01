@@ -130,7 +130,7 @@ Specifies the ACOPF model structure.
 | `case_name::String` | name of case file | ""
 | `savefile::String` | name of save file | ""
 | `time_link_constr_type::Symbol` | `∈ [:penalty, :equality, :inequality]` see [Formulation](@ref) | `:penalty`
-| `ctgs_link_constr_type::Symbol` | `∈ [:frequency_ctrl, :preventive_penalty, :preventive_equality, :corrective_penalty, :corrective_equality, :corrective_penalty]`, see [Formulation](@ref) | `:preventive_equality`
+| `ctgs_link_constr_type::Symbol` | `∈ [:frequency_ctrl, :preventive_penalty, :preventive_equality, :corrective_penalty, :corrective_equality, :corrective_inequality]`, see [Formulation](@ref) | `:frequency_ctrl`
 """
 mutable struct ModelParams
     num_time_periods::Int
@@ -174,7 +174,7 @@ mutable struct ModelParams
             :penalty,               # time_link_constr_type [:penalty,
                                     #                        :equality,
                                     #                        :inequality]
-            :preventive_equality,    # ctgs_link_constr_type [:frequency_ctrl,
+            :frequency_ctrl,        # ctgs_link_constr_type [:frequency_ctrl,
                                     #                        :preventive_penalty,
                                     #                        :preventive_equality,
                                     #                        :corrective_penalty,
