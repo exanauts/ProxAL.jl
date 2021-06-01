@@ -39,8 +39,6 @@ Specifies ProxAL's algorithmic parameters.
 | `maxρ_c::Float64` |  Maximum value of `ρ_c` | 1.0
 | `updateρ_t::Bool` |  if true: dynamically update `ρ_t` | false
 | `updateρ_c::Bool` |  if true: dynamically update `ρ_c` | false
-| `ρ_t_tol::Any` |     Tolerance for dynamic update of `ρ_t` | 1.0e-3
-| `ρ_c_tol::Any` |     Tolerance for dynamic update of `ρ_c` | 1.0e-3
 | `τ::Float64`       | Proximal weight parameter | 3.0
 | `updateτ::Bool` |    if true: dynamically update `τ` | false
 | `verbose::Int` |     level of output: 0 (none), 1 (stdout), 2 (+plots), 3 (+outfiles) | 0
@@ -67,8 +65,6 @@ mutable struct AlgParams
     maxρ_c::Float64 # Maximum value of ρ for ctgs constraints
     updateρ_t::Bool # Dynamically update ρ for ramp constraints
     updateρ_c::Bool # Dynamically update ρ for ctgs constraints
-    ρ_t_tol::Any    # Tolerance for dynamic update of ρ for ramp constraints
-    ρ_c_tol::Any    # Tolerance for dynamic update of ρ for ramp constraints
     τ::Float64      # Proximal coefficient
     updateτ::Bool   # Dynamically update τ
     verbose::Int    # level of output: 0 (none), 1 (stdout), 2 (+plots), 3 (+outfiles)
@@ -96,8 +92,6 @@ mutable struct AlgParams
             1.0,    # maxρ_c
             false,  # updateρ_t
             false,  # updateρ_c
-            1e-3,   # ρ_t_tol
-            1e-3,   # ρ_c_tol
             3.0,    # τ
             false,  # updateτ
             0,      # verbose
