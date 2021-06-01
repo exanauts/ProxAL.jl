@@ -42,7 +42,6 @@ Specifies ProxAL's algorithmic parameters.
 | `ρ_t_tol::Any` |     Tolerance for dynamic update of `ρ_t` | 1.0e-3
 | `ρ_c_tol::Any` |     Tolerance for dynamic update of `ρ_c` | 1.0e-3
 | `τ::Float64`       | Proximal weight parameter | 3.0
-| `θ::Float64`       | Relaxation parameter for update of dual variables | 1.0
 | `updateτ::Bool` |    if true: dynamically update `τ` | false
 | `verbose::Int` |     level of output: 0 (none), 1 (stdout), 2 (+plots), 3 (+outfiles) | 0
 | `mode::Symbol` |     computation mode `∈ [:nondecomposed, :coldstart, :lyapunov_bound]` | `:nondecomposed`
@@ -71,7 +70,6 @@ mutable struct AlgParams
     ρ_t_tol::Any    # Tolerance for dynamic update of ρ for ramp constraints
     ρ_c_tol::Any    # Tolerance for dynamic update of ρ for ramp constraints
     τ::Float64      # Proximal coefficient
-    θ::Float64      # Relaxation parameter for update of dual variables
     updateτ::Bool   # Dynamically update τ
     verbose::Int    # level of output: 0 (none), 1 (stdout), 2 (+plots), 3 (+outfiles)
     mode::Symbol    # computation mode [:nondecomposed, :coldstart, :lyapunov_bound]
@@ -101,7 +99,6 @@ mutable struct AlgParams
             1e-3,   # ρ_t_tol
             1e-3,   # ρ_c_tol
             3.0,    # τ
-            1.0,    # θ
             false,  # updateτ
             0,      # verbose
             :nondecomposed, # mode

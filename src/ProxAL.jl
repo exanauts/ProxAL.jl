@@ -115,10 +115,10 @@ function update_dual_vars(λ::DualSolution, opfdata::OPFData,
         end
 
         if modelinfo.time_link_constr_type == :inequality
-            λ.ramping_p .= max.(λ.ramping_p .+ (algparams.θ*algparams.ρ_t.*link_constr[:ramping_p]), 0)
-            λ.ramping_n .= max.(λ.ramping_n .+ (algparams.θ*algparams.ρ_t.*link_constr[:ramping_n]), 0)
+            λ.ramping_p .= max.(λ.ramping_p .+ (algparams.ρ_t.*link_constr[:ramping_p]), 0)
+            λ.ramping_n .= max.(λ.ramping_n .+ (algparams.ρ_t.*link_constr[:ramping_n]), 0)
         else
-            λ.ramping += algparams.θ*algparams.ρ_t.*link_constr[:ramping]
+            λ.ramping += algparams.ρ_t.*link_constr[:ramping]
         end
 
         maxviol_t = maximum(viol_t)
@@ -137,10 +137,10 @@ function update_dual_vars(λ::DualSolution, opfdata::OPFData,
         end
 
         if modelinfo.time_link_constr_type == :corrective_inequality
-            λ.ctgs_p .= max.(λ.ctgs_p .+ (algparams.θ*algparams.ρ_c.*link_constr[:ctgs_p]), 0)
-            λ.ctgs_n .= max.(λ.ctgs_n .+ (algparams.θ*algparams.ρ_c.*link_constr[:ctgs_n]), 0)
+            λ.ctgs_p .= max.(λ.ctgs_p .+ (algparams.ρ_c.*link_constr[:ctgs_p]), 0)
+            λ.ctgs_n .= max.(λ.ctgs_n .+ (algparams.ρ_c.*link_constr[:ctgs_n]), 0)
         else
-            λ.ctgs += algparams.θ*algparams.ρ_c.*link_constr[:ctgs]
+            λ.ctgs += algparams.ρ_c.*link_constr[:ctgs]
         end
 
         maxviol_c = maximum(viol_c)
