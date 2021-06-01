@@ -183,7 +183,7 @@ function optimize!(nlp::ProxALEvaluator)
     #------------------------------------------------------------------------------------
 
     # Initialization of Pg, Qg, Vm, Va via a OPF solve
-    modelinfo.init_opf && opf_initialization!(nlp)
+    algparams.init_opf && opf_initialization!(nlp)
 
 
     for runinfo.iter=1:algparams.iterlim

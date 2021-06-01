@@ -31,8 +31,6 @@ load_file = joinpath(DATA_DIR, "mp_demand", "$(case)_oneweek_168")
     # rho related
     modelinfo.maxρ_t = maxρ
     modelinfo.maxρ_c = maxρ
-    # Initialize block OPFs with base OPF solution
-    modelinfo.init_opf = false
 
     # Algorithm settings
     algparams = AlgParams()

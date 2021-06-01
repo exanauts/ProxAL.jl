@@ -48,6 +48,7 @@ Specifies ProxAL's algorithmic parameters.
 | `gpu_optimizer::Any` | GPU-compatible NLP solver | `nothing`
 | `nr_tol::Float64`    | Tolerance of the Newton-Raphson algorithm (used only in `ReducedSpace()` model) | 1e-10
 | `device::TargetDevice` | Target device to deport the resolution of the optimization problem | CPU
+| `init_opt::Bool` |   if true: initialize block OPFs with base OPF solution | false
 """
 mutable struct AlgParams
     decompCtgs::Bool# decompose contingencies (along with time)
@@ -74,6 +75,7 @@ mutable struct AlgParams
     gpu_optimizer::Any  # GPU-compatible NLP solver for fullmodel and subproblems
     nr_tol::Float64 # Tolerance of the Newton-Raphson algorithm used in resolution of ExaBlockModel backend
     device::TargetDevice
+    init_opf::Bool  # initialize block OPFs with base OPF solution
 
     function AlgParams()
         new(
@@ -99,8 +101,9 @@ mutable struct AlgParams
             :nondecomposed, # mode
             nothing, # optimizer
             nothing, # GPU optimizer
-            1e-10,
-            CPU,
+            1e-10,   # nr_tol
+            CPU,     # device
+            false,   # init_opf
         )
     end
 end
@@ -149,8 +152,7 @@ mutable struct ModelParams
     # rho related
     maxρ_t::Float64
     maxρ_c::Float64
-    # Initialize block OPFs with base OPF solution
-    init_opf::Bool
+    
 
 
     function ModelParams()
@@ -179,8 +181,7 @@ mutable struct ModelParams
                                     #                        :corrective_equality,
                                     #                        :corrective_inequality]
             0.1,
-            0.1,
-            false
+            0.1
         )
     end
 end

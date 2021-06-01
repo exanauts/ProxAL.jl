@@ -38,13 +38,12 @@ modelinfo.num_ctgs = K
 # rho related
 modelinfo.maxρ_t = maxρ
 modelinfo.maxρ_c = maxρ
-# Initialize block OPFs with base OPF solution
-modelinfo.init_opf = true
 
 # Algorithm settings
 algparams = AlgParams()
 algparams.parallel = true #algparams.parallel = (nprocs() > 1)
 algparams.verbose = 0
+algparams.init_opf = true
 algparams.decompCtgs = false
 algparams.optimizer =
 optimizer_with_attributes(Ipopt.Optimizer, "print_level" => Int64(algparams.verbose > 0)*5)

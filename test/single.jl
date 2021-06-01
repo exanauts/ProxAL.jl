@@ -35,8 +35,6 @@ modelinfo.ctgs_link_constr_type = :frequency_ctrl
 # rho related
 modelinfo.maxρ_t = 0.1
 modelinfo.maxρ_c = 0.1
-# Initialize block OPFs with base OPF solution
-modelinfo.init_opf = false
 
 # Algorithm settings
 algparams = AlgParams()

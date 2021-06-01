@@ -42,8 +42,6 @@ modelinfo.num_ctgs = K
 # rho related
 modelinfo.maxρ_t = maxρ
 modelinfo.maxρ_c = maxρ
-# Initialize block OPFs with base OPF solution
-modelinfo.init_opf = false
 
 # Algorithm settings
 algparams = AlgParams()
