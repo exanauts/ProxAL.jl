@@ -240,16 +240,18 @@ function opf_loaddata(raw::RawData;
     ncols_lines = size(branch_arr, 2)
 
     lit = 0
+    has_voltage_angle_bounds = false
     for i in lines_on
         @assert branch_arr[i,11] == 1  #should be on since we discarded all other
         lit += 1
         lines[lit] = Line(branch_arr[i, 1:ncols_lines]...)
         if lines[lit].angmin > -360 || lines[lit].angmax < 360
-            error("Bounds of voltage angles are still to be implemented.")
+            has_voltage_angle_bounds = true
         end
 
     end
     @assert lit == num_on
+    (has_voltage_angle_bounds) && println("Bounds of voltage angles are still to be implemented.")
 
     #
     # load generators
@@ -315,7 +317,8 @@ function opf_loaddata(raw::RawData;
     topology = PS.makeYbus(bus_arr, branch_arr[lines_on, :], baseMVA, busIdx)
     Ybus = topology.ybus
     # generators at each bus
-    BusGeners = PS.get_bus_generators(bus_arr, gen_arr, busIdx)
+    gen_active = gen_arr[gens_on, :]
+    BusGeners = PS.get_bus_generators(bus_arr, gen_active, busIdx)
 
     # demands for multiperiod OPF
     Pd = raw.pd_arr

@@ -561,8 +561,10 @@ function TronBlockModel(
     use_polar=true, iterlim=800, verbose=1, use_twolevel=false,
 ) where VT
     trondata = ExaTron.OPFData(opfdata)
-    env = ExaTron.AdmmEnv(trondata, VT, rho_pq, rho_va;
-                          use_gpu=use_gpu, use_polar=use_polar, gpu_no=gpu_no, verbose=verbose, use_twolevel=use_twolevel)
+    env = ExaTron.ProxALAdmmEnv(
+        trondata, VT, t, T, rho_pq, rho_va;
+        use_gpu=use_gpu, use_polar=use_polar, gpu_no=gpu_no, verbose=verbose, use_twolevel=use_twolevel
+    )
     return TronBlockModel(env, blk, k, t, opfdata, modelinfo, iterlim, scale)
 end
 
@@ -591,12 +593,47 @@ function init!(block::TronBlockModel, algparams::AlgParams)
     ExaTron.set_active_load!(opfmodel, pd)
     ExaTron.set_reactive_load!(opfmodel, qd)
 
-    # TODO
     # Set bounds on slack variables s
-    # copyto!(opfmodel.s_max, 2 .* ramp_agc)
-    # opfmodel.scale_objective = modelinfo.obj_scale
+    ExaTron.set_upper_bound_slack!(opfmodel, 2 .* ramp_agc)
 
     return opfmodel
+end
+
+function update_penalty!(block::TronBlockModel, algparams::AlgParams,
+                         primal::PrimalSolution, dual::DualSolution)
+    examodel = block.env
+    opfdata = block.data
+    modelinfo = block.params
+    # Generators
+    gens = block.data.generators
+
+    t, k = block.t, block.k
+    ramp_agc = [g.ramp_agc for g in gens]
+
+    # Update current values
+    λf = dual.ramping[:, t]
+    pgc = primal.Pg[:, k, t]
+    ExaTron.set_multiplier_last!(examodel, λf)
+    ExaTron.set_proximal_ref!(examodel, pgc)
+    ExaTron.set_proximal_term!(examodel, algparams.τ)
+
+    # Update previous values
+    if t > 1
+        pgf = primal.Pg[:, 1, t-1] .+ primal.Zt[:, t] .- ramp_agc
+        ExaTron.set_proximal_last!(examodel, pgf)
+        # Update parameters
+        # TODO: check rho
+        # examodel.ρf = algparams.ρ_t[1, t]
+    end
+
+    # Update next values
+    if false
+        λt = dual.ramping[:, t+1]
+        pgt = primal.Pg[:, 1, t+1] .- primal.St[:, t+1] .- primal.Zt[:, t+1] .+ ramp_agc
+        ExaTron.set_multiplier_next!(examodel, λt)
+        ExaTron.set_proximal_next!(examodel, pgt)
+        ExaTron.set_penalty!(examodel, algparams.ρ_t[1, t+1])
+    end
 end
 
 function set_objective!(block::TronBlockModel, algparams::AlgParams,
