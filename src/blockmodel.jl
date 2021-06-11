@@ -517,10 +517,12 @@ struct TronBlockModel <: AbstractBlockModel
     id::Int
     k::Int
     t::Int
+    T::Int
     data::OPFData
     params::ModelParams
     iterlim::Int
-    scale::Float64
+    tron_scale::Float64
+    objective_scaling::Float64
 end
 
 # Map ProxAL's data to ExaTron's data
@@ -558,14 +560,14 @@ function TronBlockModel(
     opfdata::OPFData, raw_data::RawData,
     modelinfo::ModelParams, t::Int, k::Int, T::Int;
     use_gpu=false, gpu_no=1, rho_pq=400.0, rho_va=4e4, scale=1e-4,
-    use_polar=true, iterlim=800, verbose=1, use_twolevel=false,
+    use_polar=true, iterlim=800, verbose=1, use_twolevel=true,
 ) where VT
     trondata = ExaTron.OPFData(opfdata)
     env = ExaTron.ProxALAdmmEnv(
         trondata, VT, t, T, rho_pq, rho_va;
         use_gpu=use_gpu, use_polar=use_polar, gpu_no=gpu_no, verbose=verbose, use_twolevel=use_twolevel
     )
-    return TronBlockModel(env, blk, k, t, opfdata, modelinfo, iterlim, scale)
+    return TronBlockModel(env, blk, k, t, T, opfdata, modelinfo, iterlim, scale, modelinfo.obj_scale)
 end
 
 function init!(block::TronBlockModel, algparams::AlgParams)
@@ -599,8 +601,8 @@ function init!(block::TronBlockModel, algparams::AlgParams)
     return opfmodel
 end
 
-function update_penalty!(block::TronBlockModel, algparams::AlgParams,
-                         primal::PrimalSolution, dual::DualSolution)
+function set_objective!(block::TronBlockModel, algparams::AlgParams,
+                        primal::PrimalSolution, dual::DualSolution)
     examodel = block.env
     opfdata = block.data
     modelinfo = block.params
@@ -610,12 +612,16 @@ function update_penalty!(block::TronBlockModel, algparams::AlgParams,
     t, k = block.t, block.k
     ramp_agc = [g.ramp_agc for g in gens]
 
+    # NOTE: ExaTron is solving the unscaled problem.
+    # Need to prescale the penalty and the multipliers
+    σ = block.objective_scaling
+
     # Update current values
-    λf = dual.ramping[:, t]
+    λf = dual.ramping[:, t] ./ σ
     pgc = primal.Pg[:, k, t]
     ExaTron.set_multiplier_last!(examodel, λf)
     ExaTron.set_proximal_ref!(examodel, pgc)
-    ExaTron.set_proximal_term!(examodel, algparams.τ)
+    ExaTron.set_proximal_term!(examodel, algparams.τ / σ)
 
     # Update previous values
     if t > 1
@@ -627,19 +633,13 @@ function update_penalty!(block::TronBlockModel, algparams::AlgParams,
     end
 
     # Update next values
-    if false
-        λt = dual.ramping[:, t+1]
+    if t < block.T
+        λt = dual.ramping[:, t+1] ./ σ
         pgt = primal.Pg[:, 1, t+1] .- primal.St[:, t+1] .- primal.Zt[:, t+1] .+ ramp_agc
         ExaTron.set_multiplier_next!(examodel, λt)
         ExaTron.set_proximal_next!(examodel, pgt)
-        ExaTron.set_penalty!(examodel, algparams.ρ_t[1, t+1])
+        ExaTron.set_penalty!(examodel, algparams.ρ_t[1, t+1] / σ)
     end
-end
-
-function set_objective!(block::TronBlockModel, algparams::AlgParams,
-                        primal::PrimalSolution, dual::DualSolution)
-    error("Currently not implemented")
-    return
 end
 
 function get_solution(block::TronBlockModel, output)
@@ -652,15 +652,16 @@ function get_solution(block::TronBlockModel, output)
         MOI.ITERATION_LIMIT
     end
 
+    s = ExaTron.slack_values(block.env)
     model = block.env.model
-
     solution = (
         status=status,
-        minimum=output.objval,
+        minimum=block.objective_scaling * output.objval,
         pg=ExaTron.active_power_generation(model, output),
         qg=ExaTron.reactive_power_generation(model, output),
         vm=ExaTron.voltage_magnitude(model, output),
         va=ExaTron.voltage_angle(model, output),
+        st=s,
     )
     return solution
 end
@@ -688,7 +689,7 @@ function optimize!(block::TronBlockModel, x0::Union{Nothing, AbstractArray}, alg
         set_start_values!(block, x0)
     end
     # Optimize with optimizer, using ExaPF model
-    ExaTron.admm_restart!(block.env; scale=block.scale)
+    ExaTron.admm_restart!(block.env; scale=block.tron_scale, outer_iterlim=20)
     # Recover solution in ProxAL format
     solution = get_solution(block, block.env.solution)
 
