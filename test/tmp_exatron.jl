@@ -56,7 +56,7 @@ load_file = joinpath(DATA_DIR, "mp_demand", "$(case)_oneweek_168")
     modelinfo_local = deepcopy(nlp.modelinfo)
     modelinfo_local.num_time_periods = 1
 
-    @testset "Timestep $t (twolevel=$two_level)" for t in 1:T, two_level in [false, true]
+    @testset "Timestep $t (twolevel=$two_level)" for t in 1:T, two_level in [true]
         opfdata_c = ProxAL.opf_loaddata(nlp.rawdata;
                             time_horizon_start = t,
                             time_horizon_end = t,
@@ -80,10 +80,19 @@ load_file = joinpath(DATA_DIR, "mp_demand", "$(case)_oneweek_168")
         println(solution.pg)
 
         # Test setters
-        env = blockmodel.env
-        n = 2 * env.model.ngen + 2 * env.model.nbus
-        x0 = zeros(n)
-        ProxAL.set_start_values!(blockmodel, x0)
+        @testset "Setters" begin
+            env = blockmodel.env
+            model = env.model
+            ngen = model.gen_mod.ngen
+            n = 2 * ngen + 2 * model.nbus
+            x0 = zeros(n)
+            # Update starting point
+            ProxAL.set_start_values!(blockmodel, x0)
+
+            primal = ProxAL.PrimalSolution(opfdata_c, modelinfo)
+            dual = ProxAL.DualSolution(opfdata_c, modelinfo)
+            ProxAL.update_penalty!(blockmodel, nlp.algparams, primal, dual)
+        end
     end
 end
 
