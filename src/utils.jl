@@ -167,7 +167,7 @@ function update_runinfo(
     end
 
     if algparams.verbose > 0
-        @printf("iter %3d: ramp_err = %.3f, ctgs_err = %.3f, dual_err = %.3f, |x-x*| = %.3f, |λ-λ*| = %.3f, gap = %.2f%%, lyapgap = %.2f%%\n",
+        @printf("iter %3d: ramp_err = %.3e, ctgs_err = %.3e, dual_err = %.3e, |x-x*| = %.3f, |λ-λ*| = %.3f, gap = %.2f%%, lyapgap = %.2f%%\n",
                     iter,
                     runinfo.maxviol_t[iter],
                     runinfo.maxviol_c[iter],

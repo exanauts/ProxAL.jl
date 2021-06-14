@@ -569,7 +569,7 @@ function TronBlockModel(
     trondata = ExaTron.OPFData(opfdata)
     env = ExaTron.ProxALAdmmEnv(
         trondata, use_gpu, t, T, algparams.tron_rho_pq, algparams.tron_rho_pa;
-        verbose=algparams.verbose_inner, use_twolevel=true,
+        verbose=algparams.verbose_inner, use_twolevel=true, outer_eps=algparams.tron_outer_eps,
     )
     return TronBlockModel(env, blk, k, t, T, opfdata, modelinfo, iterlim, scale, modelinfo.obj_scale)
 end
@@ -621,19 +621,17 @@ function set_objective!(block::TronBlockModel, algparams::AlgParams,
     σ = block.objective_scaling
 
     # Update current values
-    λf = dual.ramping[:, t] ./ σ
     pgc = primal.Pg[:, k, t]
-    ExaTron.set_multiplier_last!(examodel, λf)
     ExaTron.set_proximal_ref!(examodel, pgc)
     ExaTron.set_proximal_term!(examodel, algparams.τ / σ)
+    ExaTron.set_penalty!(examodel, algparams.ρ_t[1, t] / σ)
 
     # Update previous values
     if t > 1
+        λf = dual.ramping[:, t] ./ σ
+        ExaTron.set_multiplier_last!(examodel, λf)
         pgf = primal.Pg[:, 1, t-1] .+ primal.Zt[:, t] .- ramp_agc
         ExaTron.set_proximal_last!(examodel, pgf)
-        # Update parameters
-        # TODO: check rho
-        # examodel.ρf = algparams.ρ_t[1, t]
     end
 
     # Update next values
@@ -642,7 +640,6 @@ function set_objective!(block::TronBlockModel, algparams::AlgParams,
         pgt = primal.Pg[:, 1, t+1] .- primal.St[:, t+1] .- primal.Zt[:, t+1] .+ ramp_agc
         ExaTron.set_multiplier_next!(examodel, λt)
         ExaTron.set_proximal_next!(examodel, pgt)
-        ExaTron.set_penalty!(examodel, algparams.ρ_t[1, t+1] / σ)
     end
 end
 
