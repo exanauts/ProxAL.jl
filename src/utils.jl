@@ -46,8 +46,6 @@ mutable struct ProxALMData
                 @printf("Lyapunov lower bound = %.2f\n", lyapunov_sol["objective_value_lyapunov_bound"])
         end
 
-
-
         # initial values
         initial_solve = initial_primal === nothing
         x = (initial_primal === nothing) ?
@@ -56,11 +54,18 @@ mutable struct ProxALMData
         λ = (initial_dual === nothing) ?
                 DualSolution(opfdata, modelinfo) :
                 deepcopy(initial_dual)
+        backend = if isa(space, JuMPBackend)
+            JuMPBlockModel
+        elseif isa(space, ExaPFBackend)
+            ExaBlockModel
+        elseif isa(space, ExaTronBackend)
+            TronBlockModel
+        end
         # NLP blocks
         blocks = OPFBlocks(
             opfdata, rawdata;
             modelinfo=modelinfo, algparams=algparams,
-            backend=(space==FullSpace()) ? JuMPBlockModel : ExaBlockModel,
+            backend=backend,
         )
 
         blkLinIndex = LinearIndices(blocks.blkIndex)
@@ -154,11 +159,11 @@ function update_runinfo(
         zstar = runinfo.opt_sol["objective_value_nondecomposed"]
         runinfo.dist_x[iter] = dist(runinfo.x, xstar, modelinfo, algparams)
         runinfo.dist_λ[iter] = dist(runinfo.λ, λstar, modelinfo, algparams)
-        optimgap = 100.0abs(runinfo.objvalue[iter] - zstar)/abs(zstar)
+        optimgap = 100.0 * abs(runinfo.objvalue[iter] - zstar) / abs(zstar)
     end
     if !isempty(runinfo.lyapunov_sol)
         lyapunov_star = runinfo.lyapunov_sol["objective_value_lyapunov_bound"]
-        lyapunov_gap = 100.0(runinfo.lyapunov[end] - lyapunov_star)/abs(lyapunov_star)
+        lyapunov_gap = 100.0 * (runinfo.lyapunov[end] - lyapunov_star) / abs(lyapunov_star)
     end
 
     if algparams.verbose > 0

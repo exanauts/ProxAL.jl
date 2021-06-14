@@ -1,18 +1,25 @@
 abstract type AbstractSpace end
 
 """
-    ReducedSpace <: AbstractSpace
+    ExaPFBackend <: AbstractSpace
 
-Solve OPF in reduced-space.
+Solve OPF in reduced-space with ExaPF.
 """
-struct ReducedSpace <: AbstractSpace end
+struct ExaPFBackend <: AbstractSpace end
 
 """
-    FullSpace <: AbstractSpace
+    JuMPBackend <: AbstractSpace
 
-Solve OPF in full-space.
+Solve OPF in full-space with JuMP/MOI.
 """
-struct FullSpace <: AbstractSpace end
+struct JuMPBackend <: AbstractSpace end
+
+"""
+    ExaTronBackend <: AbstractSpace
+
+Solve OPF by decomposition using ExaTron.
+"""
+struct ExaTronBackend <: AbstractSpace end
 
 
 """
@@ -125,9 +132,8 @@ end
 
 function JuMPBlockModel(
     blk::Int,
-    opfdata::OPFData, raw_data::RawData,
+    opfdata::OPFData, raw_data::RawData, algparams::AlgParams,
     modelinfo::ModelParams, t::Int, k::Int, T::Int;
-    options...
 )
     model = JuMP.Model()
     return JuMPBlockModel(blk, k, t, model, opfdata, modelinfo, raw_data)
@@ -297,9 +303,8 @@ end
 
 function ExaBlockModel(
     blk::Int,
-    opfdata::OPFData, raw_data::RawData,
-    modelinfo::ModelParams, t::Int, k::Int, T::Int;
-    device::TargetDevice=CPU, nr_tol=1e-10,
+    opfdata::OPFData, raw_data::RawData, algparams::AlgParams,
+    modelinfo::ModelParams, t::Int, k::Int, T::Int,
 )
 
     data = Dict{String, Array}()
@@ -320,12 +325,10 @@ function ExaBlockModel(
     end
 
     # Instantiate model in memory
-    if device == CPU
-        target = ExaPF.CPU()
-    elseif device == CUDADevice
-        target = ExaPF.CUDADevice()
-    else
-        error("Device $(device) is not supported by ExaPF")
+    target = if algparams.device == CPU
+        ExaPF.CPU()
+    elseif algparams.device == CUDADevice
+        ExaPF.CUDADevice()
     end
     model = ExaPF.ProxALEvaluator(power_network, time;
                                   device=target)
@@ -556,16 +559,17 @@ function ExaTron.OPFData(data::OPFData)
 end
 
 function TronBlockModel(
-    blk::Int, ::Type{VT},
-    opfdata::OPFData, raw_data::RawData,
+    blk::Int,
+    opfdata::OPFData, raw_data::RawData, algparams::AlgParams,
     modelinfo::ModelParams, t::Int, k::Int, T::Int;
-    use_gpu=false, gpu_no=1, rho_pq=400.0, rho_va=4e4, scale=1e-4,
-    use_polar=true, iterlim=800, verbose=1, use_twolevel=true,
-) where VT
+)
+    scale = 1e-4
+    use_gpu = false
+    iterlim=800
     trondata = ExaTron.OPFData(opfdata)
     env = ExaTron.ProxALAdmmEnv(
-        trondata, VT, t, T, rho_pq, rho_va;
-        use_gpu=use_gpu, use_polar=use_polar, gpu_no=gpu_no, verbose=verbose, use_twolevel=use_twolevel
+        trondata, use_gpu, t, T, algparams.tron_rho_pq, algparams.tron_rho_pa;
+        verbose=algparams.verbose_inner, use_twolevel=true,
     )
     return TronBlockModel(env, blk, k, t, T, opfdata, modelinfo, iterlim, scale, modelinfo.obj_scale)
 end
@@ -589,8 +593,8 @@ function init!(block::TronBlockModel, algparams::AlgParams)
 
     # TODO: currently, only one contingency is supported
     j = 1
-    pd = opfdata.Pd[:,1]
-    qd = opfdata.Qd[:,1]
+    pd = opfdata.Pd[:, 1]
+    qd = opfdata.Qd[:, 1]
     # Pass load to exatron
     ExaTron.set_active_load!(opfmodel, pd)
     ExaTron.set_reactive_load!(opfmodel, qd)
@@ -661,6 +665,7 @@ function get_solution(block::TronBlockModel, output)
         qg=ExaTron.reactive_power_generation(model, output),
         vm=ExaTron.voltage_magnitude(model, output),
         va=ExaTron.voltage_angle(model, output),
+        ωt=[0.0], # At the moment, no frequency variable in ExaTron
         st=s,
     )
     return solution
@@ -689,7 +694,9 @@ function optimize!(block::TronBlockModel, x0::Union{Nothing, AbstractArray}, alg
         set_start_values!(block, x0)
     end
     # Optimize with optimizer, using ExaPF model
-    ExaTron.admm_restart!(block.env; scale=block.tron_scale, outer_iterlim=20)
+    ExaTron.admm_restart!(block.env;
+        scale=algparams.tron_scale, outer_iterlim=algparams.tron_outer_iterlim,
+    )
     # Recover solution in ProxAL format
     solution = get_solution(block, block.env.solution)
 

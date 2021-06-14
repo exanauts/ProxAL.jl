@@ -105,8 +105,7 @@ function OPFBlocks(
         localdata = load_local_data(rawdata, opfdata, localinfo, t, k;
                                     decompCtgs=algparams.decompCtgs)
         # Create block model
-        localmodel = backend(blk, localdata, rawdata, localinfo, t, k, T;
-                             device=algparams.device, nr_tol=algparams.nr_tol)
+        localmodel = backend(blk, localdata, rawdata, algparams, localinfo, t, k, T)
         push!(blkModel, localmodel)
     end
 
