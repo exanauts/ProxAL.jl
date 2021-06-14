@@ -12,21 +12,19 @@ end
     ProxALEvaluator(case_file::String, load_file::String,
                 modelinfo::ModelParams,
                 algparams::AlgParams,
-                space::AbstractSpace=FullSpace(),
+                space::AbstractSpace=JuMPBackend(),
                 comm::MPI.Comm = MPI.COMM_WORLD)
 
 Instantiate multi-period ACOPF
 specified in `case_file` with loads in `load_file` with model parameters
 `modelinfo` and algorithm parameters `algparams`, and
 a MPI communicator `comm`.
-The argument `space` specifies whether we are working
-in the `FullSpace()` or in the `ReducedSpace()`.
 """
 function ProxALEvaluator(
     case_file::String, load_file::String,
     modelinfo::ModelParams,
     algparams::AlgParams,
-    space::AbstractSpace=FullSpace(),
+    space::AbstractSpace=JuMPBackend(),
     opt_sol::Dict = Dict(),
     lyapunov_sol::Dict = Dict(),
     comm::MPI.Comm = MPI.COMM_WORLD
@@ -241,7 +239,7 @@ function opf_initialization!(nlp::ProxALEvaluator)
     algparams.mode = :coldstart
     algparams.optimizer = optimizer_with_attributes(Ipopt.Optimizer,
             "print_level" => Int64(algparams.verbose > 0)*5)
-    blockmodel = ProxAL.JuMPBlockModel(1, opfdata, rawdata, modelinfo_single, 1, 1, 0)
+    blockmodel = ProxAL.JuMPBlockModel(1, opfdata, rawdata, algparams, modelinfo_single, 1, 1, 0)
     ProxAL.init!(blockmodel, algparams)
     ProxAL.set_objective!(blockmodel, algparams, primal, dual)
     n = JuMP.num_variables(blockmodel.model)
