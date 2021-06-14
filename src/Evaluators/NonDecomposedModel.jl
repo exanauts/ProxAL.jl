@@ -12,7 +12,7 @@ function NonDecomposedModel(
     case_file::String, load_file::String,
     modelinfo::ModelParams,
     algparams::AlgParams,
-    space::AbstractSpace=FullSpace(),
+    space::AbstractSpace=JuMPBackend(),
     comm::MPI.Comm=MPI.COMM_WORLD;
     time_horizon_start=1
 )

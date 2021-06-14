@@ -66,7 +66,7 @@ load_file = joinpath(DATA_DIR, "mp_demand", "$(case)_oneweek_168")
 
         local solution, n
         @testset "JuMP Block model" begin
-            blockmodel = ProxAL.JuMPBlockModel(blkid, opfdata_c, nlp.rawdata, modelinfo_local, t, 1, T)
+            blockmodel = ProxAL.JuMPBlockModel(blkid, opfdata_c, nlp.rawdata, algparams, modelinfo_local, t, 1, T)
             ProxAL.init!(blockmodel, nlp.algparams)
 
             ProxAL.set_objective!(blockmodel, nlp.algparams, primal, dual)
@@ -82,7 +82,7 @@ load_file = joinpath(DATA_DIR, "mp_demand", "$(case)_oneweek_168")
         @testset "ExaPF Block model" begin
             # TODO: currently, we need to build directly ExaPF object
             # with rawdata, as ExaPF is dealing only with struct of arrays objects.
-            blockmodel = ProxAL.ExaBlockModel(blkid, opfdata_c, nlp.rawdata, modelinfo_local, t, 1, T)
+            blockmodel = ProxAL.ExaBlockModel(blkid, opfdata_c, nlp.rawdata, algparams, modelinfo_local, t, 1, T)
             ProxAL.init!(blockmodel, nlp.algparams)
             ProxAL.set_objective!(blockmodel, nlp.algparams, primal, dual)
 
@@ -114,8 +114,7 @@ load_file = joinpath(DATA_DIR, "mp_demand", "$(case)_oneweek_168")
 
         @testset "ExaTron BlockModel" begin
             blockmodel = ProxAL.TronBlockModel(
-                blkid, Array, opfdata_c, nlp.rawdata, modelinfo_local, t, 1, T;
-                verbose=0, use_twolevel=true, rho_pq=4e2, rho_va=4e4,
+                blkid, opfdata_c, nlp.rawdata, algparams, modelinfo_local, t, 1, T;
             )
             ProxAL.init!(blockmodel, nlp.algparams)
             ProxAL.set_objective!(blockmodel, nlp.algparams, primal, dual)
