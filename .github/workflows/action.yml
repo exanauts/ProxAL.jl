@@ -1,6 +1,12 @@
 name: Run tests
 
-on: [push, pull_request]
+on:
+  push:
+    branches:
+      - master
+      - develop
+  pull_request:
+    types: [opened, synchronize, reopened]
 
 jobs:
   test-github-cpuonly:
@@ -16,7 +22,6 @@ jobs:
       - uses: julia-actions/setup-julia@latest
         with:
           version: ${{ matrix.julia-version }}
-    # - run: julia --project -e 'using Pkg; Pkg.add(url="https://github.com/exanauts/Hiop.jl", rev="master")'
       - run: julia --project -e 'using Pkg; Pkg.add(url="https://github.com/exanauts/ExaPF.jl", rev="develop")'
       - uses: julia-actions/julia-buildpkg@latest
       - uses: julia-actions/julia-runtest@latest
@@ -36,7 +41,6 @@ jobs:
       - uses: julia-actions/setup-julia@latest
         with:
           version: ${{ matrix.julia-version }}
-    # - run: julia --project -e 'using Pkg; Pkg.add(url="https://github.com/exanauts/Hiop.jl", rev="master")'
       - run: julia --project -e 'using Pkg; Pkg.add(url="https://github.com/exanauts/ExaPF.jl", rev="develop")'
       - uses: julia-actions/julia-buildpkg@latest
       - uses: julia-actions/julia-runtest@latest
