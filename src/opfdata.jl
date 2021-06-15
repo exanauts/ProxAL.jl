@@ -168,10 +168,13 @@ function RawData(case_name, scen_file::String="")
     return RawData(baseMVA, bus_arr, branch_arr, gen_arr, costgen_arr, pd_arr, qd_arr, ctgs_arr)
 end
 
-function ctgs_loaddata(raw::RawData, n)
-    return raw.ctgs_arr[1:n]
+# UTILS
+ctgs_loaddata(raw::RawData, n) = raw.ctgs_arr[1:n]
+function check_loads(loads, loads_ref; rtol=1e-2)
+    return maximum((loads .- loads_ref) ./ max.(1.0, loads_ref)) < rtol
 end
 
+#
 """
     opf_loaddata(raw::RawData;
                  time_horizon_start::Int=1,
@@ -323,6 +326,15 @@ function opf_loaddata(raw::RawData;
     # demands for multiperiod OPF
     Pd = raw.pd_arr
     Qd = raw.qd_arr
+
+    pd_scen = Pd[:, 1]
+    qd_scen = Qd[:, 1]
+    pd_ref = raw.bus_arr[:, 3]
+    qd_ref = raw.bus_arr[:, 4]
+    if !check_loads(pd_scen, pd_ref) || !check_loads(qd_scen, qd_ref)
+        @warn("Large discrepancy observed between scenarios and MATPOWER's data")
+    end
+
     if time_horizon_end > 0
         Pd = Pd[:,time_horizon_start:time_horizon_end] .* load_scale
         Qd = Qd[:,time_horizon_start:time_horizon_end] .* load_scale
