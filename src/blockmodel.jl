@@ -564,8 +564,8 @@ function TronBlockModel(
     modelinfo::ModelParams, t::Int, k::Int, T::Int;
 )
     scale = 1e-4
-    use_gpu = false
-    iterlim=800
+    use_gpu = (algparams.device == CUDADevice)
+    iterlim = 800
     trondata = ExaTron.OPFData(opfdata)
     env = ExaTron.ProxALAdmmEnv(
         trondata, use_gpu, t, T, algparams.tron_rho_pq, algparams.tron_rho_pa;
@@ -653,17 +653,21 @@ function get_solution(block::TronBlockModel, output)
         MOI.ITERATION_LIMIT
     end
 
+    if status ∉ MOI_OPTIMAL_STATUSES
+        @warn("Block $(block.id) subproblem not solved to optimality. status: $status")
+    end
+
     s = ExaTron.slack_values(block.env)
     model = block.env.model
     solution = (
         status=status,
         minimum=block.objective_scaling * output.objval,
-        pg=ExaTron.active_power_generation(model, output),
-        qg=ExaTron.reactive_power_generation(model, output),
-        vm=ExaTron.voltage_magnitude(model, output),
-        va=ExaTron.voltage_angle(model, output),
+        pg=ExaTron.active_power_generation(model, output) |> Array,
+        qg=ExaTron.reactive_power_generation(model, output) |> Array,
+        vm=ExaTron.voltage_magnitude(model, output) |> Array,
+        va=ExaTron.voltage_angle(model, output) |> Array,
         ωt=[0.0], # At the moment, no frequency variable in ExaTron
-        st=s,
+        st=s |> Array,
     )
     return solution
 end
