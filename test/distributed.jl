@@ -6,7 +6,7 @@ using CatViews
 using CUDA
 using MPI
 
-# MPI.Init()
+MPI.Init()
 DATA_DIR = joinpath(dirname(@__FILE__), "..", "data")
 case = "case9"
 T = 2
@@ -63,7 +63,7 @@ algparams.gpu_optimizer = optimizer_with_attributes(
 
 @testset "Test ProxAL on $(case) with $T-period, $K-ctgs, time_link=penalty and Ipopt" begin
     algparams.mode = :coldstart
-    nlp = ProxALEvaluator(case_file, load_file, modelinfo, algparams, ProxAL.ExaTronBackend())
+    nlp = ProxALEvaluator(case_file, load_file, modelinfo, algparams, ProxAL.JuMPBackend())
     info = ProxAL.optimize!(nlp)
     @test isapprox(info.maxviol_c[end], 0.0)
     @test isapprox(info.x.Pg[:], [0.8979849196165037, 1.3432106614001416, 0.9418713794662078, 0.9840203268799962, 1.4480400989162827, 1.0149638876932787], rtol = rtol)
@@ -72,4 +72,4 @@ algparams.gpu_optimizer = optimizer_with_attributes(
     @test isapprox(info.maxviol_d[end], 7.28542741650351e-6, rtol = rtol)
     @test info.iter == 5
 end
-# MPI.Finalize()
+MPI.Finalize()

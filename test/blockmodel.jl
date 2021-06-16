@@ -145,4 +145,3 @@ load_file = joinpath(DATA_DIR, "mp_demand", "$(case)_oneweek_168")
         @test length(blocks.blkModel) == nlp.modelinfo.num_time_periods
     end
 end
-
