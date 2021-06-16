@@ -17,9 +17,9 @@ MPI.Init()
 
 # Select one of the following
 (case, T, ramp_scale, load_scale, maxρ, quad_penalty) = ("case_ACTIVSg2000_Corrected", 3600, 0.3, 0.8, 0.01, 1e3)
-(case, T, ramp_scale, load_scale, maxρ, quad_penalty) = ("case9241pegase", 2, 0.3, 0.8, 0.01, 1e3)
-(case, T, ramp_scale, load_scale, maxρ, quad_penalty) = ("case118", 168, 0.2, 1.0, 0.1, 1e5)
-(case, T, ramp_scale, load_scale, maxρ, quad_penalty) = ("case9", 6, 0.04, 1.0, 0.1, 0.1)
+(case, T, ramp_scale, load_scale, maxρ, quad_penalty) = ("case9241pegase", 20, 0.3, 0.8, 0.01, 1e3)
+# (case, T, ramp_scale, load_scale, maxρ, quad_penalty) = ("case118", 168, 0.2, 1.0, 0.1, 1e5)
+# (case, T, ramp_scale, load_scale, maxρ, quad_penalty) = ("case9", 6, 0.04, 1.0, 0.1, 0.1)
 
 # No contingencies in this example
 K = 0
@@ -69,6 +69,7 @@ nlp = ProxALEvaluator(case_file, load_file, modelinfo, algparams, ProxAL.ExaTron
 info = ProxAL.optimize!(nlp)
 nlp = ProxALEvaluator(case_file, load_file, modelinfo, algparams, ProxAL.ExaTronBackend(), opt_sol, lyapunov_sol)
 info = ProxAL.optimize!(nlp)
+nlp = ProxALEvaluator(case_file, load_file, modelinfo, algparams, ProxAL.ExaTronBackend(), opt_sol, lyapunov_sol)
 if MPI.Comm_rank(MPI.COMM_WORLD) == 0
     np = MPI.Comm_size(MPI.COMM_WORLD)
     Profile.init(n = 10^7, delay = 0.001)
