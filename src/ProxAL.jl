@@ -29,11 +29,55 @@ export optimize!
 function update_primal_nlpvars(x::PrimalSolution, opfBlockData::OPFBlocks, blk::Int,
                                modelinfo::ModelParams,
                                algparams::AlgParams)
-    solution = get_block_view(x, opfBlockData.blkIndex[blk],
-                              modelinfo,
-                              algparams)
-    solution .= opfBlockData.colValue[:,blk]
+    # FIX ME: Make it work without views also in the non decomposed contingencies case
+    if algparams.decompCtgs
+        block = opfBlockData.blkIndex[blk]
+        k = block[1]
+        t = block[2]
+        range_k = algparams.decompCtgs ? (k:k) : (1:(modelinfo.num_ctgs + 1))
 
+        from = 1
+        to = size(x.Pg,1)*length(range_k)
+        x.Pg[:,range_k,t] .= opfBlockData.colValue[from:to,blk]
+
+        from = 1+to
+        to = to + size(x.Qg, 1)*length(range_k)
+        x.Qg[:,range_k,t] .= opfBlockData.colValue[from:to,blk]
+
+        from = 1+to
+        to = to + size(x.Vm, 1)*length(range_k)
+        x.Vm[:,range_k,t] .= opfBlockData.colValue[from:to,blk]
+
+        from = 1+to
+        to = to + size(x.Va, 1)*length(range_k)
+        x.Va[:,range_k,t] .= opfBlockData.colValue[from:to,blk]
+
+        from = 1+to
+        to = to + length(range_k)
+        x.ωt[range_k,t] .= opfBlockData.colValue[from:to,blk]
+
+        from = 1+to
+        to = to + size(x.St, 1)
+        x.St[:,t] .= opfBlockData.colValue[from:to,blk]
+
+        from = 1+to
+        to = to + size(x.Zt, 1)
+        x.Zt[:,t] .= opfBlockData.colValue[from:to,blk]
+
+        from = 1+to
+        to = to + size(x.Sk, 1)*length(range_k)
+        x.Sk[:,range_k,t] .= opfBlockData.colValue[from:to,blk]
+
+        # Zk
+        from = 1+to
+        to = to + size(x.Sk, 1)*length(range_k)
+        x.Sk[:,range_k,t] .= opfBlockData.colValue[from:to,blk]
+    else
+        solution = get_block_view(x, opfBlockData.blkIndex[blk],
+                                modelinfo,
+                                algparams)
+        solution .= opfBlockData.colValue[:,blk]
+    end
     return nothing
 end
 
