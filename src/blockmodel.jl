@@ -120,6 +120,14 @@ of the structure `OPFBlocks`, used for decomposition purpose.
 - `T::Int`: final horizon
 
 """
+struct EmptyBlockModel <: AbstractBlockModel end
+
+function init!(block::EmptyBlockModel, algparams::AlgParams) end
+
+function set_objective!(block::EmptyBlockModel, algparams::AlgParams,
+                        primal::PrimalSolution, dual::DualSolution)
+end
+function get_solution(block::EmptyBlockModel) end
 struct JuMPBlockModel <: AbstractBlockModel
     id::Int
     k::Int

@@ -95,17 +95,21 @@ function OPFBlocks(
     for blk in LinearIndices(blkIndex)
         k = blkIndex[blk][1]
         t = blkIndex[blk][2]
+        if blk % MPI.Comm_size(MPI.COMM_WORLD) == MPI.Comm_rank(MPI.COMM_WORLD)
 
-        # Local info
-        localinfo = localcopy(modelinfo)
-        if algparams.decompCtgs
-            @assert k > 0
-            localinfo.num_ctgs = 0
+            # Local info
+            localinfo = localcopy(modelinfo)
+            if algparams.decompCtgs
+                @assert k > 0
+                localinfo.num_ctgs = 0
+            end
+            localdata = load_local_data(rawdata, opfdata, localinfo, t, k;
+                                        decompCtgs=algparams.decompCtgs)
+            # Create block model
+            localmodel = backend(blk, localdata, rawdata, algparams, localinfo, t, k, T)
+        else
+            localmodel = EmptyBlockModel()
         end
-        localdata = load_local_data(rawdata, opfdata, localinfo, t, k;
-                                    decompCtgs=algparams.decompCtgs)
-        # Create block model
-        localmodel = backend(blk, localdata, rawdata, algparams, localinfo, t, k, T)
         push!(blkModel, localmodel)
     end
 
