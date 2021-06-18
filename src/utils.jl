@@ -69,9 +69,11 @@ mutable struct ProxALMData
         )
         blkLinIndex = LinearIndices(blocks.blkIndex)
         for blk in blkLinIndex
-            model = blocks.blkModel[blk]
-            init!(model, algparams)
-            blocks.colValue[:,blk] .= get_block_view(x, blocks.blkIndex[blk], modelinfo, algparams)
+            if ismywork(blk, comm)
+                model = blocks.blkModel[blk]
+                init!(model, algparams)
+                blocks.colValue[:,blk] .= get_block_view(x, blocks.blkIndex[blk], modelinfo, algparams)
+            end
         end
 
         par_order = []
@@ -165,11 +167,10 @@ function update_runinfo(
     # maxviol_d = MPI.Allreduce(maxviol_d, MPI.SUM, comm)
     # maxviol_d = norm(maxviol_d, Inf)
     # push!(runinfo.maxviol_d, maxviol_d)
-    push!(
-        runinfo.maxviol_d,
-        compute_dual_error(runinfo.x, runinfo.xprev, runinfo.λ, runinfo.λprev, opfdata, modelinfo, algparams)
-    )
-    # @show runinfo.maxviol_d
+    maxviol_d = compute_dual_error(runinfo.x, runinfo.xprev, runinfo.λ, runinfo.λprev, opfdata, modelinfo, algparams)
+    maxviol_d = comm_max(maxviol_d, comm)
+    push!(runinfo.maxviol_d, maxviol_d)
+
     push!(runinfo.dist_x, NaN)
     push!(runinfo.dist_λ, NaN)
     optimgap = NaN
@@ -187,7 +188,7 @@ function update_runinfo(
         lyapunov_gap = 100.0 * (runinfo.lyapunov[end] - lyapunov_star) / abs(lyapunov_star)
     end
 
-    if algparams.verbose > 0
+    if algparams.verbose > 0 && comm_rank(comm) == 0
         @printf("iter %3d: ramp_err = %.3e, ctgs_err = %.3e, dual_err = %.3e, |x-x*| = %.3f, |λ-λ*| = %.3f, gap = %.2f%%, lyapgap = %.2f%%\n",
                     iter,
                     runinfo.maxviol_t[iter],

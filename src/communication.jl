@@ -28,7 +28,7 @@ function ismywork(blk, comm::Nothing)
 end
 
 """
-    comm_nn!(data, blocks, runinfo, comm)
+    comm_neighbors!(data, blocks, runinfo, comm)
 
 Nearest neighbor communication where all periods t of this rank in the matrix data
 will be sent to the remote ranks who own period t-1 and t+1.
@@ -36,7 +36,7 @@ will be sent to the remote ranks who own period t-1 and t+1.
 This is nonblocking. An array of requests is returned.
 
 """
-function comm_nn!(data::AbstractArray, blocks::OPFBlocks, runinfo::ProxALMData, comm::MPI.Comm)
+function comm_neighbors!(data::AbstractArray, blocks::OPFBlocks, runinfo::ProxALMData, comm::MPI.Comm)
 	requests = MPI.Request[]
     # For each period send to t-1 and t+1
     for blk in runinfo.par_order[1,:]
@@ -78,7 +78,7 @@ function comm_nn!(data::AbstractArray, blocks::OPFBlocks, runinfo::ProxALMData, 
     return requests
 end
 
-function comm_nn!(data::AbstractArray, blocks::OPFBlocks, runinfo::ProxALMData, comm::Nothing) 
+function comm_neighbors!(data::AbstractArray, blocks::OPFBlocks, runinfo::ProxALMData, comm::Nothing) 
     return nothing
 end
 
@@ -137,4 +137,19 @@ end
 function comm_sum!(data::AbstractArray, comm::Nothing)
     return data
 end
+
+function comm_rank(comm::MPI.Comm)
+    return MPI.Comm_rank(comm)
+end
+
+function comm_rank(comm::Nothing)
+    return 0
+end
     
+function comm_barrier(comm::MPI.Comm)
+    return MPI.Barrier(comm)
+end
+
+function comm_barrier(comm::Nothing)
+    return nothing
+end
