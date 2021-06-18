@@ -60,7 +60,7 @@ algparams.gpu_optimizer = optimizer_with_attributes(
     "tol" => 1e-5,
 )
 
-# @testset "Test ProxAL on $(case) with $T-period, $K-ctgs, time_link=penalty and Ipopt" begin
+@testset "Test ProxAL on $(case) with $T-period, $K-ctgs, time_link=penalty and Ipopt" begin
     algparams.mode = :coldstart
     nlp = ProxALEvaluator(case_file, load_file, modelinfo, algparams, ProxAL.JuMPBackend())
     info = ProxAL.optimize!(nlp)
@@ -70,5 +70,5 @@ algparams.gpu_optimizer = optimizer_with_attributes(
     @test isapprox(info.maxviol_t[end], 2.687848059435005e-5, rtol = rtol)
     @test isapprox(info.maxviol_d[end], 7.28542741650351e-6, rtol = rtol)
     @test info.iter == 5
-# end
+end
 MPI.Finalize()
