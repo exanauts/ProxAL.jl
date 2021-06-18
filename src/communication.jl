@@ -137,4 +137,19 @@ end
 function comm_sum!(data::AbstractArray, comm::Nothing)
     return data
 end
+
+function comm_rank(comm::MPI.Comm)
+    return MPI.Comm_rank(comm)
+end
+
+function comm_rank(comm::Nothing)
+    return 0
+end
     
+function comm_barrier(comm::MPI.Comm)
+    return MPI.Barrier(comm)
+end
+
+function comm_barrier(comm::Nothing)
+    return nothing
+end
