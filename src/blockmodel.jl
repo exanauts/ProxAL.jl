@@ -704,7 +704,7 @@ function optimize!(block::TronBlockModel, x0::Union{Nothing, AbstractArray}, alg
     end
     # Optimize with optimizer, using ExaPF model
     ExaTron.admm_restart!(block.env;
-        scale=algparams.tron_scale, outer_iterlim=algparams.tron_outer_iterlim,
+        scale=algparams.tron_scale, outer_iterlim=algparams.tron_outer_iterlim, inner_iterlim=algparams.tron_inner_iterlim
     )
     # Recover solution in ProxAL format
     solution = get_solution(block, block.env.solution)
