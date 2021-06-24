@@ -28,6 +28,7 @@ K = 0
 DATA_DIR = joinpath(dirname(@__FILE__), "..", "data")
 case_file = joinpath(DATA_DIR, "$(case).m")
 load_file = joinpath(DATA_DIR, "mp_demand", "$(case)_oneweek_168")
+# load_file = joinpath(DATA_DIR, "mp_demand", "$(case)_3600")
 
 # Model/formulation settings
 modelinfo = ModelParams()
@@ -57,6 +58,13 @@ algparams.iterlim = 1
 algparams.device = ProxAL.CUDADevice
 algparams.optimizer = optimizer_with_attributes(Ipopt.Optimizer, "print_level" => 0)
 
+# case_ACTIVSg2000_Corrected parameters
+# algparams.tron_rho_pq=5*1e4
+# algparams.tron_rho_pa=5*1e5
+# algparams.tron_outer_iterlim=30
+# algparams.tron_inner_iterlim=2000
+# algparams.tron_scale=1e-5
+
 opt_sol, lyapunov_sol = Dict(), Dict()
 
 ranks = MPI.Comm_size(MPI.COMM_WORLD)
@@ -80,6 +88,4 @@ else
   info = ProxAL.optimize!(nlp)
 end
 
-
 MPI.Finalize()
-

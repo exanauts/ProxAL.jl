@@ -15,9 +15,9 @@ include("Evaluators/Evaluators.jl")
 include("params.jl")
 include("opfdata.jl")
 include("opfsolution.jl")
-include("opfmodel.jl")
 include("blockmodel.jl")
 include("blocks.jl")
+include("opfmodel.jl")
 include("utils.jl")
 include("Evaluators/ProxALEvalutor.jl")
 include("Evaluators/NonDecomposedModel.jl")
@@ -82,15 +82,19 @@ function update_primal_nlpvars(x::PrimalSolution, opfBlockData::OPFBlocks, blk::
 end
 
 function update_primal_penalty(x::PrimalSolution, opfdata::OPFData,
+                               opfBlockData::OPFBlocks, blk::Int,
                                primal::PrimalSolution,
                                dual::DualSolution,
                                modelinfo::ModelParams,
                                algparams::AlgParams)
     (ngen, K, T) = size(x.Pg)
+    block = opfBlockData.blkIndex[blk]
+    k = block[1]
+    t = block[2]
 
     if modelinfo.time_link_constr_type == :penalty
         β = [opfdata.generators[g].ramp_agc for g=1:ngen]
-        @views for t=2:T
+        if t > 1
             x.Zt[:,t] .= ((algparams.τ*primal.Zt[:,t]) .- dual.ramping[:,t] .-
                             (algparams.ρ_t[:,t].*(+x.Pg[:,1,t-1] .- x.Pg[:,1,t] .+ x.St[:,t] .- β))
                         ) ./  max.(algparams.zero, algparams.τ .+ algparams.ρ_t[:,t] .+ (modelinfo.obj_scale*modelinfo.weight_quadratic_penalty_time))
@@ -99,12 +103,12 @@ function update_primal_penalty(x::PrimalSolution, opfdata::OPFData,
     if K > 1 && algparams.decompCtgs
         if modelinfo.ctgs_link_constr_type == :frequency_ctrl
             @views for k=2:K
-                x.ωt[k,:] .= (( algparams.τ*primal.ωt[k,:]) .-
+                x.ωt[k,t] = (( algparams.τ*primal.ωt[k,t]) -
                                 sum(opfdata.generators[g].alpha *
-                                        (dual.ctgs[g,k,:] .+ (algparams.ρ_c[g,k,:] .* (x.Pg[g,1,:] .- x.Pg[g,k,:])))
+                                        (dual.ctgs[g,k,t] + (algparams.ρ_c[g,k,t] * (x.Pg[g,1,t] - x.Pg[g,k,t])))
                                     for g=1:ngen)
                             ) ./ max.(algparams.zero, algparams.τ .+ (modelinfo.obj_scale*modelinfo.weight_freq_ctrl) .+
-                                    sum(algparams.ρ_c[g,k,:]*(opfdata.generators[g].alpha)^2
+                                    sum(algparams.ρ_c[g,k,t]*(opfdata.generators[g].alpha)^2
                                         for g=1:ngen)
                                 )
             end
@@ -130,10 +134,14 @@ function update_primal_penalty(x::PrimalSolution, opfdata::OPFData,
 end
 
 function update_dual_vars(λ::DualSolution, opfdata::OPFData,
+                          opfBlockData::OPFBlocks, blk::Int,
                           primal::PrimalSolution,
                           modelinfo::ModelParams,
                           algparams::AlgParams)
     (ngen, K, T) = size(primal.Pg)
+    block = opfBlockData.blkIndex[blk]
+    k = block[1]
+    t = block[2]
 
     maxviol_t, maxviol_c = 0.0, 0.0
 
@@ -147,7 +155,7 @@ function update_dual_vars(λ::DualSolution, opfdata::OPFData,
     end
 
     if T > 1
-        link_constr = compute_time_linking_constraints(d, opfdata, modelinfo)
+        link_constr = compute_time_linking_constraints(d, opfdata, opfBlockData, blk, modelinfo)
         viol_t = (modelinfo.time_link_constr_type == :inequality) ?
                     max.(link_constr[:ramping_p], link_constr[:ramping_n], 0.0) :
                     abs.(link_constr[:ramping])
@@ -169,7 +177,7 @@ function update_dual_vars(λ::DualSolution, opfdata::OPFData,
         maxviol_t = maximum(viol_t)
     end
     if K > 1 && algparams.decompCtgs
-        link_constr = compute_ctgs_linking_constraints(d, opfdata, modelinfo)
+        link_constr = compute_ctgs_linking_constraints(d, opfdata, opfBlockData, blk, modelinfo)
         viol_c = (modelinfo.ctgs_link_constr_type == :corrective_inequality) ?
                     max.(link_constr[:ctgs_p], link_constr[:ctgs_n], 0.0) :
                     abs.(link_constr[:ctgs])

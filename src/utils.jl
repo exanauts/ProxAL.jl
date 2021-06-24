@@ -23,7 +23,6 @@ mutable struct ProxALMData
     opt_sol::Dict
     lyapunov_sol::Dict
     initial_solve::Bool
-    ser_order
     par_order
     plt
 
@@ -67,7 +66,6 @@ mutable struct ProxALMData
             modelinfo=modelinfo, algparams=algparams,
             backend=backend,
         )
-
         blkLinIndex = LinearIndices(blocks.blkIndex)
         for blk in blkLinIndex
             model = blocks.blkModel[blk]
@@ -75,16 +73,11 @@ mutable struct ProxALMData
             blocks.colValue[:,blk] .= get_block_view(x, blocks.blkIndex[blk], modelinfo, algparams)
         end
 
-        ser_order = blkLinIndex
         par_order = []
-        if algparams.parallel
-            if algparams.jacobi
-                ser_order = []
-                par_order = blkLinIndex
-            elseif algparams.decompCtgs
-                ser_order = @view blkLinIndex[1,:]
-                par_order = @view blkLinIndex[2:end,:]
-            end
+        if algparams.jacobi
+            par_order = blkLinIndex
+        elseif algparams.decompCtgs
+            par_order = @view blkLinIndex[2:end,:]
         end
         plt = nothing
         iter = 0
@@ -124,7 +117,6 @@ mutable struct ProxALMData
             opt_sol,
             lyapunov_sol,
             initial_solve,
-            ser_order,
             par_order,
             plt
         )
@@ -133,22 +125,50 @@ end
 
 function update_runinfo(
     runinfo::ProxALMData, opfdata::OPFData,
+    opfBlockData::OPFBlocks,
     modelinfo::ModelParams,
-    algparams::AlgParams
+    algparams::AlgParams,
+    comm::MPI.Comm
 )
     iter = runinfo.iter
-    push!(
-        runinfo.objvalue,
-        compute_objective_function(runinfo.x, opfdata, modelinfo)
-    )
-    push!(
-        runinfo.lyapunov,
-        compute_lyapunov_function(runinfo.x, runinfo.λ, opfdata, runinfo.xprev, modelinfo, algparams)
-    )
+    obj = 0.0
+    for blk in runinfo.par_order
+        if ismywork(blk, comm)
+            obj += compute_objective_function(runinfo.x, opfdata, opfBlockData, blk, modelinfo)
+        end
+    end
+    obj = MPI.Allreduce(obj, MPI.SUM, comm)
+    push!(runinfo.objvalue, obj)
+
+    iter = runinfo.iter
+    lyapunov = 0.0
+    for blk in runinfo.par_order
+        if ismywork(blk, comm)
+            lyapunov += compute_lyapunov_function(runinfo.x, runinfo.λ, opfdata, opfBlockData, blk, runinfo.xprev, modelinfo, algparams)
+        end
+    end
+    lyapunov = MPI.Allreduce(lyapunov, MPI.SUM, comm)
+    push!(runinfo.lyapunov, lyapunov)
+
+    # FIX ME: Frigging bug in the parallel implementation of the dual error
+    # (ngen, K, T) = size(runinfo.x.Pg)
+    # smaxviol_d = 3*ngen*K + 2*ngen + K
+    # @show smaxviol_d
+    # maxviol_d = zeros(Float64, smaxviol_d)
+    # for blk in runinfo.par_order
+    #     if ismywork(blk, comm)
+    #         maxviol_d .+= compute_dual_error(runinfo.x, runinfo.xprev, runinfo.λ, runinfo.λprev, opfdata, opfBlockData, blk, modelinfo, algparams)
+    #         # compute_dual_error(runinfo.x, runinfo.xprev, runinfo.λ, runinfo.λprev, opfdata, opfBlockData, blk, modelinfo, algparams)
+    #     end
+    # end
+    # maxviol_d = MPI.Allreduce(maxviol_d, MPI.SUM, comm)
+    # maxviol_d = norm(maxviol_d, Inf)
+    # push!(runinfo.maxviol_d, maxviol_d)
     push!(
         runinfo.maxviol_d,
         compute_dual_error(runinfo.x, runinfo.xprev, runinfo.λ, runinfo.λprev, opfdata, modelinfo, algparams)
     )
+    # @show runinfo.maxviol_d
     push!(runinfo.dist_x, NaN)
     push!(runinfo.dist_λ, NaN)
     optimgap = NaN
@@ -177,4 +197,8 @@ function update_runinfo(
                     optimgap,
                     lyapunov_gap)
     end
+end
+
+function ismywork(blk, comm)
+    blk % MPI.Comm_size(comm) == MPI.Comm_rank(comm)
 end
