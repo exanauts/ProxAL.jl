@@ -40,7 +40,6 @@ modelinfo.init_opf = false
 
 # Algorithm settings
 algparams = AlgParams()
-algparams.parallel = false #algparams.parallel = (nprocs() > 1)
 algparams.verbose = 0
 
 solver_list = ["Ipopt"]
@@ -68,24 +67,6 @@ end
                 optimizer_with_attributes(Ipopt.Optimizer,
                     "print_level" => Int64(algparams.verbose > 0)*5)
         end
-        if solver == "MadNLP"
-            using MadNLP
-            algparams.optimizer = () ->
-                MadNLP.Optimizer(linear_solver="Mumps",
-                                 print_level=MadNLP.ERROR,
-                                 max_iter=300)
-        end
-        if solver == "MadNLPGPU"
-            using MadNLP
-            algparams.optimizer = () ->
-                MadNLP.Optimizer(linear_solver="LapackGPU",
-                                 print_level=MadNLP.ERROR,
-                                 max_iter=300)
-        end
-        if solver == "Hiop"
-            using Hiop
-            algparams.optimizer = optimizer_with_attributes(Hiop.Optimizer)
-        end
 
 
         @testset "solver = $(solver)" begin
@@ -94,7 +75,6 @@ end
             algparams.decompCtgs = false
             @testset "$T-period, $K-ctgs, time_link=penalty" begin
                 modelinfo.num_ctgs = K
-                # rawdata.ctgs_arr = deepcopy(ctgs_arr[1:modelinfo.num_ctgs])
 
                 @testset "Non-decomposed formulation" begin
                     algparams.mode = :nondecomposed
@@ -102,11 +82,7 @@ end
                     result = ProxAL.optimize!(nlp)
                     @test isapprox(result["objective_value_nondecomposed"], 11.258316111585623, rtol = rtol)
                     @test isapprox(result["primal"].Pg[:], [0.8979870694509675, 1.3432060120295906, 0.9418738103137331, 0.9840203268625166, 1.448040098924617, 1.0149638876964715], rtol = rtol)
-                    if solver == "MadNLP" || solver == "MadNLPGPU" || solver == "Hiop"
-                        @test_broken isapprox(result["primal"].Zt[:], [0.0, 0.0, 0.0, 2.7859277234613066e-6, 2.3533760802049378e-6, 2.0234235436650152e-6], rtol = rtol)
-                    else
-                        @test isapprox(result["primal"].Zt[:], [0.0, 0.0, 0.0, 2.7859277234613066e-6, 2.3533760802049378e-6, 2.0234235436650152e-6], rtol = rtol)
-                    end
+                    @test isapprox(result["primal"].Zt[:], [0.0, 0.0, 0.0, 2.7859277234613066e-6, 2.3533760802049378e-6, 2.0234235436650152e-6], rtol = rtol)
                 end
 
                 @testset "Lyapunov bound" begin
@@ -142,33 +118,16 @@ end
                     nlp = NonDecomposedModel(case_file, load_file, modelinfo, algparams)
                     result = ProxAL.optimize!(nlp)
                     @test isapprox(result["objective_value_nondecomposed"], 11.258316111574212, rtol = rtol)
-                    if solver == "Hiop"
-                        @test_broken isapprox(result["primal"].Pg[:], [0.8979870693416382, 1.3432060108971793, 0.9418738115511179, 0.9055318507524525, 1.3522597485901564, 0.9500221754747974, 0.9840203265549852, 1.4480400977338292, 1.014963889201792, 0.9932006221514175, 1.459056452449548, 1.024878608445939], rtol = rtol)
-                    else
-                        @test isapprox(result["primal"].Pg[:], [0.8979870693416382, 1.3432060108971793, 0.9418738115511179, 0.9055318507524525, 1.3522597485901564, 0.9500221754747974, 0.9840203265549852, 1.4480400977338292, 1.014963889201792, 0.9932006221514175, 1.459056452449548, 1.024878608445939], rtol = rtol)
-                    end
-                    if solver == "MadNLP" || solver == "MadNLPGPU" || solver == "Hiop"
-                        @test_broken isapprox(result["primal"].Zt[:], [0.0, 0.0, 0.0, 2.7857429391709934e-6, 2.353279608425683e-6, 2.023313001658965e-6], rtol = rtol)
-                    else
-                        @test isapprox(result["primal"].Zt[:], [0.0, 0.0, 0.0, 2.7857429391709934e-6, 2.353279608425683e-6, 2.023313001658965e-6], rtol = rtol)
-                    end
-                    if solver == "Hiop"
-                        @test_broken isapprox(result["primal"].ωt[:], [0.0, -0.00012071650257302939, 0.0, -0.00014688472954291597], rtol = rtol)
-                    else
-                        @test isapprox(result["primal"].ωt[:], [0.0, -0.00012071650257302939, 0.0, -0.00014688472954291597], rtol = rtol)
-                    end
+                    @test isapprox(result["primal"].Pg[:], [0.8979870693416382, 1.3432060108971793, 0.9418738115511179, 0.9055318507524525, 1.3522597485901564, 0.9500221754747974, 0.9840203265549852, 1.4480400977338292, 1.014963889201792, 0.9932006221514175, 1.459056452449548, 1.024878608445939], rtol = rtol)
+                    @test isapprox(result["primal"].Zt[:], [0.0, 0.0, 0.0, 2.7857429391709934e-6, 2.353279608425683e-6, 2.023313001658965e-6], rtol = rtol)
+                    @test isapprox(result["primal"].ωt[:], [0.0, -0.00012071650257302939, 0.0, -0.00014688472954291597], rtol = rtol)
                 end
                 @testset "Lyapunov bound" begin
                     algparams.mode = :lyapunov_bound
                     nlp = NonDecomposedModel(case_file, load_file, modelinfo, algparams)
                     result = ProxAL.optimize!(nlp)
-                    if solver == "Hiop"
-                        @test_broken isapprox(result["objective_value_lyapunov_bound"], 11.258316111574207)
-                        @test_broken isapprox(result["primal"].Pg[:], [0.8979870693416395, 1.3432060108971777, 0.9418738115511173, 0.9055318507524539, 1.3522597485901549, 0.9500221754747968, 0.9840203265549855, 1.4480400977338292, 1.0149638892017916, 0.9932006221514178, 1.459056452449548, 1.0248786084459387], rtol = rtol)
-                    else
-                        @test isapprox(result["objective_value_lyapunov_bound"], 11.258316111574207)
-                        @test isapprox(result["primal"].Pg[:], [0.8979870693416395, 1.3432060108971777, 0.9418738115511173, 0.9055318507524539, 1.3522597485901549, 0.9500221754747968, 0.9840203265549855, 1.4480400977338292, 1.0149638892017916, 0.9932006221514178, 1.459056452449548, 1.0248786084459387], rtol = rtol)
-                    end
+                    @test isapprox(result["objective_value_lyapunov_bound"], 11.258316111574207)
+                    @test isapprox(result["primal"].Pg[:], [0.8979870693416395, 1.3432060108971777, 0.9418738115511173, 0.9055318507524539, 1.3522597485901549, 0.9500221754747968, 0.9840203265549855, 1.4480400977338292, 1.0149638892017916, 0.9932006221514178, 1.459056452449548, 1.0248786084459387], rtol = rtol)
                 end
 
                 @testset "ProxALM" begin
@@ -199,35 +158,17 @@ end
                     nlp = NonDecomposedModel(case_file, load_file, modelinfo, algparams)
                     result = ProxAL.optimize!(nlp)
                     @test isapprox(result["objective_value_nondecomposed"], 11.258316111574212, rtol = rtol)
-                    if solver == "Hiop"
-                        @test_broken isapprox(result["primal"].Pg[:], [0.8979870693416382, 1.3432060108971793, 0.9418738115511179, 0.9055318507524525, 1.3522597485901564, 0.9500221754747974, 0.9840203265549852, 1.4480400977338292, 1.014963889201792, 0.9932006221514175, 1.459056452449548, 1.024878608445939], rtol = rtol)
-                    else
-                        @test isapprox(result["primal"].Pg[:], [0.8979870693416382, 1.3432060108971793, 0.9418738115511179, 0.9055318507524525, 1.3522597485901564, 0.9500221754747974, 0.9840203265549852, 1.4480400977338292, 1.014963889201792, 0.9932006221514175, 1.459056452449548, 1.024878608445939], rtol = rtol)
-                    end
-                    if solver == "MadNLP" || solver == "MadNLPGPU" || solver == "Hiop"
-                        @test_broken isapprox(result["primal"].Zt[:], [0.0, 0.0, 0.0, 2.7857429391709934e-6, 2.353279608425683e-6, 2.023313001658965e-6], rtol = rtol)
-                    else
-                        @test isapprox(result["primal"].Zt[:], [0.0, 0.0, 0.0, 2.7857429391709934e-6, 2.353279608425683e-6, 2.023313001658965e-6], rtol = rtol)
-                    end
-                    if solver == "Hiop"
-                        @test_broken isapprox(result["primal"].ωt[:], [0.0, -0.00012071650257302939, 0.0, -0.00014688472954291597], rtol = rtol)
-                    else
-                        @test isapprox(result["primal"].ωt[:], [0.0, -0.00012071650257302939, 0.0, -0.00014688472954291597], rtol = rtol)
-                    end
+                    @test isapprox(result["primal"].Pg[:], [0.8979870693416382, 1.3432060108971793, 0.9418738115511179, 0.9055318507524525, 1.3522597485901564, 0.9500221754747974, 0.9840203265549852, 1.4480400977338292, 1.014963889201792, 0.9932006221514175, 1.459056452449548, 1.024878608445939], rtol = rtol)
+                    @test isapprox(result["primal"].Zt[:], [0.0, 0.0, 0.0, 2.7857429391709934e-6, 2.353279608425683e-6, 2.023313001658965e-6], rtol = rtol)
+                    @test isapprox(result["primal"].ωt[:], [0.0, -0.00012071650257302939, 0.0, -0.00014688472954291597], rtol = rtol)
                 end
                 @testset "Lyapunov bound" begin
                     algparams.mode = :lyapunov_bound
                     nlp = NonDecomposedModel(case_file, load_file, modelinfo, algparams)
                     result = ProxAL.optimize!(nlp)
-                    if solver == "Hiop"
-                        @test_broken isapprox(result["objective_value_lyapunov_bound"], 11.258316111574207)
-                    else
-                        @test isapprox(result["objective_value_lyapunov_bound"], 11.258316111574207)
-                    end
+                    @test isapprox(result["objective_value_lyapunov_bound"], 11.258316111574207)
                     @test isapprox(result["primal"].Pg[:], [0.8979870693416395, 1.3432060108971777, 0.9418738115511173, 0.9055318507524539, 1.3522597485901549, 0.9500221754747968, 0.9840203265549855, 1.4480400977338292, 1.0149638892017916, 0.9932006221514178, 1.459056452449548, 1.0248786084459387], rtol = rtol)
                 end
-                # MadNLP gets stuck here
-                if solver == "Ipopt" || solver == "Hiop"
                 @testset "ProxALM" begin
                     algparams.mode = :coldstart
                     nlp = ProxALEvaluator(case_file, load_file, modelinfo, algparams)
@@ -236,19 +177,11 @@ end
                     @test isapprox(runinfo.x.ωt[:], [0.0, -6.872285646588893e-5, 0.0, -8.763210220007218e-5], rtol = rtol)
                     @test isapprox(runinfo.λ.ramping[:], [0.0, 0.0, 0.0, -0.02526641008086374, -0.03138993075214526, -0.022582337855672596], rtol = rtol)
                     @test isapprox(runinfo.λ.ctgs[:], [0.0, 0.0, 0.0, 0.029837851198013726, 0.0018123712232017784, -0.029641691338447657, 0.0, 0.0, 0.0, 0.03640088659004858, -0.0024938071819119163, -0.030934017357459445], rtol = rtol)
-                    if solver == "Hiop"
-                        @test_broken isapprox(runinfo.maxviol_c[end], 9.297964943270377e-5)
-                        @test_broken isapprox(runinfo.maxviol_t[end], 3.7014553733172306e-6, rtol = rtol)
-                    else
-                        @test isless(runinfo.maxviol_c[end], 1e-4)
-                        @test isless(runinfo.maxviol_t[end], 5e-6)
-                    end
+                    @test isless(runinfo.maxviol_c[end], 1e-4)
+                    @test isless(runinfo.maxviol_t[end], 5e-6)
                     @test isless(runinfo.maxviol_d[end], 2e-6)
-                    if solver == "Ipopt"
-                        @test runinfo.iter == 81
-                    end
+                    @test runinfo.iter == 81
                 end
-                end # !MadNLP
             end
         end
     end # solver testset

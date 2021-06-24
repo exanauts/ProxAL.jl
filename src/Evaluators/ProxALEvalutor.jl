@@ -114,48 +114,117 @@ function optimize!(nlp::ProxALEvaluator)
     function primal_update()
         runinfo.wall_time_elapsed_actual += @elapsed begin
             # Primal update except penalty vars
-            for blk in runinfo.ser_order
-                nlp_soltime[blk] = @elapsed blocknlp_copy(blk, x, λ, algparams)
-                # nlp_soltime[blk] = @elapsed blocknlp_recreate(blk; x_ref = x, λ_ref = λ, alg_ref = algparams)
-                opfBlockData.colValue[:,blk] .= nlp_opt_sol[:,blk]
-                if !algparams.jacobi
-                    update_primal_nlpvars(x, opfBlockData, blk, modelinfo, algparams)
-                end
-            end
             nlp_opt_sol .= 0.0
             nlp_soltime .= 0.0
             for blk in runinfo.par_order
-                if blk % MPI.Comm_size(comm) == MPI.Comm_rank(comm)
+                if ismywork(blk, comm)
                     # nlp_soltime[blk] = @elapsed blocknlp_copy(blk; x_ref = x, λ_ref = λ, alg_ref = algparams)
                     nlp_soltime[blk] = @elapsed blocknlp_recreate(blk, x, λ, algparams)
                 end
             end
 
-            # Every worker sends his contribution
-            MPI.Allreduce!(nlp_opt_sol, MPI.SUM, comm)
-            MPI.Allreduce!(nlp_soltime, MPI.SUM, comm)
-
-            for blk in runinfo.par_order
-                opfBlockData.colValue[:,blk] .= nlp_opt_sol[:,blk]
-                update_primal_nlpvars(x, opfBlockData, blk, modelinfo, algparams)
-            end
-            if algparams.jacobi
-                for blk in runinfo.ser_order
-                    update_primal_nlpvars(x, opfBlockData, blk, modelinfo, algparams)
+            # For each period send to t-1 and t+1
+            requests = MPI.Request[]
+            for blk in runinfo.par_order[1,:]
+                block = opfBlockData.blkIndex[blk]
+                k = block[1]
+                t = block[2]
+                if ismywork(blk, comm)
+                    for blkn in runinfo.par_order[1,:]
+                        blockn = opfBlockData.blkIndex[blkn]
+                        kn = blockn[1]
+                        tn = blockn[2]
+                        # Neighboring period needs my work if it's not local
+                        if (tn == t-1 || tn == t+1) && !ismywork(blkn, comm)
+                            remote = blkn % MPI.Comm_size(comm)
+                            push!(requests, MPI.Isend(nlp_opt_sol[:,blk], remote, t, comm))
+                        end
+                    end
                 end
             end
 
+            # For each period receive from t-1 and t+1
+            for blk in runinfo.par_order[1,:]
+                block = opfBlockData.blkIndex[blk]
+                k = block[1]
+                t = block[2]
+                if ismywork(blk, comm)
+                    for blkn in runinfo.par_order[1,:]
+                        blockn = opfBlockData.blkIndex[blkn]
+                        kn = blockn[1]
+                        tn = blockn[2]
+                        # Receive neighboring period if it's not local
+                        if (tn == t-1 || tn == t+1) && !ismywork(blkn, comm)
+                            remote = blkn % MPI.Comm_size(comm)
+                            buf = @view nlp_opt_sol[:,blkn]
+                            push!(requests, MPI.Irecv!(buf, remote, tn, comm))
+                        end
+                    end
+                end
+            end
+            MPI.Waitall!(requests)
+
+            # Every worker sends his contribution
+            MPI.Allreduce!(nlp_soltime, MPI.SUM, comm)
+            # Update primal values
+            for blk in runinfo.par_order
+                block = opfBlockData.blkIndex[blk]
+                k = block[1]
+                t = block[2]
+                if ismywork(blk, comm)
+                    # Updating my own primal values
+                    opfBlockData.colValue[:,blk] .= nlp_opt_sol[:,blk]
+                    update_primal_nlpvars(x, opfBlockData, blk, modelinfo, algparams)
+                    for blkn in runinfo.par_order[1,:]
+                        blockn = opfBlockData.blkIndex[blkn]
+                        kn = blockn[1]
+                        tn = blockn[2]
+                        # Updating the received neighboring primal values
+                        if (tn == t-1 || tn == t+1) && !ismywork(blkn, comm)
+                            opfBlockData.colValue[:,blkn] .= nlp_opt_sol[:,blkn]
+                            update_primal_nlpvars(x, opfBlockData, blkn, modelinfo, algparams)
+                        end
+                    end
+                end
+            end
+
+
             # Primal update of penalty vars
-            elapsed_t = @elapsed update_primal_penalty(x, opfdata, x, λ, modelinfo, algparams)
+            x.Zt .= 0.0
+            elapsed_t = @elapsed begin
+                for blk in runinfo.par_order[1,:]
+                    if ismywork(blk, comm)
+                        update_primal_penalty(x, opfdata, opfBlockData, blk, x, λ, modelinfo, algparams)
+                    end
+                end
+            end
         end
-        runinfo.wall_time_elapsed_ideal += isempty(runinfo.ser_order) ? 0.0 : sum(nlp_soltime[blk] for blk in runinfo.ser_order)
+
+        # FIX ME: This should most likely also only be the neighbors
+        MPI.Allreduce!(x.Zt, MPI.SUM, comm)
         runinfo.wall_time_elapsed_ideal += isempty(runinfo.par_order) ? 0.0 : maximum([nlp_soltime[blk] for blk in runinfo.par_order])
         runinfo.wall_time_elapsed_ideal += elapsed_t
     end
     #------------------------------------------------------------------------------------
     function dual_update()
         elapsed_t = @elapsed begin
-            maxviol_t, maxviol_c = update_dual_vars(λ, opfdata, x, modelinfo, algparams)
+            maxviol_t = 0.0; maxviol_c = 0.0
+            for blk in runinfo.par_order[1,:]
+                block = opfBlockData.blkIndex[blk]
+                k = block[1]
+                t = block[2]
+                if ismywork(blk, comm)
+                    lmaxviol_t, lmaxviol_c = update_dual_vars(λ, opfdata, opfBlockData, blk, x, modelinfo, algparams)
+                    maxviol_t = max(maxviol_t, lmaxviol_t)
+                    maxviol_c = max(maxviol_c, lmaxviol_c)
+                else
+                    λ.ramping[:,t] .= 0.0
+                end
+            end
+            # FIX ME: This should most likely also only be the neighbors
+            MPI.Allreduce!(λ.ramping, MPI.SUM, comm)
+            maxviol_t = MPI.Allreduce(maxviol_t, MPI.MAX, comm)
+            maxviol_c = MPI.Allreduce(maxviol_c, MPI.MAX, comm)
             push!(runinfo.maxviol_t, maxviol_t)
             push!(runinfo.maxviol_c, maxviol_c)
         end
@@ -214,7 +283,7 @@ function optimize!(nlp::ProxALEvaluator)
         proximal_update()
 
         # Update counters and write output
-        update_runinfo(runinfo, opfdata, modelinfo, algparams)
+        update_runinfo(runinfo, opfdata, opfBlockData, modelinfo, algparams, comm)
 
         # Check convergence
         if max(runinfo.maxviol_t[end], runinfo.maxviol_c[end], runinfo.maxviol_d[end]) <= algparams.tol
@@ -235,7 +304,6 @@ function opf_initialization!(nlp::ProxALEvaluator)
     primal = ProxAL.PrimalSolution(opfdata, modelinfo_single)
     dual = ProxAL.DualSolution(opfdata, modelinfo_single)
     algparams = AlgParams()
-    algparams.parallel = false #algparams.parallel = (nprocs() > 1)
     algparams.mode = :coldstart
     algparams.optimizer = optimizer_with_attributes(Ipopt.Optimizer,
             "print_level" => Int64(algparams.verbose > 0)*5)

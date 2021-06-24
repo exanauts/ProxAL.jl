@@ -1,9 +1,12 @@
 using Test
+using MPI
 using Ipopt
 using ExaPF
 using JuMP
 using ProxAL
 using DelimitedFiles, Printf
+
+MPI.Init()
 
 DATA_DIR = joinpath(dirname(@__FILE__), "..", "data")
 case = "case9"
@@ -36,7 +39,6 @@ load_file = joinpath(DATA_DIR, "mp_demand", "$(case)_oneweek_168")
 
     # Algorithm settings
     algparams = AlgParams()
-    algparams.parallel = false #algparams.parallel = (nprocs() > 1)
     algparams.verbose = 0
     algparams.mode = :coldstart
 
@@ -145,3 +147,5 @@ load_file = joinpath(DATA_DIR, "mp_demand", "$(case)_oneweek_168")
         @test length(blocks.blkModel) == nlp.modelinfo.num_time_periods
     end
 end
+
+MPI.Finalize()

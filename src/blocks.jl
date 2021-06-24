@@ -95,7 +95,7 @@ function OPFBlocks(
     for blk in LinearIndices(blkIndex)
         k = blkIndex[blk][1]
         t = blkIndex[blk][2]
-        if blk % MPI.Comm_size(MPI.COMM_WORLD) == MPI.Comm_rank(MPI.COMM_WORLD)
+        if ismywork(blk, MPI.COMM_WORLD)
 
             # Local info
             localinfo = localcopy(modelinfo)

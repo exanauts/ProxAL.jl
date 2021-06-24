@@ -3,14 +3,15 @@ using ProxAL
 
 testdir = @__DIR__
 # MPI is a requirement for ExaTron
-MPI.Init()
 
 @testset "Integration tests" begin
-    include("blockmodel.jl")
+    mpiexec() do cmd
+        run(`$cmd -n 1 $(Base.julia_cmd()) --project=$testdir/.. $testdir/blockmodel.jl`)
+    end
+    @test true
 end
 
 # We can finalize here as now we launch external processes
-MPI.Finalize()
 
 # Testing using 1 process
 @testset "Sequential tests" begin
