@@ -4,9 +4,7 @@ using DelimitedFiles, Printf
 using LinearAlgebra, JuMP
 using CatViews
 using CUDA
-using MPI
 
-MPI.Init()
 DATA_DIR = joinpath(dirname(@__FILE__), "..", "data")
 case = "case9"
 T = 2
@@ -95,7 +93,7 @@ end
 
                 @testset "ProxALM" begin
                     algparams.mode = :coldstart
-                    nlp = ProxALEvaluator(case_file, load_file, modelinfo, algparams)
+                    nlp = ProxALEvaluator(case_file, load_file, modelinfo, algparams, JuMPBackend(), Dict(), Dict(), nothing)
                     runinfo = ProxAL.optimize!(nlp)
                     @test isapprox(runinfo.maxviol_c[end], 0.0)
                     @test isapprox(runinfo.x.Pg[:], [0.8979849196165037, 1.3432106614001416, 0.9418713794662078, 0.9840203268799962, 1.4480400989162827, 1.0149638876932787], rtol = rtol)
@@ -132,7 +130,7 @@ end
 
                 @testset "ProxALM" begin
                     algparams.mode = :coldstart
-                    nlp = ProxALEvaluator(case_file, load_file, modelinfo, algparams)
+                    nlp = ProxALEvaluator(case_file, load_file, modelinfo, algparams, JuMPBackend(), Dict(), Dict(), nothing)
                     runinfo = ProxAL.optimize!(nlp)
                     @test isapprox(runinfo.maxviol_c[end], 0.0)
                     @test isapprox(runinfo.x.Pg[:], [0.8979849202781868, 1.3432106598597684, 0.9418713802665164, 0.9055296917633987, 1.3522643856420227, 0.9500197334705451, 0.9840203265723066, 1.4480400977255763, 1.0149638891986126, 0.9932005576574989, 1.4590563750278072, 1.0248785387706203], rtol = rtol)
@@ -171,7 +169,7 @@ end
                 end
                 @testset "ProxALM" begin
                     algparams.mode = :coldstart
-                    nlp = ProxALEvaluator(case_file, load_file, modelinfo, algparams)
+                    nlp = ProxALEvaluator(case_file, load_file, modelinfo, algparams, JuMPBackend(), Dict(), Dict(), nothing)
                     runinfo = ProxAL.optimize!(nlp)
                     @test isapprox(runinfo.x.Pg[:], [0.8847566379915904, 1.3458885793645132, 0.9528041613516992, 0.8889877105252308, 1.3510255515317628, 0.9575214693720255, 0.9689518361922401, 1.4504831243374814, 1.0280553147660263, 0.9743778573888332, 1.4570143379662728, 1.0340634613139639], rtol = rtol)
                     @test isapprox(runinfo.x.ωt[:], [0.0, -6.872285646588893e-5, 0.0, -8.763210220007218e-5], rtol = rtol)
@@ -187,4 +185,3 @@ end
     end # solver testset
     end
 end
-MPI.Finalize()

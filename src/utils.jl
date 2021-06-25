@@ -31,6 +31,7 @@ mutable struct ProxALMData
         modelinfo::ModelParams,
         algparams::AlgParams,
         space::AbstractSpace,
+        comm::Union{MPI.Comm,Nothing},
         opt_sol = Dict(),
         lyapunov_sol = Dict(),
         initial_primal = nothing,
@@ -64,7 +65,7 @@ mutable struct ProxALMData
         blocks = OPFBlocks(
             opfdata, rawdata;
             modelinfo=modelinfo, algparams=algparams,
-            backend=backend,
+            backend=backend, comm
         )
         blkLinIndex = LinearIndices(blocks.blkIndex)
         for blk in blkLinIndex
@@ -128,7 +129,7 @@ function update_runinfo(
     opfBlockData::OPFBlocks,
     modelinfo::ModelParams,
     algparams::AlgParams,
-    comm::MPI.Comm
+    comm::Union{MPI.Comm,Nothing}
 )
     iter = runinfo.iter
     obj = 0.0
@@ -137,7 +138,7 @@ function update_runinfo(
             obj += compute_objective_function(runinfo.x, opfdata, opfBlockData, blk, modelinfo)
         end
     end
-    obj = MPI.Allreduce(obj, MPI.SUM, comm)
+    obj = comm_sum(obj, comm)
     push!(runinfo.objvalue, obj)
 
     iter = runinfo.iter
@@ -147,7 +148,7 @@ function update_runinfo(
             lyapunov += compute_lyapunov_function(runinfo.x, runinfo.λ, opfdata, opfBlockData, blk, runinfo.xprev, modelinfo, algparams)
         end
     end
-    lyapunov = MPI.Allreduce(lyapunov, MPI.SUM, comm)
+    lyapunov = comm_sum(lyapunov, comm)
     push!(runinfo.lyapunov, lyapunov)
 
     # FIX ME: Frigging bug in the parallel implementation of the dual error
@@ -197,8 +198,4 @@ function update_runinfo(
                     optimgap,
                     lyapunov_gap)
     end
-end
-
-function ismywork(blk, comm)
-    blk % MPI.Comm_size(comm) == MPI.Comm_rank(comm)
 end

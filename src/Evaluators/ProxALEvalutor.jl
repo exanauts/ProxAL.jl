@@ -5,7 +5,7 @@ struct ProxALEvaluator <: AbstractNLPEvaluator
     opfdata::OPFData
     rawdata::RawData
     space::AbstractSpace
-    comm::MPI.Comm
+    comm::Union{MPI.Comm,Nothing}
 end
 
 """
@@ -27,7 +27,7 @@ function ProxALEvaluator(
     space::AbstractSpace=JuMPBackend(),
     opt_sol::Dict = Dict(),
     lyapunov_sol::Dict = Dict(),
-    comm::MPI.Comm = MPI.COMM_WORLD
+    comm::Union{MPI.Comm,Nothing} = MPI.COMM_WORLD
 )
     rawdata = RawData(case_file, load_file)
     opfdata = opf_loaddata(
@@ -46,7 +46,7 @@ function ProxALEvaluator(
     )
 
     # ctgs_arr = deepcopy(rawdata.ctgs_arr)
-    alminfo = ProxALMData(opfdata, rawdata, modelinfo, algparams, space, opt_sol, lyapunov_sol)
+    alminfo = ProxALMData(opfdata, rawdata, modelinfo, algparams, space, comm, opt_sol, lyapunov_sol)
     return ProxALEvaluator(alminfo, modelinfo, algparams, opfdata, rawdata, space, comm)
 end
 
@@ -123,49 +123,11 @@ function optimize!(nlp::ProxALEvaluator)
                 end
             end
 
-            # For each period send to t-1 and t+1
-            requests = MPI.Request[]
-            for blk in runinfo.par_order[1,:]
-                block = opfBlockData.blkIndex[blk]
-                k = block[1]
-                t = block[2]
-                if ismywork(blk, comm)
-                    for blkn in runinfo.par_order[1,:]
-                        blockn = opfBlockData.blkIndex[blkn]
-                        kn = blockn[1]
-                        tn = blockn[2]
-                        # Neighboring period needs my work if it's not local
-                        if (tn == t-1 || tn == t+1) && !ismywork(blkn, comm)
-                            remote = blkn % MPI.Comm_size(comm)
-                            push!(requests, MPI.Isend(nlp_opt_sol[:,blk], remote, t, comm))
-                        end
-                    end
-                end
-            end
-
-            # For each period receive from t-1 and t+1
-            for blk in runinfo.par_order[1,:]
-                block = opfBlockData.blkIndex[blk]
-                k = block[1]
-                t = block[2]
-                if ismywork(blk, comm)
-                    for blkn in runinfo.par_order[1,:]
-                        blockn = opfBlockData.blkIndex[blkn]
-                        kn = blockn[1]
-                        tn = blockn[2]
-                        # Receive neighboring period if it's not local
-                        if (tn == t-1 || tn == t+1) && !ismywork(blkn, comm)
-                            remote = blkn % MPI.Comm_size(comm)
-                            buf = @view nlp_opt_sol[:,blkn]
-                            push!(requests, MPI.Irecv!(buf, remote, tn, comm))
-                        end
-                    end
-                end
-            end
-            MPI.Waitall!(requests)
+            requests = comm_nn!(nlp_opt_sol, opfBlockData, runinfo, comm)
+            comm_wait!(requests)
 
             # Every worker sends his contribution
-            MPI.Allreduce!(nlp_soltime, MPI.SUM, comm)
+            comm_sum!(nlp_soltime, comm)
             # Update primal values
             for blk in runinfo.par_order
                 block = opfBlockData.blkIndex[blk]
@@ -200,8 +162,8 @@ function optimize!(nlp::ProxALEvaluator)
             end
         end
 
-        # FIX ME: This should most likely also only be the neighbors
-        MPI.Allreduce!(x.Zt, MPI.SUM, comm)
+        requests = comm_nn!(x.Zt, opfBlockData, runinfo, comm)
+        comm_wait!(requests)
         runinfo.wall_time_elapsed_ideal += isempty(runinfo.par_order) ? 0.0 : maximum([nlp_soltime[blk] for blk in runinfo.par_order])
         runinfo.wall_time_elapsed_ideal += elapsed_t
     end
@@ -221,12 +183,12 @@ function optimize!(nlp::ProxALEvaluator)
                     λ.ramping[:,t] .= 0.0
                 end
             end
-            # FIX ME: This should most likely also only be the neighbors
-            MPI.Allreduce!(λ.ramping, MPI.SUM, comm)
-            maxviol_t = MPI.Allreduce(maxviol_t, MPI.MAX, comm)
-            maxviol_c = MPI.Allreduce(maxviol_c, MPI.MAX, comm)
+            requests = comm_nn!(λ.ramping, opfBlockData, runinfo, comm)
+            maxviol_t = comm_max(maxviol_t, comm)
+            maxviol_c = comm_max(maxviol_c, comm)
             push!(runinfo.maxviol_t, maxviol_t)
             push!(runinfo.maxviol_c, maxviol_c)
+            comm_wait!(requests)
         end
         runinfo.wall_time_elapsed_actual += elapsed_t
         runinfo.wall_time_elapsed_ideal += elapsed_t
