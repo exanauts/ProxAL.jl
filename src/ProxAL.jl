@@ -19,12 +19,14 @@ include("blockmodel.jl")
 include("blocks.jl")
 include("opfmodel.jl")
 include("utils.jl")
+include("communication.jl")
 include("Evaluators/ProxALEvalutor.jl")
 include("Evaluators/NonDecomposedModel.jl")
 
 export ModelParams, AlgParams
 export ProxALEvaluator, NonDecomposedModel, set_penalty!
 export optimize!
+export JuMPBackend, ExaPFBackend, ExaTronBackend
 
 function update_primal_nlpvars(x::PrimalSolution, opfBlockData::OPFBlocks, blk::Int,
                                modelinfo::ModelParams,

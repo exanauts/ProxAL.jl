@@ -75,7 +75,8 @@ function OPFBlocks(
     rawdata::RawData;
     modelinfo::ModelParams = ModelParams(),
     backend=JuMPBlockModel,
-    algparams::AlgParams = AlgParams()
+    algparams::AlgParams = AlgParams(),
+    comm::Union{MPI.Comm,Nothing}
 )
     ngen  = length(opfdata.generators)
     nbus  = length(opfdata.buses)
@@ -95,7 +96,7 @@ function OPFBlocks(
     for blk in LinearIndices(blkIndex)
         k = blkIndex[blk][1]
         t = blkIndex[blk][2]
-        if ismywork(blk, MPI.COMM_WORLD)
+        if ismywork(blk, comm)
 
             # Local info
             localinfo = localcopy(modelinfo)

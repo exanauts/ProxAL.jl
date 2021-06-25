@@ -6,8 +6,6 @@ using JuMP
 using ProxAL
 using DelimitedFiles, Printf
 
-MPI.Init()
-
 DATA_DIR = joinpath(dirname(@__FILE__), "..", "data")
 case = "case9"
 T = 3
@@ -51,7 +49,7 @@ load_file = joinpath(DATA_DIR, "mp_demand", "$(case)_oneweek_168")
     K = 0
 
     # Instantiate primal and dual buffers
-    nlp = ProxALEvaluator(case_file, load_file, modelinfo, algparams)
+    nlp = ProxALEvaluator(case_file, load_file, modelinfo, algparams, JuMPBackend(), Dict(), Dict(), nothing)
     primal = ProxAL.PrimalSolution(nlp)
     dual = ProxAL.DualSolution(nlp)
 
@@ -142,10 +140,9 @@ load_file = joinpath(DATA_DIR, "mp_demand", "$(case)_oneweek_168")
             nlp.opfdata, nlp.rawdata;
             modelinfo=nlp.modelinfo,
             algparams=nlp.algparams,
+            comm=nothing
         )
 
         @test length(blocks.blkModel) == nlp.modelinfo.num_time_periods
     end
 end
-
-MPI.Finalize()
