@@ -74,22 +74,22 @@ function optimize!(nlp::ProxALEvaluator; print_timings=false)
     function transfer!(blk, opt_sol, solution)
         # Pg
         fr = 1 ; to = ngen * k_per_block
-        opt_sol[fr:to, blk] .= solution.pg[:]
+        @views opt_sol[fr:to, blk] .= solution.pg[:]
         # Qg
         fr = to + 1 ; to += ngen * k_per_block
-        opt_sol[fr:to, blk] .= solution.qg[:]
+        @views opt_sol[fr:to, blk] .= solution.qg[:]
         # vm
         fr = to +1 ; to = fr + nbus * k_per_block - 1
-        opt_sol[fr:to, blk] .= solution.vm[:]
+        @views opt_sol[fr:to, blk] .= solution.vm[:]
         # va
         fr = to + 1 ; to = fr + nbus * k_per_block - 1
-        opt_sol[fr:to, blk] .= solution.va[:]
+        @views opt_sol[fr:to, blk] .= solution.va[:]
         # wt
         fr = to +1  ; to = fr + k_per_block -1
-        opt_sol[fr:to, blk] .= solution.ωt[:]
+        @views opt_sol[fr:to, blk] .= solution.ωt[:]
         # St
         fr = to +1  ; to = fr + ngen - 1
-        opt_sol[fr:to, blk] .= solution.st[:]
+        @views opt_sol[fr:to, blk] .= solution.st[:]
     end
     #------------------------------------------------------------------------------------
     function blocknlp_copy(blk, x_ref, λ_ref, alg_ref)

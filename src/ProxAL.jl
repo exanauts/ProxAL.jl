@@ -40,40 +40,40 @@ function update_primal_nlpvars(x::PrimalSolution, opfBlockData::OPFBlocks, blk::
 
         from = 1
         to = size(x.Pg,1)*length(range_k)
-        x.Pg[:,range_k,t] .= opfBlockData.colValue[from:to,blk]
+        @views x.Pg[:,range_k,t] .= opfBlockData.colValue[from:to,blk]
 
         from = 1+to
         to = to + size(x.Qg, 1)*length(range_k)
-        x.Qg[:,range_k,t] .= opfBlockData.colValue[from:to,blk]
+        @views x.Qg[:,range_k,t] .= opfBlockData.colValue[from:to,blk]
 
         from = 1+to
         to = to + size(x.Vm, 1)*length(range_k)
-        x.Vm[:,range_k,t] .= opfBlockData.colValue[from:to,blk]
+        @views x.Vm[:,range_k,t] .= opfBlockData.colValue[from:to,blk]
 
         from = 1+to
         to = to + size(x.Va, 1)*length(range_k)
-        x.Va[:,range_k,t] .= opfBlockData.colValue[from:to,blk]
+        @views x.Va[:,range_k,t] .= opfBlockData.colValue[from:to,blk]
 
         from = 1+to
         to = to + length(range_k)
-        x.ωt[range_k,t] .= opfBlockData.colValue[from:to,blk]
+        @views x.ωt[range_k,t] .= opfBlockData.colValue[from:to,blk]
 
         from = 1+to
         to = to + size(x.St, 1)
-        x.St[:,t] .= opfBlockData.colValue[from:to,blk]
+        @views x.St[:,t] .= opfBlockData.colValue[from:to,blk]
 
         from = 1+to
         to = to + size(x.Zt, 1)
-        x.Zt[:,t] .= opfBlockData.colValue[from:to,blk]
+        @views x.Zt[:,t] .= opfBlockData.colValue[from:to,blk]
 
         from = 1+to
         to = to + size(x.Sk, 1)*length(range_k)
-        x.Sk[:,range_k,t] .= opfBlockData.colValue[from:to,blk]
+        @views x.Sk[:,range_k,t] .= opfBlockData.colValue[from:to,blk]
 
         # Zk
         from = 1+to
         to = to + size(x.Sk, 1)*length(range_k)
-        x.Sk[:,range_k,t] .= opfBlockData.colValue[from:to,blk]
+        @views x.Sk[:,range_k,t] .= opfBlockData.colValue[from:to,blk]
     else
         solution = get_block_view(x, opfBlockData.blkIndex[blk],
                                 modelinfo,
@@ -97,7 +97,7 @@ function update_primal_penalty(x::PrimalSolution, opfdata::OPFData,
     if modelinfo.time_link_constr_type == :penalty
         β = [opfdata.generators[g].ramp_agc for g=1:ngen]
         if t > 1
-            x.Zt[:,t] .= ((algparams.τ*primal.Zt[:,t]) .- dual.ramping[:,t] .-
+            @views x.Zt[:,t] .= ((algparams.τ*primal.Zt[:,t]) .- dual.ramping[:,t] .-
                             (algparams.ρ_t[:,t].*(+x.Pg[:,1,t-1] .- x.Pg[:,1,t] .+ x.St[:,t] .- β))
                         ) ./  max.(algparams.zero, algparams.τ .+ algparams.ρ_t[:,t] .+ (modelinfo.obj_scale*modelinfo.weight_quadratic_penalty_time))
         end
@@ -118,7 +118,7 @@ function update_primal_penalty(x::PrimalSolution, opfdata::OPFData,
         if modelinfo.ctgs_link_constr_type ∈ [:preventive_penalty, :corrective_penalty]
             β = zeros(ngen,T)
             if modelinfo.ctgs_link_constr_type == :corrective_penalty
-                for g=1:ngen
+                @views for g=1:ngen
                     β[g,:] .= opfdata.generators[g].scen_agc
                 end
             else
