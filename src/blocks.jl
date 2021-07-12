@@ -75,7 +75,8 @@ function OPFBlocks(
     rawdata::RawData;
     modelinfo::ModelParams = ModelParams(),
     backend=JuMPBlockModel,
-    algparams::AlgParams = AlgParams()
+    algparams::AlgParams = AlgParams(),
+    comm::Union{MPI.Comm,Nothing}
 )
     ngen  = length(opfdata.generators)
     nbus  = length(opfdata.buses)
@@ -95,18 +96,21 @@ function OPFBlocks(
     for blk in LinearIndices(blkIndex)
         k = blkIndex[blk][1]
         t = blkIndex[blk][2]
+        if ismywork(blk, comm)
 
-        # Local info
-        localinfo = localcopy(modelinfo)
-        if algparams.decompCtgs
-            @assert k > 0
-            localinfo.num_ctgs = 0
+            # Local info
+            localinfo = localcopy(modelinfo)
+            if algparams.decompCtgs
+                @assert k > 0
+                localinfo.num_ctgs = 0
+            end
+            localdata = load_local_data(rawdata, opfdata, localinfo, t, k;
+                                        decompCtgs=algparams.decompCtgs)
+            # Create block model
+            localmodel = backend(blk, localdata, rawdata, algparams, localinfo, t, k, T)
+        else
+            localmodel = EmptyBlockModel()
         end
-        localdata = load_local_data(rawdata, opfdata, localinfo, t, k;
-                                    decompCtgs=algparams.decompCtgs)
-        # Create block model
-        localmodel = backend(blk, localdata, rawdata, localinfo, t, k, T;
-                             device=algparams.device, nr_tol=algparams.nr_tol)
         push!(blkModel, localmodel)
     end
 

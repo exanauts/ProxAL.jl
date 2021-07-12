@@ -5,15 +5,13 @@ struct NonDecomposedModel <: AbstractNLPEvaluator
     opfdata::OPFData
     rawdata::RawData
     space::AbstractSpace
-    comm::MPI.Comm
 end
 
 function NonDecomposedModel(
     case_file::String, load_file::String,
     modelinfo::ModelParams,
     algparams::AlgParams,
-    space::AbstractSpace=FullSpace(),
-    comm::MPI.Comm=MPI.COMM_WORLD;
+    space::AbstractSpace=JuMPBackend(),
     time_horizon_start=1
 )
     rawdata = RawData(case_file, load_file)
@@ -33,8 +31,8 @@ function NonDecomposedModel(
     )
 
     # ctgs_arr = deepcopy(rawdata.ctgs_arr)
-    alminfo = ProxALMData(opfdata, rawdata, modelinfo, algparams, space)
-    return NonDecomposedModel(alminfo, modelinfo, algparams, opfdata, rawdata, space, comm)
+    alminfo = ProxALMData(opfdata, rawdata, modelinfo, algparams, space, nothing)
+    return NonDecomposedModel(alminfo, modelinfo, algparams, opfdata, rawdata, space)
 end
 
 """

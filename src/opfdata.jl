@@ -168,10 +168,13 @@ function RawData(case_name, scen_file::String="")
     return RawData(baseMVA, bus_arr, branch_arr, gen_arr, costgen_arr, pd_arr, qd_arr, ctgs_arr)
 end
 
-function ctgs_loaddata(raw::RawData, n)
-    return raw.ctgs_arr[1:n]
+# UTILS
+ctgs_loaddata(raw::RawData, n) = raw.ctgs_arr[1:n]
+function check_loads(loads, loads_ref; rtol=1e-2)
+    return maximum((loads .- loads_ref) ./ max.(1.0, loads_ref)) < rtol
 end
 
+#
 """
     opf_loaddata(raw::RawData;
                  time_horizon_start::Int=1,
@@ -240,16 +243,18 @@ function opf_loaddata(raw::RawData;
     ncols_lines = size(branch_arr, 2)
 
     lit = 0
+    has_voltage_angle_bounds = false
     for i in lines_on
         @assert branch_arr[i,11] == 1  #should be on since we discarded all other
         lit += 1
         lines[lit] = Line(branch_arr[i, 1:ncols_lines]...)
         if lines[lit].angmin > -360 || lines[lit].angmax < 360
-            error("Bounds of voltage angles are still to be implemented.")
+            has_voltage_angle_bounds = true
         end
 
     end
     @assert lit == num_on
+    (has_voltage_angle_bounds) && println("Bounds of voltage angles are still to be implemented.")
 
     #
     # load generators
@@ -315,11 +320,21 @@ function opf_loaddata(raw::RawData;
     topology = PS.makeYbus(bus_arr, branch_arr[lines_on, :], baseMVA, busIdx)
     Ybus = topology.ybus
     # generators at each bus
-    BusGeners = PS.get_bus_generators(bus_arr, gen_arr, busIdx)
+    gen_active = gen_arr[gens_on, :]
+    BusGeners = PS.get_bus_generators(bus_arr, gen_active, busIdx)
 
     # demands for multiperiod OPF
     Pd = raw.pd_arr
     Qd = raw.qd_arr
+
+    pd_scen = Pd[:, 1]
+    qd_scen = Qd[:, 1]
+    pd_ref = raw.bus_arr[:, 3]
+    qd_ref = raw.bus_arr[:, 4]
+    if !check_loads(pd_scen, pd_ref) || !check_loads(qd_scen, qd_ref)
+        @warn("Large discrepancy observed between scenarios and MATPOWER's data")
+    end
+
     if time_horizon_end > 0
         Pd = Pd[:,time_horizon_start:time_horizon_end] .* load_scale
         Qd = Qd[:,time_horizon_start:time_horizon_end] .* load_scale

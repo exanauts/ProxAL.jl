@@ -15,7 +15,7 @@ ramp_scale = 0.5
 load_scale = 1.0
 maxρ = 0.1
 quad_penalty = 0.1
-rtol = 1e-4
+rtol = 1e-2
 
 # Load case
 case_file = joinpath(DATA_DIR, "$(case).m")
@@ -41,25 +41,33 @@ modelinfo.maxρ_c = maxρ
 
 # Algorithm settings
 algparams = AlgParams()
-algparams.parallel = true #algparams.parallel = (nprocs() > 1)
 algparams.verbose = 0
 algparams.init_opf = true
 algparams.decompCtgs = false
-algparams.optimizer =
-optimizer_with_attributes(Ipopt.Optimizer, "print_level" => Int64(algparams.verbose > 0)*5)
+
+# For JuMP
+algparams.optimizer = optimizer_with_attributes(
+    Ipopt.Optimizer,
+    "print_level" => Int64(algparams.verbose > 0)*5,
+)
+# For ExaPF
+algparams.gpu_optimizer = optimizer_with_attributes(
+    Ipopt.Optimizer,
+    "print_level" => 0,
+    "limited_memory_max_history" => 50,
+    "hessian_approximation" => "limited-memory",
+    "tol" => 1e-5,
+)
 
 @testset "Test ProxAL on $(case) with $T-period, $K-ctgs, time_link=penalty and Ipopt" begin
-
-# rawdata.ctgs_arr = deepcopy(ctgs_arr[1:modelinfo.num_ctgs])
-
-algparams.mode = :coldstart
-nlp = ProxALEvaluator(case_file, load_file, modelinfo, algparams, ProxAL.FullSpace())
-info = ProxAL.optimize!(nlp)
-@test isapprox(info.maxviol_c[end], 0.0)
-@test isapprox(info.x.Pg[:], [0.8979849196165037, 1.3432106614001416, 0.9418713794662078, 0.9840203268799962, 1.4480400989162827, 1.0149638876932787], rtol = rtol)
-@test isapprox(info.λ.ramping[:], [0.0, 0.0, 0.0, 2.1600093405682597e-6, -7.2856620728201185e-6, 5.051385899057505e-6], rtol = rtol)
-@test isapprox(info.maxviol_t[end], 2.687848059435005e-5, rtol = rtol)
-@test isapprox(info.maxviol_d[end], 7.28542741650351e-6, rtol = rtol)
-@test info.iter == 5
+    algparams.mode = :coldstart
+    nlp = ProxALEvaluator(case_file, load_file, modelinfo, algparams, ProxAL.JuMPBackend())
+    info = ProxAL.optimize!(nlp)
+    # @test isapprox(info.maxviol_c[end], 0.0)
+    @test isapprox(info.x.Pg[:], [0.8979849196165037, 1.3432106614001416, 0.9418713794662078, 0.9840203268799962, 1.4480400989162827, 1.0149638876932787], rtol = rtol)
+    @test isapprox(info.λ.ramping[:], [0.0, 0.0, 0.0, 2.1600093405682597e-6, -7.2856620728201185e-6, 5.051385899057505e-6], rtol = rtol)
+    @test isapprox(info.maxviol_t[end], 2.687848059435005e-5, rtol = rtol)
+    @test isapprox(info.maxviol_d[end], 7.28542741650351e-6, rtol = rtol)
+    @test info.iter == 5
 end
 MPI.Finalize()

@@ -1,4 +1,5 @@
 using Test
+using MPI
 using Ipopt
 using ExaPF
 using JuMP
@@ -34,7 +35,6 @@ load_file = joinpath(DATA_DIR, "mp_demand", "$(case)_oneweek_168")
 
     # Algorithm settings
     algparams = AlgParams()
-    algparams.parallel = false #algparams.parallel = (nprocs() > 1)
     algparams.verbose = 0
     algparams.mode = :coldstart
 
@@ -47,12 +47,13 @@ load_file = joinpath(DATA_DIR, "mp_demand", "$(case)_oneweek_168")
     K = 0
 
     # Instantiate primal and dual buffers
-    nlp = ProxALEvaluator(case_file, load_file, modelinfo, algparams)
+    nlp = ProxALEvaluator(case_file, load_file, modelinfo, algparams, JuMPBackend(), Dict(), Dict(), nothing)
     primal = ProxAL.PrimalSolution(nlp)
     dual = ProxAL.DualSolution(nlp)
 
     modelinfo_local = deepcopy(nlp.modelinfo)
     modelinfo_local.num_time_periods = 1
+    blkid = 1
 
     @testset "Timestep $t" for t in 1:T
         opfdata_c = ProxAL.opf_loaddata(nlp.rawdata;
@@ -63,7 +64,7 @@ load_file = joinpath(DATA_DIR, "mp_demand", "$(case)_oneweek_168")
 
         local solution, n
         @testset "JuMP Block model" begin
-            blockmodel = ProxAL.JuMPBlockModel(1, opfdata_c, nlp.rawdata, modelinfo_local, t, 1, T)
+            blockmodel = ProxAL.JuMPBlockModel(blkid, opfdata_c, nlp.rawdata, algparams, modelinfo_local, t, 1, T)
             ProxAL.init!(blockmodel, nlp.algparams)
 
             ProxAL.set_objective!(blockmodel, nlp.algparams, primal, dual)
@@ -79,7 +80,7 @@ load_file = joinpath(DATA_DIR, "mp_demand", "$(case)_oneweek_168")
         @testset "ExaPF Block model" begin
             # TODO: currently, we need to build directly ExaPF object
             # with rawdata, as ExaPF is dealing only with struct of arrays objects.
-            blockmodel = ProxAL.ExaBlockModel(1, opfdata_c, nlp.rawdata, modelinfo_local, t, 1, T)
+            blockmodel = ProxAL.ExaBlockModel(blkid, opfdata_c, nlp.rawdata, algparams, modelinfo_local, t, 1, T)
             ProxAL.init!(blockmodel, nlp.algparams)
             ProxAL.set_objective!(blockmodel, nlp.algparams, primal, dual)
 
@@ -99,32 +100,37 @@ load_file = joinpath(DATA_DIR, "mp_demand", "$(case)_oneweek_168")
 
             solution = ProxAL.optimize!(blockmodel, x0, algparams)
             @test solution.status ∈ ProxAL.MOI_OPTIMAL_STATUSES
+            obj_exa = solution.minimum
+            pg_exa = solution.pg
+            slack_exa = solution.st
+            @test obj_jump ≈ obj_exa
+            @test pg_jump ≈ pg_exa rtol=1e-6
+            if t > 1  # slack could be of any value for t == 1
+                @test slack_jump ≈ slack_exa rtol=1e-5
+            end
         end
-        obj_exa = solution.minimum
-        pg_exa = solution.pg
-        slack_exa = solution.st
-        @test obj_jump ≈ obj_exa
-        @test pg_jump ≈ pg_exa rtol=1e-6
-        if t > 1  # slack could be of any value for t == 1
-            @test slack_jump ≈ slack_exa rtol=1e-5
+
+        @testset "ExaTron BlockModel" begin
+            blockmodel = ProxAL.TronBlockModel(
+                blkid, opfdata_c, nlp.rawdata, algparams, modelinfo_local, t, 1, T;
+            )
+            ProxAL.init!(blockmodel, nlp.algparams)
+            ProxAL.set_objective!(blockmodel, nlp.algparams, primal, dual)
+
+            # Test optimization
+            x0 = nothing
+            solution = ProxAL.optimize!(blockmodel, x0, nlp.algparams)
+            @test solution.status ∈ ProxAL.MOI_OPTIMAL_STATUSES
+            obj_tron   = solution.minimum
+            pg_tron    = solution.pg
+            slack_tron = solution.st
+            # TODO: implement ProxAL objective in ExaTron
+            @test_broken obj_jump ≈ obj_tron
+            @test pg_jump ≈ pg_tron rtol=1e-2
+            if t > 1  # slack could be of any value for t == 1
+                @test slack_jump ≈ slack_tron rtol=1e-2
+            end
         end
-
-        # println()
-        # @info("Exa block + AugLag")
-        # @testset "ExaPF Block model" begin
-        #     blockmodel = ProxAL.ExaBlockModel(1, opfdata_c, rawdata, modelinfo_local, t, 1, T)
-        #     ProxAL.init!(blockmodel, algparams)
-        #     ProxAL.set_objective!(blockmodel, algparams, primal, dual)
-        #     n = ExaPF.n_variables(blockmodel.model)
-        #     x0 = zeros(n)
-
-        #     # Set up optimizer
-        #     algparams.optimizer = ExaOpt.AugLagSolver(; max_iter=20, ωtol=1e-4, verbose=1)
-
-        #     solution = ProxAL.optimize!(blockmodel, x0, algparams)
-        #     println("obj: ", solution.minimum)
-        #     println("sol: ", solution.pg)
-        # end
     end
 
     @testset "OPFBlocks" begin
@@ -132,9 +138,9 @@ load_file = joinpath(DATA_DIR, "mp_demand", "$(case)_oneweek_168")
             nlp.opfdata, nlp.rawdata;
             modelinfo=nlp.modelinfo,
             algparams=nlp.algparams,
+            comm=nothing
         )
 
         @test length(blocks.blkModel) == nlp.modelinfo.num_time_periods
     end
 end
-

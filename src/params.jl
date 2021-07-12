@@ -26,7 +26,6 @@ Specifies ProxAL's algorithmic parameters.
 | :--- | :--- | :--- |
 | `decompCtgs::Bool` | if true: decompose across contingencies (along with time) | false
 | `jacobi::Bool` |     if true: do Jacobi updates, else do Gauss-Siedel updates | true
-| `parallel::Bool` |   run NLP subproblems in parallel (needs MPI) | true
 | `iterlim::Int` |     maximum number of ProxAL iterations | 100
 | `nlpiterlim::Int` |  maximum number of NLP subproblem iterations | 100
 | `tol::Float64` |     tolerance used for ProxAL termination | 1.0e-4
@@ -46,66 +45,41 @@ Specifies ProxAL's algorithmic parameters.
 | `mode::Symbol` |     computation mode `∈ [:nondecomposed, :coldstart, :lyapunov_bound]` | `:nondecomposed`
 | `optimizer::Any` |   NLP solver | `nothing`
 | `gpu_optimizer::Any` | GPU-compatible NLP solver | `nothing`
-| `nr_tol::Float64`    | Tolerance of the Newton-Raphson algorithm (used only in `ReducedSpace()` model) | 1e-10
+| `nr_tol::Float64`    | Tolerance of the Newton-Raphson algorithm (used only in `ExaPFBackend()` model) | 1e-10
 | `device::TargetDevice` | Target device to deport the resolution of the optimization problem | CPU
 | `init_opt::Bool` |   if true: initialize block OPFs with base OPF solution | false
 """
-mutable struct AlgParams
-    decompCtgs::Bool# decompose contingencies (along with time)
-    jacobi::Bool    # if true: do jacobi, else do gauss-siedel
-    parallel::Bool  # run NLP subproblems in parallel
-    iterlim::Int    # maximum number of ADMM iterations
-    nlpiterlim::Int # maximum number of NLP subproblem iterations
-    tol::Float64    # tolerance used for ADMM termination
-    zero::Float64   # tolerance below which is regarded as zero
-    ρ_t::Any        # AL parameters for ramp constraints (can be different for different constraints)
-    ρ_c::Any        # AL parameters for ctgs constraints (can be different for different constraints)
-    maxρ_t::Float64 # Maximum value of ρ for ramp constraints
-    maxρ_c::Float64 # Maximum value of ρ for ctgs constraints
-    updateρ_t::Bool # Dynamically update ρ for ramp constraints
-    updateρ_c::Bool # Dynamically update ρ for ctgs constraints
-    ρ_t_tol::Any    # Tolerance for dynamic update of ρ for ramp constraints
-    ρ_c_tol::Any    # Tolerance for dynamic update of ρ for ramp constraints
-    τ::Float64      # Proximal coefficient
-    θ::Float64      # Relaxation parameter for update of dual variables
-    updateτ::Bool   # Dynamically update τ
-    verbose::Int    # level of output: 0 (none), 1 (stdout), 2 (+plots), 3 (+outfiles)
-    mode::Symbol    # computation mode [:nondecomposed, :coldstart, :lyapunov_bound]
-    optimizer::Any  # NLP solver for fullmodel and subproblems
-    gpu_optimizer::Any  # GPU-compatible NLP solver for fullmodel and subproblems
-    nr_tol::Float64 # Tolerance of the Newton-Raphson algorithm used in resolution of ExaBlockModel backend
-    device::TargetDevice
-    init_opf::Bool  # initialize block OPFs with base OPF solution
-
-    function AlgParams()
-        new(
-            false,  # decompCtgs
-            true,   # jacobi
-            true,   # parallel
-            100,    # iterlim
-            100,    # nlpiterlim
-            1e-4,   # tol
-            1e-8,   # zero
-            1.0,    # ρ_t
-            1.0,    # ρ_c
-            1.0,    # maxρ_t
-            1.0,    # maxρ_c
-            false,  # updateρ_t
-            false,  # updateρ_c
-            1e-3,   # ρ_t_tol
-            1e-3,   # ρ_c_tol
-            3.0,    # τ
-            1.0,    # θ
-            false,  # updateτ
-            0,      # verbose
-            :nondecomposed, # mode
-            nothing, # optimizer
-            nothing, # GPU optimizer
-            1e-10,   # nr_tol
-            CPU,     # device
-            false,   # init_opf
-        )
-    end
+Base.@kwdef mutable struct AlgParams
+    decompCtgs::Bool = false # decompose contingencies (along with time)
+    jacobi::Bool     = true  # if true: do jacobi, else do gauss-siedel
+    iterlim::Int     = 100   # maximum number of ADMM iterations
+    nlpiterlim::Int  = 100   # maximum number of NLP subproblem iterations
+    tol::Float64     = 1e-4  # tolerance used for ADMM termination
+    zero::Float64    = 1e-8  # tolerance below which is regarded as zero
+    ρ_t::Any         = 1.0   # AL parameters for ramp constraints (can be different for different constraints)
+    ρ_c::Any         = 1.0   # AL parameters for ctgs constraints (can be different for different constraints)
+    maxρ_t::Float64  = 1.0   # Maximum value of ρ for ramp constraints
+    maxρ_c::Float64  = 1.0   # Maximum value of ρ for ctgs constraints
+    updateρ_t::Bool  = false # Dynamically update ρ for ramp constraints
+    updateρ_c::Bool  = false # Dynamically update ρ for ctgs constraints
+    ρ_t_tol::Any     = 1e-3  # Tolerance for dynamic update of ρ for ramp constraints
+    ρ_c_tol::Any     = 1e-3  # Tolerance for dynamic update of ρ for ramp constraints
+    τ::Float64       = 3.0   # Proximal coefficient
+    θ::Float64       = 1.0   # Relaxation parameter for update of dual variables
+    updateτ::Bool    = false # Dynamically update τ
+    verbose::Int     = 0     # level of output: 0 (none), 1 (stdout), 2 (+plots), 3 (+outfiles)
+    mode::Symbol            = :nondecomposed # computation mode [:nondecomposed, :coldstart, :lyapunov_bound]
+    optimizer::Any          = nothing        # NLP solver for fullmodel and subproblems
+    gpu_optimizer::Any      = nothing        # GPU-compatible NLP solver for fullmodel and subproblems
+    nr_tol::Float64         = 1e-10          # Tolerance of the Newton-Raphson algorithm (for ExaBlockModel backend)
+    device::TargetDevice    = CPU
+    verbose_inner::Int      = 0
+    tron_rho_pq::Float64    = 4e2
+    tron_rho_pa::Float64    = 4e4
+    tron_scale::Float64     = 1e-4
+    tron_inner_iterlim::Int = 800
+    tron_outer_iterlim::Int = 20
+    tron_outer_eps::Float64 = 1e-4
 end
 
 """
@@ -132,58 +106,28 @@ Specifies the ACOPF model structure.
 | `time_link_constr_type::Symbol` | `∈ [:penalty, :equality, :inequality]` see [Formulation](@ref) | `:penalty`
 | `ctgs_link_constr_type::Symbol` | `∈ [:frequency_ctrl, :preventive_penalty, :preventive_equality, :corrective_penalty, :corrective_equality, :corrective_penalty]`, see [Formulation](@ref) | `:preventive_equality`
 """
-mutable struct ModelParams
-    num_time_periods::Int
-    num_ctgs::Int
-    load_scale::Float64
-    ramp_scale::Float64
-    obj_scale::Float64
-    allow_obj_gencost::Bool
-    allow_constr_infeas::Bool
-    weight_constr_infeas::Float64
-    weight_freq_ctrl::Float64
-    weight_ctgs::Float64
-    weight_quadratic_penalty_time::Float64
-    weight_quadratic_penalty_ctgs::Float64
-    case_name::String
-    savefile::String
-    time_link_constr_type::Symbol
-    ctgs_link_constr_type::Symbol
+Base.@kwdef mutable struct ModelParams
+    num_time_periods::Int = 1
+    num_ctgs::Int = 0
+    load_scale::Float64 = 1.0
+    ramp_scale::Float64 = 1.0
+    obj_scale::Float64 = 1e-3
+    allow_obj_gencost::Bool = true
+    allow_constr_infeas::Bool = false
+    weight_constr_infeas::Float64 = 1.0
+    weight_freq_ctrl::Float64 = 1.0
+    weight_ctgs::Float64 = 1.0
+    weight_quadratic_penalty_time::Float64 = 1.0
+    weight_quadratic_penalty_ctgs::Float64 = 1.0
+    case_name::String = ""
+    savefile::String = ""
+    time_link_constr_type::Symbol = :penalty # ∈ [:penalty, :equality, :inequality]
+    ctgs_link_constr_type::Symbol = :preventive_equality # ∈ [:frequency_ctrl, :preventive_penalty, :preventive_equality, :corrective_penalty, :corrective_equality, :corrective_inequality]
     # rho related
-    maxρ_t::Float64
-    maxρ_c::Float64
-    
-
-
-    function ModelParams()
-        new(
-            1,     # num_time_periods
-            0,     # num_ctgs
-            1.0,   # load_scale
-            1.0,   # ramp_scale
-            1e-3,  # obj_scale
-            true,  # allow_obj_gencost
-            false, # allow_constr_infeas
-            1.0,   # weight_constr_infeas
-            1.0,   # weight_freq_ctrl
-            1.0,   # weight_ctgs
-            1.0,   # weight_quadratic_penalty_time
-            1.0,   # weight_quadratic_penalty_ctgs
-            "",    # case_name
-            "",    # savefile
-            :penalty,               # time_link_constr_type [:penalty,
-                                    #                        :equality,
-                                    #                        :inequality]
-            :preventive_equality,    # ctgs_link_constr_type [:frequency_ctrl,
-                                    #                        :preventive_penalty,
-                                    #                        :preventive_equality,
-                                    #                        :corrective_penalty,
-                                    #                        :corrective_equality,
-                                    #                        :corrective_inequality]
-            0.1,
-            0.1
-        )
-    end
+    maxρ_t::Float64 = 0.1
+    maxρ_c::Float64 = 0.1
+    # Initialize block OPFs with base OPF solution
+    init_opf::Bool = false
 end
 
 """
@@ -221,7 +165,7 @@ function set_penalty!(
     algparams.maxρ_t = maxρ_t
     algparams.maxρ_c = maxρ_c
     algparams.τ = algparams.jacobi ? ((algparams.decompCtgs && modelinfo.num_ctgs > 0) ?
-                            3max(maxρ_t, maxρ_c) : 3maxρ_t) : 0.0
+                            3 * max(maxρ_t, maxρ_c) : 3 * maxρ_t) : 0.0
     return nothing
 end
 
