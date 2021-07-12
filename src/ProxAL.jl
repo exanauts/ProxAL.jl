@@ -6,6 +6,7 @@ module ProxAL
 using Ipopt, JuMP
 using Printf, CatViews
 using ExaPF
+using ExaTron
 using LinearAlgebra
 using SparseArrays
 using MPI
@@ -14,39 +15,89 @@ include("Evaluators/Evaluators.jl")
 include("params.jl")
 include("opfdata.jl")
 include("opfsolution.jl")
-include("opfmodel.jl")
 include("blockmodel.jl")
 include("blocks.jl")
+include("opfmodel.jl")
 include("utils.jl")
+include("communication.jl")
 include("Evaluators/ProxALEvalutor.jl")
 include("Evaluators/NonDecomposedModel.jl")
 
 export ModelParams, AlgParams
 export ProxALEvaluator, NonDecomposedModel
 export optimize!
+export JuMPBackend, ExaPFBackend, ExaTronBackend
 
 function update_primal_nlpvars(x::PrimalSolution, opfBlockData::OPFBlocks, blk::Int,
                                modelinfo::ModelParams,
                                algparams::AlgParams)
-    solution = get_block_view(x, opfBlockData.blkIndex[blk],
-                              modelinfo,
-                              algparams)
-    solution .= opfBlockData.colValue[:,blk]
+    # FIX ME: Make it work without views also in the non decomposed contingencies case
+    if algparams.decompCtgs
+        block = opfBlockData.blkIndex[blk]
+        k = block[1]
+        t = block[2]
+        range_k = algparams.decompCtgs ? (k:k) : (1:(modelinfo.num_ctgs + 1))
 
+        from = 1
+        to = size(x.Pg,1)*length(range_k)
+        @views x.Pg[:,range_k,t] .= opfBlockData.colValue[from:to,blk]
+
+        from = 1+to
+        to = to + size(x.Qg, 1)*length(range_k)
+        @views x.Qg[:,range_k,t] .= opfBlockData.colValue[from:to,blk]
+
+        from = 1+to
+        to = to + size(x.Vm, 1)*length(range_k)
+        @views x.Vm[:,range_k,t] .= opfBlockData.colValue[from:to,blk]
+
+        from = 1+to
+        to = to + size(x.Va, 1)*length(range_k)
+        @views x.Va[:,range_k,t] .= opfBlockData.colValue[from:to,blk]
+
+        from = 1+to
+        to = to + length(range_k)
+        @views x.ωt[range_k,t] .= opfBlockData.colValue[from:to,blk]
+
+        from = 1+to
+        to = to + size(x.St, 1)
+        @views x.St[:,t] .= opfBlockData.colValue[from:to,blk]
+
+        from = 1+to
+        to = to + size(x.Zt, 1)
+        @views x.Zt[:,t] .= opfBlockData.colValue[from:to,blk]
+
+        from = 1+to
+        to = to + size(x.Sk, 1)*length(range_k)
+        @views x.Sk[:,range_k,t] .= opfBlockData.colValue[from:to,blk]
+
+        # Zk
+        from = 1+to
+        to = to + size(x.Sk, 1)*length(range_k)
+        @views x.Sk[:,range_k,t] .= opfBlockData.colValue[from:to,blk]
+    else
+        solution = get_block_view(x, opfBlockData.blkIndex[blk],
+                                modelinfo,
+                                algparams)
+        solution .= opfBlockData.colValue[:,blk]
+    end
     return nothing
 end
 
 function update_primal_penalty(x::PrimalSolution, opfdata::OPFData,
+                               opfBlockData::OPFBlocks, blk::Int,
                                primal::PrimalSolution,
                                dual::DualSolution,
                                modelinfo::ModelParams,
                                algparams::AlgParams)
     (ngen, K, T) = size(x.Pg)
+    block = opfBlockData.blkIndex[blk]
+    k = block[1]
+    t = block[2]
 
     if modelinfo.time_link_constr_type == :penalty
         β = [opfdata.generators[g].ramp_agc for g=1:ngen]
-        @views for t=2:T
-            x.Zt[:,t] .= ((algparams.τ*primal.Zt[:,t]) .- dual.ramping[:,t] .-
+        if t > 1
+            @views x.Zt[:,t] .= ((algparams.τ*primal.Zt[:,t]) .- dual.ramping[:,t] .-
                             (algparams.ρ_t*(+x.Pg[:,1,t-1] .- x.Pg[:,1,t] .+ x.St[:,t] .- β))
                         ) ./  max(algparams.zero, algparams.τ + algparams.ρ_t + (modelinfo.obj_scale*algparams.θ_t))
         end
@@ -54,7 +105,7 @@ function update_primal_penalty(x::PrimalSolution, opfdata::OPFData,
     if K > 1 && algparams.decompCtgs
         if modelinfo.ctgs_link_constr_type == :frequency_ctrl
             @views for k=2:K
-                x.ωt[k,:] .= (( algparams.τ*primal.ωt[k,:]) .-
+                x.ωt[k,t] = (( algparams.τ*primal.ωt[k,t]) -
                                 sum(opfdata.generators[g].alpha *
                                         (dual.ctgs[g,k,:] .+ (algparams.ρ_c * (x.Pg[g,1,:] .- x.Pg[g,k,:])))
                                     for g=1:ngen)
@@ -67,7 +118,7 @@ function update_primal_penalty(x::PrimalSolution, opfdata::OPFData,
         if modelinfo.ctgs_link_constr_type ∈ [:preventive_penalty, :corrective_penalty]
             β = zeros(ngen,T)
             if modelinfo.ctgs_link_constr_type == :corrective_penalty
-                for g=1:ngen
+                @views for g=1:ngen
                     β[g,:] .= opfdata.generators[g].scen_agc
                 end
             else
@@ -85,10 +136,14 @@ function update_primal_penalty(x::PrimalSolution, opfdata::OPFData,
 end
 
 function update_dual_vars(λ::DualSolution, opfdata::OPFData,
+                          opfBlockData::OPFBlocks, blk::Int,
                           primal::PrimalSolution,
                           modelinfo::ModelParams,
                           algparams::AlgParams)
     (ngen, K, T) = size(primal.Pg)
+    block = opfBlockData.blkIndex[blk]
+    k = block[1]
+    t = block[2]
 
     maxviol_t, maxviol_c = 0.0, 0.0
 
@@ -102,7 +157,7 @@ function update_dual_vars(λ::DualSolution, opfdata::OPFData,
     end
 
     if T > 1
-        link_constr = compute_time_linking_constraints(d, opfdata, modelinfo)
+        link_constr = compute_time_linking_constraints(d, opfdata, opfBlockData, blk, modelinfo)
         viol_t = (modelinfo.time_link_constr_type == :inequality) ?
                     max.(link_constr[:ramping_p], link_constr[:ramping_n], 0.0) :
                     abs.(link_constr[:ramping])
@@ -117,7 +172,7 @@ function update_dual_vars(λ::DualSolution, opfdata::OPFData,
         maxviol_t = maximum(viol_t)
     end
     if K > 1 && algparams.decompCtgs
-        link_constr = compute_ctgs_linking_constraints(d, opfdata, modelinfo)
+        link_constr = compute_ctgs_linking_constraints(d, opfdata, opfBlockData, blk, modelinfo)
         viol_c = (modelinfo.ctgs_link_constr_type == :corrective_inequality) ?
                     max.(link_constr[:ctgs_p], link_constr[:ctgs_n], 0.0) :
                     abs.(link_constr[:ctgs])
