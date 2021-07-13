@@ -157,33 +157,17 @@ function update_dual_vars(λ::DualSolution, opfdata::OPFData,
     end
 
     if T > 1
+        @assert modelinfo.time_link_constr_type == :penalty
         link_constr = compute_time_linking_constraints(d, opfdata, opfBlockData, blk, modelinfo)
-        viol_t = (modelinfo.time_link_constr_type == :inequality) ?
-                    max.(link_constr[:ramping_p], link_constr[:ramping_n], 0.0) :
-                    abs.(link_constr[:ramping])
-
-        if modelinfo.time_link_constr_type == :inequality
-            λ.ramping_p .= max.(λ.ramping_p .+ (algparams.ρ_t*link_constr[:ramping_p]), 0)
-            λ.ramping_n .= max.(λ.ramping_n .+ (algparams.ρ_t*link_constr[:ramping_n]), 0)
-        else
-            λ.ramping += algparams.ρ_t*link_constr[:ramping]
-        end
-
+        viol_t = abs.(link_constr[:ramping])
+        λ.ramping += algparams.ρ_t*link_constr[:ramping]
         maxviol_t = maximum(viol_t)
     end
     if K > 1 && algparams.decompCtgs
+        @assert modelinfo.ctgs_link_constr_type ∈ [:frequency_ctrl, :preventive_penalty, :corrective_penalty]
         link_constr = compute_ctgs_linking_constraints(d, opfdata, opfBlockData, blk, modelinfo)
-        viol_c = (modelinfo.ctgs_link_constr_type == :corrective_inequality) ?
-                    max.(link_constr[:ctgs_p], link_constr[:ctgs_n], 0.0) :
-                    abs.(link_constr[:ctgs])
-
-        if modelinfo.time_link_constr_type == :corrective_inequality
-            λ.ctgs_p .= max.(λ.ctgs_p .+ (algparams.ρ_c*link_constr[:ctgs_p]), 0)
-            λ.ctgs_n .= max.(λ.ctgs_n .+ (algparams.ρ_c*link_constr[:ctgs_n]), 0)
-        else
-            λ.ctgs += algparams.ρ_c*link_constr[:ctgs]
-        end
-
+        viol_c = abs.(link_constr[:ctgs])
+        λ.ctgs += algparams.ρ_c*link_constr[:ctgs]
         maxviol_c = maximum(viol_c)
     end
 

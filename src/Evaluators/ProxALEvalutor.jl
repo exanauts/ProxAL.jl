@@ -38,21 +38,20 @@ function ProxALEvaluator(
         ramp_scale = modelinfo.ramp_scale
     )
     if modelinfo.time_link_constr_type != :penalty
-        @printf("warning: ProxAL is guaranteed to converge only when ")
-        @printf("time_link_constr_type = :penalty\n")
-        @printf("         setting time_link_constr_type = :penalty\n")
+        @warn("ProxAL is guaranteed to converge only when time_link_constr_type = :penalty\n"*
+              "         Forcing time_link_constr_type = :penalty\n")
         modelinfo.time_link_constr_type = :penalty
     end
-    if algparams.decompCtgs
+    if modelinfo.num_ctgs > 1 && algparams.decompCtgs
         if modelinfo.ctgs_link_constr_type ∉ [:frequency_ctrl, :preventive_penalty, :corrective_penalty]
-            @printf("warning: ProxAL is guaranteed to converge only when ")
-            @printf("ctgs_link_constr_type ∈ [:frequency_ctrl, :preventive_penalty, :corrective_penalty]\n")
+            str = "ProxAL is guaranteed to converge only when "*
+                  "ctgs_link_constr_type ∈ [:frequency_ctrl, :preventive_penalty, :corrective_penalty]\n"
             if modelinfo.ctgs_link_constr_type == :preventive_equality
-                @printf("         setting ctgs_link_constr_type = :preventive_penalty\n")
+                @warn(str * "         Forcing ctgs_link_constr_type = :preventive_penalty\n")
                 modelinfo.ctgs_link_constr_type = :preventive_penalty
             else
                 @assert modelinfo.ctgs_link_constr_type ∈ [:corrective_equality, :corrective_inequality]
-                @printf("         setting ctgs_link_constr_type = :preventive_penalty\n")
+                @warn(str * "         Forcing ctgs_link_constr_type = :preventive_penalty\n")
                 modelinfo.ctgs_link_constr_type = :corrective_penalty
             end
         end

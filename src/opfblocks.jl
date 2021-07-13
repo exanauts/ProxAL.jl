@@ -191,56 +191,21 @@ the NLP block `blk` that can be extracted as follows:
 k = opfblocks.blkIndex[blk][1]
 t = opfblocks.blkIndex[blk][2]
 ```
-Then, depending on the values of `k`, `t`, `algparams.decompCtgs` and
-`opfblocks.blkMInfo[blk]`, this function must return an appropriate expression.
+Then, depending on the values of `k`, `t`, `algparams.decompCtgs`,
+this function must return an appropriate expression.
 
-Consider first the case where `algparams.decompCtgs == false`.
 In the following expressions, we use ``\\mathbb{I}[...]`` to denote the indicator function.
 Also, unless otherwise indicated, 
 - the values of ``z_g`` are always parameters in this expression and must be taken from `primal.Zt`
 - the values of ``p_g`` and ``s_g`` variables that are not indexed with `t` are parameters in this expression and must be taken from `primal.Pg` and `primal.St`
-- the values of ``\\lambda``, ``\\lambda^p``, and ``\\lambda^n`` (without contingency subscript) must be taken from `dual.ramping`, `dual.ramping_p` and `dual.ramping_n`, respectively
+- the values of ``\\lambda`` (without contingency subscript) must be taken from `dual.ramping`
 - the values of ``\\rho`` (without contingency subscript) must be taken from `algparams.ρ_t`
 - the values of ``\\tau`` must be taken from `algparams.τ`
 
 
 We consider the following cases.
 
-* If `opfblocks.blkMInfo[blk] == :inequality`, then this function must return:
-```math
-\\begin{aligned}
-\\sum_{g \\in G} \\Bigg\\{
-& 0.5\\tau [p^0_{g,t} - \\mathrm{primal}.p^0_{g,t}]^2 \\\\
-&+\\mathbb{I}[t > 1]\\Big(
-\\lambda^p_{gt}[p^0_{g,t-1} - p^0_{g,t} - r_g] -
-\\lambda^n_{gt}[p^0_{g,t-1} - p^0_{g,t} - r_g] +
-0.5\\rho_{gt}[p^0_{g,t-1} - p^0_{g,t} + s_{g,t} - r_g]^2
-\\Big) \\\\
-&+\\mathbb{I}[t < T]\\Big(
-\\lambda^p_{g,t+1}[p^0_{g,t} - p^0_{g,t+1} - r_g] -
-\\lambda^n_{g,t+1}[p^0_{g,t} - p^0_{g,t+1} - r_g] +
-0.5\\rho_{g,t+1}[p^0_{g,t} - p^0_{g,t+1} + s_{g,t+1} - r_g]^2
-\\Big) \\Bigg\\}
-\\end{aligned}
-```
-
-* If `opfblocks.blkMInfo[blk] == :equality`, then this function must return:
-```math
-\\begin{aligned}
-\\sum_{g \\in G} \\Bigg\\{
-& 0.5\\tau [p^0_{g,t} - \\mathrm{primal}.p^0_{g,t}]^2 \\\\
-&+\\mathbb{I}[t > 1]\\Big(
-\\lambda_{gt}[p^0_{g,t-1} - p^0_{g,t} + s_{g,t} - r_g] +
-0.5\\rho_{gt}[p^0_{g,t-1} - p^0_{g,t} + s_{g,t} - r_g]^2
-\\Big) \\\\
-&+\\mathbb{I}[t < T]\\Big(
-\\lambda_{g,t+1}[p^0_{g,t} - p^0_{g,t+1} + s_{g,t+1} - r_g] +
-0.5\\rho_{g,t+1}[p^0_{g,t} - p^0_{g,t+1} + s_{g,t+1} - r_g]^2
-\\Big) \\Bigg\\}
-\\end{aligned}
-```
-
-* If `opfblocks.blkMInfo[blk] == :penalty`, then this function must return:
+* If `algparams.decompCtgs == false`, then this function must return:
 ```math
 \\begin{aligned}
 \\sum_{g \\in G} \\Bigg\\{
@@ -255,6 +220,9 @@ We consider the following cases.
 \\Big) \\Bigg\\}
 \\end{aligned}
 ```
+
+* If `algparams.decompCtgs == true`, then this function must return:
+(to do)
 """
 function opf_block_get_auglag_penalty_expr(blk::Int, opfmodel::JuMP.Model, opfblocks::OPFBlockData,
                                            algparams::AlgParams,
@@ -303,17 +271,9 @@ function opf_block_get_auglag_penalty_expr(
                     [g=1:ngen],
                         primal.Pg[g,1,t-1] - Pg[g,1,1] + St[g,1] + primal.Zt[g,t] - gens[g].ramp_agc
                 )
-            if modelinfo.time_link_constr_type == :inequality
-                @assert abs(norm(primal.Zt)) <= algparams.zero
-                auglag_penalty += sum(dual.ramping_p[g,t]*(+ramp_link_expr_prev[g] - St[g,1]) +
-                                      dual.ramping_n[g,t]*(-ramp_link_expr_prev[g] + St[g,1] - 2gens[g].ramp_agc) +
-                                      0.5*algparams.ρ_t*(+ramp_link_expr_prev[g])^2
-                                    for g=1:ngen)
-            else
-                auglag_penalty += sum(  dual.ramping[g,t]*(+ramp_link_expr_prev[g])   +
-                                      0.5*algparams.ρ_t*(+ramp_link_expr_prev[g])^2
-                                    for g=1:ngen)
-            end
+            auglag_penalty += sum(  dual.ramping[g,t]*(+ramp_link_expr_prev[g])   +
+                                    0.5*algparams.ρ_t*(+ramp_link_expr_prev[g])^2
+                                for g=1:ngen)
         end
         if t < T
             ramp_link_expr_next =
@@ -321,17 +281,9 @@ function opf_block_get_auglag_penalty_expr(
                     [g=1:ngen],
                         Pg[g,1,1] - primal.Pg[g,1,t+1] + primal.St[g,t+1] + primal.Zt[g,t+1] - gens[g].ramp_agc
                 )
-            if modelinfo.time_link_constr_type == :inequality
-                @assert abs(norm(primal.Zt)) <= algparams.zero
-                auglag_penalty += sum(dual.ramping_p[g,t+1]*(+ramp_link_expr_next[g] - primal.St[g,t+1]) +
-                                      dual.ramping_n[g,t+1]*(-ramp_link_expr_next[g] + primal.St[g,t+1] - 2gens[g].ramp_agc) +
-                                      0.5*algparams.ρ_t*(+ramp_link_expr_next[g])^2
-                                    for g=1:ngen)
-            else
-                auglag_penalty += sum(  dual.ramping[g,t+1]*(+ramp_link_expr_next[g]) +
-                                      0.5*algparams.ρ_t*(+ramp_link_expr_next[g])^2
-                                    for g=1:ngen)
-            end
+            auglag_penalty += sum(  dual.ramping[g,t+1]*(+ramp_link_expr_next[g]) +
+                                    0.5*algparams.ρ_t*(+ramp_link_expr_next[g])^2
+                                for g=1:ngen)
         end
     end
 
@@ -348,36 +300,18 @@ function opf_block_get_auglag_penalty_expr(
                     [g=1:ngen],
                         primal.Pg[g,1,t] - Pg[g,1,1] + (gens[g].alpha*primal.ωt[k,t]) + Sk[g,1,1] + primal.Zk[g,k,t] - β[g]
                 )
-            if modelinfo.ctgs_link_constr_type == :corrective_inequality
-                @assert abs(norm(primal.ωt)) <= algparams.zero
-                @assert abs(norm(primal.Zk)) <= algparams.zero
-                auglag_penalty += sum(  dual.ctgs_p[g,k,t]*(+ctgs_link_expr_prev[g] - Sk[g,1,1]) +
-                                        dual.ctgs_n[g,k,t]*(-ctgs_link_expr_prev[g] + Sk[g,1,1] - 2β[g]) +
-                                     0.5*algparams.ρ_c*(+ctgs_link_expr_prev[g])^2
-                                    for g=1:ngen)
-            else
-                auglag_penalty += sum(    dual.ctgs[g,k,t]*(+ctgs_link_expr_prev[g]) +
-                                     0.5*algparams.ρ_c*(+ctgs_link_expr_prev[g])^2
-                                    for g=1:ngen)
-            end
+            auglag_penalty += sum(    dual.ctgs[g,k,t]*(+ctgs_link_expr_prev[g]) +
+                                    0.5*algparams.ρ_c*(+ctgs_link_expr_prev[g])^2
+                                for g=1:ngen)
         else
             ctgs_link_expr_next =
                 @expression(opfmodel,
                     [g=1:ngen,j=2:K],
                         Pg[g,1,1] - primal.Pg[g,j,t] + (gens[g].alpha*primal.ωt[j,t]) + primal.Sk[g,j,t] + primal.Zk[g,j,t] - β[g]
                 )
-            if modelinfo.ctgs_link_constr_type == :corrective_inequality
-                @assert abs(norm(primal.ωt)) <= algparams.zero
-                @assert abs(norm(primal.Zk)) <= algparams.zero
-                auglag_penalty += sum(   dual.ctgs_p[g,j,t]*(+ctgs_link_expr_next[g,j] - primal.Sk[g,j,t]) +
-                                         dual.ctgs_n[g,j,t]*(-ctgs_link_expr_next[g,j] + primal.Sk[g,j,t] - 2β[g]) +
-                                      0.5*algparams.ρ_c*(+ctgs_link_expr_next[g,j])^2
-                                    for j=2:K, g=1:ngen)
-            else
-                auglag_penalty += sum(     dual.ctgs[g,j,t]*(+ctgs_link_expr_next[g,j]) +
-                                      0.5*algparams.ρ_c*(+ctgs_link_expr_next[g,j])^2
-                                    for j=2:K, g=1:ngen)
-            end
+            auglag_penalty += sum(     dual.ctgs[g,j,t]*(+ctgs_link_expr_next[g,j]) +
+                                    0.5*algparams.ρ_c*(+ctgs_link_expr_next[g,j])^2
+                                for j=2:K, g=1:ngen)
         end
     end
 

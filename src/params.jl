@@ -43,6 +43,7 @@ Specifies ProxAL's algorithmic parameters.
 | `optimizer::Any` |   NLP solver | `nothing`
 | `gpu_optimizer::Any` | GPU-compatible NLP solver | `nothing`
 | `nr_tol::Float64`    | Tolerance of the Newton-Raphson algorithm (used only in `ExaPFBackend()` model) | 1e-10
+| `init_opt::Bool` |   if true: initialize block OPFs with base OPF solution | false
 | `device::TargetDevice` | Target device to deport the resolution of the optimization problem | CPU
 """
 Base.@kwdef mutable struct AlgParams
@@ -65,6 +66,7 @@ Base.@kwdef mutable struct AlgParams
     optimizer::Any          = nothing        # NLP solver for fullmodel and subproblems
     gpu_optimizer::Any      = nothing        # GPU-compatible NLP solver for fullmodel and subproblems
     nr_tol::Float64         = 1e-10          # Tolerance of the Newton-Raphson algorithm (for ExaBlockModel backend)
+    init_opf::Bool          = false
     device::TargetDevice    = CPU
     verbose_inner::Int      = 0
     tron_rho_pq::Float64    = 4e2
@@ -96,7 +98,6 @@ Specifies the ACOPF model structure.
 | `savefile::String` | name of save file | ""
 | `time_link_constr_type::Symbol` | `∈ [:penalty, :equality, :inequality]` see [Formulation](@ref) | `:penalty`
 | `ctgs_link_constr_type::Symbol` | `∈ [:frequency_ctrl, :preventive_penalty, :preventive_equality, :corrective_penalty, :corrective_equality, :corrective_inequality]`, see [Formulation](@ref) | `:frequency_ctrl`
-| `init_opt::Bool` |   if true: initialize block OPFs with base OPF solution | false
 """
 Base.@kwdef mutable struct ModelParams
     num_time_periods::Int = 1
@@ -113,5 +114,4 @@ Base.@kwdef mutable struct ModelParams
     savefile::String = ""
     time_link_constr_type::Symbol = :penalty # ∈ [:penalty, :equality, :inequality]
     ctgs_link_constr_type::Symbol = :frequency_ctrl # ∈ [:frequency_ctrl, :preventive_penalty, :preventive_equality, :corrective_penalty, :corrective_equality, :corrective_inequality]
-    init_opf::Bool = false
 end
