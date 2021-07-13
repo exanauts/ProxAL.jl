@@ -177,10 +177,8 @@ function update_runinfo(
     lyapunov_gap = NaN
     if !isempty(runinfo.opt_sol)
         xstar = runinfo.opt_sol["primal"]
-        λstar = runinfo.opt_sol["dual"]
         zstar = runinfo.opt_sol["objective_value_nondecomposed"]
         runinfo.dist_x[iter] = dist(runinfo.x, xstar, modelinfo, algparams)
-        runinfo.dist_λ[iter] = dist(runinfo.λ, λstar, modelinfo, algparams)
         optimgap = 100.0 * abs(runinfo.objvalue[iter] - zstar) / abs(zstar)
     end
     if !isempty(runinfo.lyapunov_sol)
@@ -189,13 +187,12 @@ function update_runinfo(
     end
 
     if algparams.verbose > 0 && comm_rank(comm) == 0
-        @printf("iter %3d: ramp_err = %.3e, ctgs_err = %.3e, dual_err = %.3e, |x-x*| = %.3f, |λ-λ*| = %.3f, gap = %.2f%%, lyapgap = %.2f%%\n",
+        @printf("iter %3d: ramp_err = %.3e, ctgs_err = %.3e, dual_err = %.3e, |x-x*| = %.3f, gap = %.2f%%, lyapgap = %.2f%%\n",
                     iter,
                     runinfo.maxviol_t[iter],
                     runinfo.maxviol_c[iter],
                     runinfo.maxviol_d[iter],
                     runinfo.dist_x[iter],
-                    runinfo.dist_λ[iter],
                     optimgap,
                     lyapunov_gap)
     end
