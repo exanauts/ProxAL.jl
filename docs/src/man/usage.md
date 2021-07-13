@@ -20,7 +20,6 @@ modelinfo = ModelParams()
 modelinfo.case_name = "case9"
 modelinfo.num_time_periods = 2
 modelinfo.num_ctgs = 1
-modelinfo.weight_quadratic_penalty_time = 0.1
 modelinfo.weight_freq_ctrl = 0.1
 modelinfo.time_link_constr_type = :penalty
 modelinfo.ctgs_link_constr_type = :frequency_ctrl
@@ -41,19 +40,19 @@ algparams.parallel = false
 algparams.decompCtgs = false
 algparams.verbose = 0
 algparams.optimizer = JuMP.optimizer_with_attributes(Ipopt.Optimizer, "print_level" => 0)
+algparams.θ_t = 0.1
 maxρ = 0.1
-set_rho!(algparams;
-         ngen = length(opfdata.generators),
-         modelinfo = modelinfo,
-         maxρ_t = maxρ,
-         maxρ_c = maxρ)
+algparams.ρ_t = maxρ
+algparams.ρ_c = maxρ
+algparams.τ = 3maxρ
 algparams.mode = :coldstart
 
 if algparams.mode ∈ [:nondecomposed, :lyapunov_bound]
-    solve_fullmodel(opfdata, rawdata, modelinfo, algparams)
+    nlp = NonDecomposedModel(case_file, load_file, modelinfo, algparams)
 elseif algparams.mode == :coldstart
-    run_proxALM(opfdata, rawdata, modelinfo, algparams)
+    nlp = ProxALEvaluator(case_file, load_file, modelinfo, algparams, ProxAL.FullSpace())
 end
+ProxAL.optimize!(nlp)
 ```
 
 

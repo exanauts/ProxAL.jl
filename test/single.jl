@@ -26,19 +26,16 @@ modelinfo.load_scale = load_scale
 modelinfo.ramp_scale = ramp_scale
 modelinfo.allow_obj_gencost = true
 modelinfo.allow_constr_infeas = false
-modelinfo.weight_quadratic_penalty_time = quad_penalty
 modelinfo.weight_freq_ctrl = quad_penalty
 modelinfo.time_link_constr_type = :penalty
 modelinfo.ctgs_link_constr_type = :frequency_ctrl
-# rho related
-modelinfo.maxρ_t = 0.1
-modelinfo.maxρ_c = 0.1
-# Initialize block OPFs with base OPF solution
-modelinfo.init_opf = false
 
 # Algorithm settings
 algparams = AlgParams()
 algparams.verbose = 0
+algparams.θ_t = algparams.θ_c = quad_penalty
+algparams.ρ_t = algparams.ρ_c = maxρ
+algparams.τ = 3maxρ
 
 solver_list = ["Ipopt"]
 # TODO: MadNLP broken currently
@@ -76,6 +73,8 @@ end
 
                 @testset "Non-decomposed formulation" begin
                     algparams.mode = :nondecomposed
+                    algparams.ρ_t = algparams.ρ_c = maxρ
+                    algparams.τ = 3maxρ
                     nlp = NonDecomposedModel(case_file, load_file, modelinfo, algparams)
                     result = ProxAL.optimize!(nlp)
                     @test isapprox(result["objective_value_nondecomposed"], 11.258316111585623, rtol = rtol)
@@ -85,6 +84,8 @@ end
 
                 @testset "Lyapunov bound" begin
                     algparams.mode = :lyapunov_bound
+                    algparams.ρ_t = algparams.ρ_c = maxρ
+                    algparams.τ = 3maxρ
                     nlp = NonDecomposedModel(case_file, load_file, modelinfo, algparams)
                     result = ProxAL.optimize!(nlp)
                     @test isapprox(result["objective_value_lyapunov_bound"], 11.25831611158562)
@@ -93,6 +94,8 @@ end
 
                 @testset "ProxALM" begin
                     algparams.mode = :coldstart
+                    algparams.ρ_t = algparams.ρ_c = maxρ
+                    algparams.τ = 3maxρ
                     nlp = ProxALEvaluator(case_file, load_file, modelinfo, algparams, JuMPBackend(), Dict(), Dict(), nothing)
                     runinfo = ProxAL.optimize!(nlp)
                     @test isapprox(runinfo.maxviol_c[end], 0.0)
@@ -113,6 +116,8 @@ end
 
                 @testset "Non-decomposed formulation" begin
                     algparams.mode = :nondecomposed
+                    algparams.ρ_t = algparams.ρ_c = maxρ
+                    algparams.τ = 3maxρ
                     nlp = NonDecomposedModel(case_file, load_file, modelinfo, algparams)
                     result = ProxAL.optimize!(nlp)
                     @test isapprox(result["objective_value_nondecomposed"], 11.258316111574212, rtol = rtol)
@@ -122,6 +127,8 @@ end
                 end
                 @testset "Lyapunov bound" begin
                     algparams.mode = :lyapunov_bound
+                    algparams.ρ_t = algparams.ρ_c = maxρ
+                    algparams.τ = 3maxρ
                     nlp = NonDecomposedModel(case_file, load_file, modelinfo, algparams)
                     result = ProxAL.optimize!(nlp)
                     @test isapprox(result["objective_value_lyapunov_bound"], 11.258316111574207)
@@ -130,6 +137,8 @@ end
 
                 @testset "ProxALM" begin
                     algparams.mode = :coldstart
+                    algparams.ρ_t = algparams.ρ_c = maxρ
+                    algparams.τ = 3maxρ
                     nlp = ProxALEvaluator(case_file, load_file, modelinfo, algparams, JuMPBackend(), Dict(), Dict(), nothing)
                     runinfo = ProxAL.optimize!(nlp)
                     @test isapprox(runinfo.maxviol_c[end], 0.0)
@@ -153,6 +162,8 @@ end
 
                 @testset "Non-decomposed formulation" begin
                     algparams.mode = :nondecomposed
+                    algparams.ρ_t = algparams.ρ_c = maxρ
+                    algparams.τ = 3maxρ
                     nlp = NonDecomposedModel(case_file, load_file, modelinfo, algparams)
                     result = ProxAL.optimize!(nlp)
                     @test isapprox(result["objective_value_nondecomposed"], 11.258316111574212, rtol = rtol)
@@ -162,6 +173,8 @@ end
                 end
                 @testset "Lyapunov bound" begin
                     algparams.mode = :lyapunov_bound
+                    algparams.ρ_t = algparams.ρ_c = maxρ
+                    algparams.τ = 3maxρ
                     nlp = NonDecomposedModel(case_file, load_file, modelinfo, algparams)
                     result = ProxAL.optimize!(nlp)
                     @test isapprox(result["objective_value_lyapunov_bound"], 11.258316111574207)
@@ -169,6 +182,8 @@ end
                 end
                 @testset "ProxALM" begin
                     algparams.mode = :coldstart
+                    algparams.ρ_t = algparams.ρ_c = maxρ
+                    algparams.τ = 3maxρ
                     nlp = ProxALEvaluator(case_file, load_file, modelinfo, algparams, JuMPBackend(), Dict(), Dict(), nothing)
                     runinfo = ProxAL.optimize!(nlp)
                     @test isapprox(runinfo.x.Pg[:], [0.8847566379915904, 1.3458885793645132, 0.9528041613516992, 0.8889877105252308, 1.3510255515317628, 0.9575214693720255, 0.9689518361922401, 1.4504831243374814, 1.0280553147660263, 0.9743778573888332, 1.4570143379662728, 1.0340634613139639], rtol = rtol)

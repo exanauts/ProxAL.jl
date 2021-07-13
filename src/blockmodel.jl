@@ -219,9 +219,9 @@ function set_objective!(block::JuMPBlockModel, algparams::AlgParams,
     modelinfo = block.params
     k, t = block.k, block.t
 
-    obj_expr = compute_objective_function(opfmodel, opfdata, modelinfo)
+    obj_expr = compute_objective_function(opfmodel, opfdata, modelinfo, algparams)
     auglag_penalty = opf_block_get_auglag_penalty_expr(
-        blk, opfmodel, modelinfo, opfdata, k, t, algparams, primal, dual)
+        opfmodel, modelinfo, opfdata, k, t, algparams, primal, dual)
     @objective(opfmodel, Min, obj_expr + auglag_penalty)
     return
 end
@@ -404,7 +404,7 @@ function update_penalty!(block::ExaBlockModel, algparams::AlgParams,
         pgf = primal.Pg[:, 1, t-1] .+ primal.Zt[:, t] .- ramp_agc
         ExaPF.update_primal!(examodel, ExaPF.Previous(), pgf)
         # Update parameters
-        examodel.ρf = algparams.ρ_t[1, t]
+        examodel.ρf = algparams.ρ_t
     end
 
     # Update next values
@@ -414,7 +414,7 @@ function update_penalty!(block::ExaBlockModel, algparams::AlgParams,
         ExaPF.update_multipliers!(examodel, ExaPF.Next(), λt)
         ExaPF.update_primal!(examodel, ExaPF.Next(), pgt)
         # Update parameters
-        examodel.ρt = algparams.ρ_t[1, t+1]
+        examodel.ρt = algparams.ρ_t
     end
 end
 

@@ -29,21 +29,19 @@ modelinfo.load_scale = load_scale
 modelinfo.ramp_scale = ramp_scale
 modelinfo.allow_obj_gencost = true
 modelinfo.allow_constr_infeas = false
-modelinfo.weight_quadratic_penalty_time = quad_penalty
-modelinfo.weight_freq_ctrl = quad_penalty
 modelinfo.time_link_constr_type = :penalty
 modelinfo.ctgs_link_constr_type = :frequency_ctrl
 modelinfo.case_name = case
 modelinfo.num_ctgs = K
-# rho related
-modelinfo.maxρ_t = maxρ
-modelinfo.maxρ_c = maxρ
-# Initialize block OPFs with base OPF solution
-modelinfo.init_opf = true
 
 # Algorithm settings
 algparams = AlgParams()
 algparams.verbose = 0
+algparams.init_opf = true
+algparams.θ_t = quad_penalty
+algparams.θ_c = quad_penalty
+algparams.ρ_t = algparams.ρ_c = maxρ
+algparams.τ = 3maxρ
 algparams.decompCtgs = false
 
 # For JuMP

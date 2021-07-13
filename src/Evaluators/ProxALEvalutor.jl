@@ -37,13 +37,25 @@ function ProxALEvaluator(
         load_scale = modelinfo.load_scale,
         ramp_scale = modelinfo.ramp_scale
     )
-    set_penalty!(
-        algparams,
-        length(opfdata.generators),
-        modelinfo.maxρ_t,
-        modelinfo.maxρ_c,
-        modelinfo
-    )
+    if modelinfo.time_link_constr_type != :penalty
+        @warn("ProxAL is guaranteed to converge only when time_link_constr_type = :penalty\n"*
+              "         Forcing time_link_constr_type = :penalty\n")
+        modelinfo.time_link_constr_type = :penalty
+    end
+    if modelinfo.num_ctgs > 1 && algparams.decompCtgs
+        if modelinfo.ctgs_link_constr_type ∉ [:frequency_ctrl, :preventive_penalty, :corrective_penalty]
+            str = "ProxAL is guaranteed to converge only when "*
+                  "ctgs_link_constr_type ∈ [:frequency_ctrl, :preventive_penalty, :corrective_penalty]\n"
+            if modelinfo.ctgs_link_constr_type == :preventive_equality
+                @warn(str * "         Forcing ctgs_link_constr_type = :preventive_penalty\n")
+                modelinfo.ctgs_link_constr_type = :preventive_penalty
+            else
+                @assert modelinfo.ctgs_link_constr_type ∈ [:corrective_equality, :corrective_inequality]
+                @warn(str * "         Forcing ctgs_link_constr_type = :preventive_penalty\n")
+                modelinfo.ctgs_link_constr_type = :corrective_penalty
+            end
+        end
+    end
 
     # ctgs_arr = deepcopy(rawdata.ctgs_arr)
     alminfo = ProxALMData(opfdata, rawdata, modelinfo, algparams, space, comm, opt_sol, lyapunov_sol)
@@ -252,19 +264,15 @@ function optimize!(nlp::ProxALEvaluator; print_timings=false)
     #------------------------------------------------------------------------------------
 
     # Initialization of Pg, Qg, Vm, Va via a OPF solve
-    modelinfo.init_opf && opf_initialization!(nlp)
+    algparams.init_opf && opf_initialization!(nlp)
 
     function iteration()
 
         if runinfo.initial_solve
             if runinfo.iter == 1
-                set_penalty!(algparams,
-                         length(opfdata.generators),
-                         0.0,
-                         0.0,
-                         modelinfo)
-                algparams.updateρ_t = false
-                algparams.updateρ_c = false
+                algparams.ρ_t = 0.0
+                algparams.ρ_c = 0.0
+                algparams.τ = 0.0
             elseif runinfo.iter == 2
                 algparams = deepcopy(algparams_copy)
             end
