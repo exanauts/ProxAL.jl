@@ -260,7 +260,13 @@ function opf_model_add_ctgs_linking_constraints(opfmodel::JuMP.Model, opfdata::O
     return nothing
 end
 
-function compute_objective_function(opfdict, opfdata::OPFData, modelinfo::ModelParams, algparams::AlgParams, k::Int, t::Int)
+function compute_objective_function(
+    opfdict,
+    opfdata::OPFData,
+    modelinfo::ModelParams,
+    algparams::AlgParams,
+    k::Int, t::Int
+)
     Pg = opfdict[:Pg]
     ωt = opfdict[:ωt]
     Zt = opfdict[:Zt]
@@ -318,7 +324,12 @@ function compute_objective_function(opfdict, opfdata::OPFData, modelinfo::ModelP
         )
 end
 
-function compute_time_linking_constraints(opfdict, opfdata::OPFData, modelinfo::ModelParams, tIdx::Int = 0)
+function compute_time_linking_constraints(
+    opfdict,
+    opfdata::OPFData,
+    modelinfo::ModelParams,
+    tIdx::Int = 0
+)
     Pg = opfdict[:Pg]
     St = opfdict[:St]
     Zt = opfdict[:Zt]
@@ -339,7 +350,12 @@ function compute_time_linking_constraints(opfdict, opfdata::OPFData, modelinfo::
     return link
 end
 
-function compute_ctgs_linking_constraints(opfdict, opfdata::OPFData, modelinfo::ModelParams, kIdx::Int = 0, tIdx::Int = 0)
+function compute_ctgs_linking_constraints(
+    opfdict,
+    opfdata::OPFData,
+    modelinfo::ModelParams,
+    kIdx::Int = 0, tIdx::Int = 0
+)
     Pg = opfdict[:Pg]
     ωt = opfdict[:ωt]
     Sk = opfdict[:Sk]
@@ -364,9 +380,13 @@ function compute_ctgs_linking_constraints(opfdict, opfdata::OPFData, modelinfo::
     return link
 end
 
-function compute_quadratic_penalty(opfdict, opfdata::OPFData,
-                                   opfBlockData::OPFBlocks, blk::Int,
-                                   modelinfo::ModelParams, algparams::AlgParams)
+function compute_quadratic_penalty(
+    opfdict,
+    opfdata::OPFData,
+    opfBlockData::OPFBlocks, blk::Int,
+    modelinfo::ModelParams,
+    algparams::AlgParams
+)
     (ngen, K, T) = size(opfdict[:Pg])
     block = opfBlockData.blkIndex[blk]
     k = block[1]
@@ -399,8 +419,12 @@ function compute_quadratic_penalty(opfdict, opfdata::OPFData,
             (0.5algparams.ρ_c*lyapunov_quadratic_penalty_ctgs))
 end
 
-function compute_quadratic_penalty(opfdict, opfdata::OPFData,
-                                   modelinfo::ModelParams, algparams::AlgParams)
+function compute_quadratic_penalty(
+    opfdict,
+    opfdata::OPFData,
+    modelinfo::ModelParams,
+    algparams::AlgParams
+)
     (ngen, K, T) = size(opfdict[:Pg])
 
     if T > 1
@@ -431,9 +455,13 @@ function compute_quadratic_penalty(opfdict, opfdata::OPFData,
             (0.5algparams.ρ_c*lyapunov_quadratic_penalty_ctgs))
 end
 
-function compute_lagrangian_function(opfdict, λ::DualSolution, opfdata::OPFData,
-                                     opfBlockData::OPFBlocks, blk::Int,
-                                     modelinfo::ModelParams, algparams::AlgParams)
+function compute_lagrangian_function(
+    opfdict, λ::DualSolution,
+    opfdata::OPFData,
+    opfBlockData::OPFBlocks, blk::Int,
+    modelinfo::ModelParams,
+    algparams::AlgParams
+)
 
     (ngen, K, T) = size(opfdict[:Pg])
     block = opfBlockData.blkIndex[blk]
@@ -462,9 +490,12 @@ function compute_lagrangian_function(opfdict, λ::DualSolution, opfdata::OPFData
     return obj + lagrangian_t + lagrangian_c
 end
 
-function compute_proximal_function(x1::PrimalSolution, x2::PrimalSolution,
-                                   opfBlockData::OPFBlocks, blk::Int,
-                                   modelinfo::ModelParams, algparams::AlgParams)
+function compute_proximal_function(
+    x1::PrimalSolution, x2::PrimalSolution,
+    opfBlockData::OPFBlocks, blk::Int,
+    modelinfo::ModelParams,
+    algparams::AlgParams
+)
     block = opfBlockData.blkIndex[blk]
     k = block[1]
     t = block[2]
@@ -492,7 +523,11 @@ function compute_proximal_function(x1::PrimalSolution, x2::PrimalSolution,
     return 0.5algparams.τ*(prox_pg + prox_penalty)
 end
 
-function compute_objective_function(opfdict, opfdata::OPFData, opfBlockData::OPFBlocks, blk::Int, modelinfo::ModelParams, algparams::AlgParams)
+function compute_objective_function(
+    opfdict, opfdata::OPFData,
+    opfBlockData::OPFBlocks, blk::Int,
+    modelinfo::ModelParams, algparams::AlgParams
+)
     K = size(opfdict[:Pg],2)
     block = opfBlockData.blkIndex[blk]
     t = block[2]
@@ -504,14 +539,19 @@ function compute_objective_function(opfdict, opfdata::OPFData, opfBlockData::OPF
     end
 end
 
-function compute_objective_function(opfdict, opfdata::OPFData, modelinfo::ModelParams, algparams::AlgParams)
+function compute_objective_function(
+    opfdict, opfdata::OPFData,
+    modelinfo::ModelParams, algparams::AlgParams
+)
     (_, K, T) = size(opfdict[:Pg])
     return sum(compute_objective_function(opfdict, opfdata, modelinfo, algparams, k, t) for k=1:K, t=1:T)
 end
 
-function compute_objective_function(x::PrimalSolution, opfdata::OPFData,
-                                    opfBlockData::OPFBlocks, blk::Int,
-                                    modelinfo::ModelParams, algparams::AlgParams)
+function compute_objective_function(
+    x::PrimalSolution, opfdata::OPFData,
+    opfBlockData::OPFBlocks, blk::Int,
+    modelinfo::ModelParams, algparams::AlgParams
+)
     d = Dict(:Pg => x.Pg,
              :ωt => x.ωt,
              :Zt => x.Zt,
@@ -523,11 +563,13 @@ function compute_objective_function(x::PrimalSolution, opfdata::OPFData,
     return compute_objective_function(d, opfdata, opfBlockData, blk, modelinfo, algparams)
 end
 
-function compute_lyapunov_function(x::PrimalSolution, λ::DualSolution, opfdata::OPFData,
-                                   opfBlockData::OPFBlocks, blk::Int,
-                                   xref::PrimalSolution,
-                                   modelinfo::ModelParams,
-                                   algparams::AlgParams)
+function compute_lyapunov_function(
+    x::PrimalSolution, λ::DualSolution, opfdata::OPFData,
+    opfBlockData::OPFBlocks, blk::Int,
+    xref::PrimalSolution,
+    modelinfo::ModelParams,
+    algparams::AlgParams
+)
     d = Dict(:Pg => x.Pg,
              :ωt => x.ωt,
              :St => x.St,
@@ -546,11 +588,15 @@ function compute_lyapunov_function(x::PrimalSolution, λ::DualSolution, opfdata:
     return lagrangian + quadratic_penalty + 0.5proximal
 end
 
-function compute_dual_error(x::PrimalSolution, xprev::PrimalSolution, λ::DualSolution, λprev::DualSolution, opfdata::OPFData,
-                            opfBlockData::OPFBlocks, blk::Int,
-                            modelinfo::ModelParams,
-                            algparams::AlgParams;
-                            lnorm = Inf)
+function compute_dual_error(
+    x::PrimalSolution, xprev::PrimalSolution,
+    λ::DualSolution, λprev::DualSolution,
+    opfdata::OPFData,
+    opfBlockData::OPFBlocks, blk::Int,
+    modelinfo::ModelParams,
+    algparams::AlgParams;
+    lnorm = Inf
+)
     (ngen, K, T) = size(x.Pg)
     block = opfBlockData.blkIndex[blk]
     k = block[1]
@@ -679,10 +725,13 @@ function compute_dual_error(x::PrimalSolution, xprev::PrimalSolution, λ::DualSo
     return dual_error
 end
 
-function compute_dual_error(x::PrimalSolution, xprev::PrimalSolution, λ::DualSolution, λprev::DualSolution, opfdata::OPFData,
-                            modelinfo::ModelParams,
-                            algparams::AlgParams;
-                            lnorm = Inf)
+function compute_dual_error(
+    x::PrimalSolution, xprev::PrimalSolution,
+    λ::DualSolution, λprev::DualSolution,
+    opfdata::OPFData,
+    modelinfo::ModelParams, algparams::AlgParams;
+    lnorm = Inf
+)
     (ngen, K, T) = size(x.Pg)
 
     err_pg = zeros(ngen, K, T)
@@ -798,11 +847,57 @@ function compute_dual_error(x::PrimalSolution, xprev::PrimalSolution, λ::DualSo
     return norm(dual_error, lnorm)
 end
 
+
+
+"""
+    opf_block_get_auglag_penalty_expr(
+        opfmodel::JuMP.Model,
+        modelinfo::ModelParams,
+        opfdata::OPFData,
+        k::Int, t::Int,
+        algparams::AlgParams,
+        primal::PrimalSolution,
+        dual::DualSolution
+    )
+
+Let `k` and `t` denote the contingency number and time period of
+the NLP `block`. Then, depending on `algparams.decompCtgs`,
+this function must return an appropriate expression.
+
+We use ``\\mathbb{I}[...]`` to denote the indicator function.
+Also, unless otherwise indicated, 
+- ``z_g`` are parameters and must be taken from `primal.Zt`
+- ``p_g`` and ``s_g`` variables that are not indexed with `t`
+    are parameters and must be taken from `primal.Pg` and `primal.St`
+- ``\\lambda`` (without `k` subscript) must be taken from `dual.ramping`
+- ``\\rho_t`` must be taken from `algparams.ρ_t`
+- ``\\tau`` must be taken from `algparams.τ`
+
+* If `algparams.decompCtgs == false`, then this function must return:
+```math
+\\begin{aligned}
+\\sum_{g \\in G} \\Bigg\\{
+& 0.5\\tau [p^0_{g,t} - \\mathrm{primal}.p^0_{g,t}]^2 \\\\
+&+\\mathbb{I}[t > 1]\\Big(
+\\lambda_{gt}[p^0_{g,t-1} - p^0_{g,t} + s_{g,t} + z_{g,t} - r_g] +
+0.5\\rho_{t}[p^0_{g,t-1} - p^0_{g,t} + s_{g,t} + z_{g,t} - r_g]^2
+\\Big) \\\\
+&+\\mathbb{I}[t < T]\\Big(
+\\lambda_{g,t+1}[p^0_{g,t} - p^0_{g,t+1} + s_{g,t+1} + z_{g,t+1} - r_g] +
+0.5\\rho_{t}[p^0_{g,t} - p^0_{g,t+1} + s_{g,t+1} + z_{g,t+1} - r_g]^2
+\\Big) \\Bigg\\}
+\\end{aligned}
+```
+
+* If `algparams.decompCtgs == true`, then this function must return:
+(to do)
+
+"""
 function opf_block_get_auglag_penalty_expr(
-    blk::Int, opfmodel::JuMP.Model,
+    opfmodel::JuMP.Model,
     modelinfo::ModelParams,
     opfdata::OPFData,
-    k, t,
+    k::Int, t::Int,
     algparams::AlgParams,
     primal::PrimalSolution,
     dual::DualSolution
