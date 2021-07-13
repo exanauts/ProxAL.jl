@@ -260,23 +260,21 @@ function opf_model_add_ctgs_linking_constraints(opfmodel::JuMP.Model, opfdata::O
     return nothing
 end
 
-
-function compute_objective_function(opfdict, opfdata::OPFData, opfBlockData::OPFBlocks, blk::Int, modelinfo::ModelParams)
+function compute_objective_function(opfdict, opfdata::OPFData, modelinfo::ModelParams, algparams::AlgParams, k::Int, t::Int)
     Pg = opfdict[:Pg]
     ωt = opfdict[:ωt]
     Zt = opfdict[:Zt]
     Zk = opfdict[:Zk]
 
     (ngen, K, T) = size(Pg)
-    block = opfBlockData.blkIndex[blk]
-    k = block[1]
-    t = block[2]
+    @assert t >= 1 && t <= T
+    @assert k >= 1 && k <= K
 
-    if modelinfo.allow_obj_gencost
+    if k == 1 && modelinfo.allow_obj_gencost
         baseMVA = opfdata.baseMVA
         gens = opfdata.generators
-        obj_gencost = sum(gens[g].coeff[gens[g].n-2]*(baseMVA*Pg[g,1,t])^2
-                        + gens[g].coeff[gens[g].n-1]*(baseMVA*Pg[g,1,t])
+        obj_gencost = sum(gens[g].coeff[gens[g].n-2]*(baseMVA*Pg[g,k,t])^2
+                        + gens[g].coeff[gens[g].n-1]*(baseMVA*Pg[g,k,t])
                         + gens[g].coeff[gens[g].n  ]
                         for g=1:ngen)
     else
@@ -289,32 +287,24 @@ function compute_objective_function(opfdict, opfdata::OPFData, opfBlockData::OPF
         sigma_lineTo = opfdict[:sigma_lineTo]
         nbus = size(sigma_real, 1)
         nline = size(sigma_lineFr, 1)
-        obj_constr_infeas_base = 0.5sum(sigma_real[b,1,t]^2 + sigma_imag[b,1,t]^2 for b=1:nbus) +
-                                 0.5sum(sigma_lineFrom[l,1,t]^2 + sigma_lineTo[l,1,t]^2 for l=1:nline)
-        if K > 1
-            obj_constr_infeas_ctgs = 0.5sum(sigma_real[b,k,t]^2 + sigma_imag[b,k,t]^2 for k=2:K, b=1:nbus) +
-                                     0.5sum(sigma_lineFrom[l,k,t]^2 + sigma_lineTo[l,k,t]^2 for k=2:K, l=1:nline)
-        end
-        obj_constr_infeas = obj_constr_infeas_base +
-                            (modelinfo.weight_ctgs*obj_constr_infeas_ctgs)
+        obj_constr_infeas = 0.5sum(sigma_real[b,k,t]^2 + sigma_imag[b,k,t]^2 for b=1:nbus) +
+                            0.5sum(sigma_lineFrom[l,k,t]^2 + sigma_lineTo[l,k,t]^2 for l=1:nline)
+        obj_constr_infeas = (k > 1 ? modelinfo.weight_ctgs : 1.0)*obj_constr_infeas
     else
         obj_constr_infeas = 0
     end
-    if K > 1 && modelinfo.ctgs_link_constr_type == :frequency_ctrl
-        obj_freq_ctrl = 0.5*sum(ωt[2:K,:].^2)
+    if modelinfo.ctgs_link_constr_type == :frequency_ctrl
+        obj_freq_ctrl = 0.5*ωt[k,t]^2
     else
         obj_freq_ctrl = 0
     end
-    if T > 1 && modelinfo.time_link_constr_type == :penalty
-        obj_bigM_penalty_time = 0.0
-        if t > 1
-            obj_bigM_penalty_time = 0.5sum(Zt[:,t].^2)
-        end
+    if modelinfo.time_link_constr_type == :penalty
+        obj_bigM_penalty_time = 0.5sum(Zt[:,t].^2)
     else
         obj_bigM_penalty_time = 0
     end
-    if K > 1 && modelinfo.ctgs_link_constr_type ∈ [:preventive_penalty, :corrective_penalty]
-        obj_bigM_penalty_ctgs = 0.5sum(Zk[:,2:K,:].^2)
+    if modelinfo.ctgs_link_constr_type ∈ [:preventive_penalty, :corrective_penalty]
+        obj_bigM_penalty_ctgs = 0.5sum(Zk[:,k,t].^2)
     else
         obj_bigM_penalty_ctgs = 0
     end
@@ -328,111 +318,28 @@ function compute_objective_function(opfdict, opfdata::OPFData, opfBlockData::OPF
         )
 end
 
-function compute_objective_function(opfdict, opfdata::OPFData, modelinfo::ModelParams, algparams::AlgParams, ctgs::Int = 0, time::Int = 0)
-    Pg = opfdict[:Pg]
-    ωt = opfdict[:ωt]
-    Zt = opfdict[:Zt]
-    Zk = opfdict[:Zk]
-
-    (ngen, K, T) = size(Pg)
-    Trange = (time == 0) ? (1:T) : (time:time)
-    Krange = (ctgs == 0) ? (2:K) : (ctgs:ctgs)
-
-    if modelinfo.allow_obj_gencost
-        baseMVA = opfdata.baseMVA
-        gens = opfdata.generators
-        obj_gencost = sum(gens[g].coeff[gens[g].n-2]*(baseMVA*Pg[g,1,t])^2
-                        + gens[g].coeff[gens[g].n-1]*(baseMVA*Pg[g,1,t])
-                        + gens[g].coeff[gens[g].n  ]
-                        for t=Trange, g=1:ngen)
-    else
-        obj_gencost = 0
-    end
-    if modelinfo.allow_constr_infeas
-        sigma_real = opfdict[:sigma_real]
-        sigma_imag = opfdict[:sigma_imag]
-        sigma_lineFr = opfdict[:sigma_lineFr]
-        sigma_lineTo = opfdict[:sigma_lineTo]
-        nbus = size(sigma_real, 1)
-        nline = size(sigma_lineFr, 1)
-        obj_constr_infeas_base = 0.5sum(sigma_real[b,1,t]^2 + sigma_imag[b,1,t]^2 for t=Trange, b=1:nbus) +
-                                 0.5sum(sigma_lineFrom[l,1,t]^2 + sigma_lineTo[l,1,t]^2 for t=Trange, l=1:nline)
-        if K > 1
-            obj_constr_infeas_ctgs = 0.5sum(sigma_real[b,k,t]^2 + sigma_imag[b,k,t]^2 for t=Trange, k=Krange, b=1:nbus) +
-                                     0.5sum(sigma_lineFrom[l,k,t]^2 + sigma_lineTo[l,k,t]^2 for t=Trange, k=Krange, l=1:nline)
-        end
-        obj_constr_infeas = obj_constr_infeas_base +
-                            (modelinfo.weight_ctgs*obj_constr_infeas_ctgs)
-    else
-        obj_constr_infeas = 0
-    end
-    if K > 1 && modelinfo.ctgs_link_constr_type == :frequency_ctrl
-        obj_freq_ctrl = 0.5*sum(ωt[Krange,Trange].^2)
-    else
-        obj_freq_ctrl = 0
-    end
-    if T > 1 && modelinfo.time_link_constr_type == :penalty
-        obj_bigM_penalty_time = 0.5sum(Zt[:,Trange].^2)
-    else
-        obj_bigM_penalty_time = 0
-    end
-    if K > 1 && modelinfo.ctgs_link_constr_type ∈ [:preventive_penalty, :corrective_penalty]
-        obj_bigM_penalty_ctgs = 0.5sum(Zk[:,Krange,Trange].^2)
-    else
-        obj_bigM_penalty_ctgs = 0
-    end
-
-    return modelinfo.obj_scale*(
-            obj_gencost +
-            (modelinfo.weight_constr_infeas*obj_constr_infeas) +
-            (modelinfo.weight_freq_ctrl*obj_freq_ctrl) +
-            (algparams.θ_t*obj_bigM_penalty_time) +
-            (algparams.θ_c*obj_bigM_penalty_ctgs)
-        )
-end
-
-function compute_time_linking_constraints(opfdict, opfdata::OPFData, opfBlockData::OPFBlocks, blk::Int, modelinfo::ModelParams)
+function compute_time_linking_constraints(opfdict, opfdata::OPFData, modelinfo::ModelParams, tIdx::Int = 0)
     Pg = opfdict[:Pg]
     St = opfdict[:St]
     Zt = opfdict[:Zt]
 
     gens = opfdata.generators
     (ngen, K, T) = size(Pg)
-    block = opfBlockData.blkIndex[blk]
-    t = block[2]
+    Trange = (tIdx == 0) ? (1:T) : (tIdx:tIdx)
+
     link = Dict{Symbol, Array}()
-    # FIX ME: This should be preallocated and we don't need all T periods.
-    link[:ramping] = zeros(Float64, ngen, T)
+    singletons = []
     if modelinfo.time_link_constr_type == :inequality
-        link[:ramping_p] = [(t > 1) ? (+Pg[g,1,t-1] - Pg[g,1,t] - gens[g].ramp_agc) : 0.0 for g=1:ngen]
-        link[:ramping_n] = [(t > 1) ? (-Pg[g,1,t-1] + Pg[g,1,t] - gens[g].ramp_agc) : 0.0 for g=1:ngen]
+        link[:ramping_p] = [(t > 1) ? (+Pg[g,1,t-1] - Pg[g,1,t] - gens[g].ramp_agc) : 0.0 for g=1:ngen,t=Trange]
+        link[:ramping_n] = [(t > 1) ? (-Pg[g,1,t-1] + Pg[g,1,t] - gens[g].ramp_agc) : 0.0 for g=1:ngen,t=Trange]
     else
-        link[:ramping][:,t] = [(t > 1) ? (Pg[g,1,t-1] - Pg[g,1,t] + St[g,t] + Zt[g,t] - gens[g].ramp_agc) : 0.0 for g=1:ngen]
+        link[:ramping] = [(t > 1) ? (Pg[g,1,t-1] - Pg[g,1,t] + St[g,t] + Zt[g,t] - gens[g].ramp_agc) : 0.0 for g=1:ngen,t=Trange]
     end
 
     return link
 end
 
-function compute_time_linking_constraints(opfdict, opfdata::OPFData, modelinfo::ModelParams)
-    Pg = opfdict[:Pg]
-    St = opfdict[:St]
-    Zt = opfdict[:Zt]
-
-    gens = opfdata.generators
-    (ngen, K, T) = size(Pg)
-
-    link = Dict{Symbol, Array}()
-    if modelinfo.time_link_constr_type == :inequality
-        link[:ramping_p] = [(t > 1) ? (+Pg[g,1,t-1] - Pg[g,1,t] - gens[g].ramp_agc) : 0.0 for g=1:ngen,t=1:T]
-        link[:ramping_n] = [(t > 1) ? (-Pg[g,1,t-1] + Pg[g,1,t] - gens[g].ramp_agc) : 0.0 for g=1:ngen,t=1:T]
-    else
-        link[:ramping] = [(t > 1) ? (Pg[g,1,t-1] - Pg[g,1,t] + St[g,t] + Zt[g,t] - gens[g].ramp_agc) : 0.0 for g=1:ngen,t=1:T]
-    end
-
-    return link
-end
-
-function compute_ctgs_linking_constraints(opfdict, opfdata::OPFData, modelinfo::ModelParams)
+function compute_ctgs_linking_constraints(opfdict, opfdata::OPFData, modelinfo::ModelParams, kIdx::Int = 0, tIdx::Int = 0)
     Pg = opfdict[:Pg]
     ωt = opfdict[:ωt]
     Sk = opfdict[:Sk]
@@ -440,43 +347,18 @@ function compute_ctgs_linking_constraints(opfdict, opfdata::OPFData, modelinfo::
 
     gens = opfdata.generators
     (ngen, K, T) = size(Pg)
+    Trange = (tIdx == 0) ? (1:T) : (tIdx:tIdx)
+    Krange = (kIdx == 0) ? (1:K) : (kIdx:kIdx)
 
 
     link = Dict{Symbol, Array}()
     if modelinfo.ctgs_link_constr_type == :corrective_inequality
-        link[:ctgs_p] = [(k > 1) ? (+Pg[g,1,t] - Pg[g,k,t] - gens[g].scen_agc) : 0.0 for g=1:ngen,k=1:K,t=1:T]
-        link[:ctgs_n] = [(k > 1) ? (-Pg[g,1,t] + Pg[g,k,t] - gens[g].scen_agc) : 0.0 for g=1:ngen,k=1:K,t=1:T]
+        link[:ctgs_p] = [(k > 1) ? (+Pg[g,1,t] - Pg[g,k,t] - gens[g].scen_agc) : 0.0 for g=1:ngen,k=Krange,t=Trange]
+        link[:ctgs_n] = [(k > 1) ? (-Pg[g,1,t] + Pg[g,k,t] - gens[g].scen_agc) : 0.0 for g=1:ngen,k=Krange,t=Trange]
     else
         β = [gens[g].scen_agc for g=1:ngen]
         (modelinfo.ctgs_link_constr_type ∉ [:corrective_inequality, :corrective_equality, :corrective_penalty]) && (β .= 0)
-        link[:ctgs] = [(k > 1) ? (Pg[g,1,t] - Pg[g,k,t] + (gens[g].alpha*ωt[k,t]) + Sk[g,k,t] + Zk[g,k,t] - β[g]) : 0.0 for g=1:ngen,k=1:K,t=1:T]
-    end
-
-    return link
-end
-
-function compute_ctgs_linking_constraints(opfdict, opfdata::OPFData, opfBlockData::OPFBlocks, blk::Int, modelinfo::ModelParams)
-    Pg = opfdict[:Pg]
-    ωt = opfdict[:ωt]
-    Sk = opfdict[:Sk]
-    Zk = opfdict[:Zk]
-
-    gens = opfdata.generators
-    (ngen, K, T) = size(Pg)
-    block = opfBlockData.blkIndex[blk]
-    t = block[2]
-
-
-    link = Dict{Symbol, Array}()
-    # FIX ME: This should be preallocated and we don't need all T periods.
-    link[:ctgs] = zeros(Float64, ngen, K, T)
-    if modelinfo.ctgs_link_constr_type == :corrective_inequality
-        link[:ctgs_p] = [(k > 1) ? (+Pg[g,1,t] - Pg[g,k,t] - gens[g].scen_agc) : 0.0 for g=1:ngen,k=1:K]
-        link[:ctgs_n] = [(k > 1) ? (-Pg[g,1,t] + Pg[g,k,t] - gens[g].scen_agc) : 0.0 for g=1:ngen,k=1:K]
-    else
-        β = [gens[g].scen_agc for g=1:ngen]
-        (modelinfo.ctgs_link_constr_type ∉ [:corrective_inequality, :corrective_equality, :corrective_penalty]) && (β .= 0)
-        link[:ctgs][:,:,t] = [(k > 1) ? (Pg[g,1,t] - Pg[g,k,t] + (gens[g].alpha*ωt[k,t]) + Sk[g,k,t] + Zk[g,k,t] - β[g]) : 0.0 for g=1:ngen,k=1:K]
+        link[:ctgs] = [(k > 1) ? (Pg[g,1,t] - Pg[g,k,t] + (gens[g].alpha*ωt[k,t]) + Sk[g,k,t] + Zk[g,k,t] - β[g]) : 0.0 for g=1:ngen,k=Krange,t=Trange]
     end
 
     return link
@@ -490,34 +372,31 @@ function compute_quadratic_penalty(opfdict, opfdata::OPFData,
     k = block[1]
     t = block[2]
 
-    if T > 1
+    if t > 1
         inequality = (modelinfo.time_link_constr_type == :inequality)
         inequality && (modelinfo.time_link_constr_type = :equality)
-        link = compute_time_linking_constraints(opfdict, opfdata, opfBlockData, blk, modelinfo)
+        link = compute_time_linking_constraints(opfdict, opfdata, modelinfo, t)
         inequality && (modelinfo.time_link_constr_type = :inequality)
-        lyapunov_quadratic_penalty_time = 0.0
-        if t > 1
-            lyapunov_quadratic_penalty_time = sum(link[:ramping][:].^2)
-        end
+        lyapunov_quadratic_penalty_time = sum(link[:ramping][:].^2)
     else
         lyapunov_quadratic_penalty_time = 0
     end
 
 
-    if K > 1 && algparams.decompCtgs
+    if k > 1 && algparams.decompCtgs
         inequality = (modelinfo.ctgs_link_constr_type == :corrective_inequality)
         inequality && (modelinfo.ctgs_link_constr_type = :corrective_equality)
-        link = compute_ctgs_linking_constraints(opfdict, opfdata, opfBlockData, blk, modelinfo)
+        link = compute_ctgs_linking_constraints(opfdict, opfdata, modelinfo, k, t)
         inequality && (modelinfo.ctgs_link_constr_type = :corrective_inequality)
 
-        lyapunov_quadratic_penalty_ctgs = sum(link[:ctgs][:,2:K,:].^2)
+        lyapunov_quadratic_penalty_ctgs = sum(link[:ctgs][:].^2)
     else
         lyapunov_quadratic_penalty_ctgs = 0
     end
 
 
-    return ((0.5algparams.maxρ_t*lyapunov_quadratic_penalty_time) +
-            (0.5algparams.maxρ_c*lyapunov_quadratic_penalty_ctgs))
+    return ((0.5algparams.ρ_t*lyapunov_quadratic_penalty_time) +
+            (0.5algparams.ρ_c*lyapunov_quadratic_penalty_ctgs))
 end
 
 function compute_quadratic_penalty(opfdict, opfdata::OPFData,
@@ -553,33 +432,6 @@ function compute_quadratic_penalty(opfdict, opfdata::OPFData,
 end
 
 function compute_lagrangian_function(opfdict, λ::DualSolution, opfdata::OPFData,
-                                     modelinfo::ModelParams, algparams::AlgParams)
-
-    (ngen, K, T) = size(opfdict[:Pg])
-
-    obj = compute_objective_function(opfdict, opfdata, modelinfo, algparams)
-
-    if T > 1
-        @assert modelinfo.time_link_constr_type == :penalty
-        link = compute_time_linking_constraints(opfdict, opfdata, modelinfo)
-        lagrangian_t = sum(λ.ramping.*link[:ramping])
-    else
-        lagrangian_t = 0
-    end
-
-
-    if K > 1 && algparams.decompCtgs
-        @assert modelinfo.ctgs_link_constr_type ∈ [:frequency_ctrl, :preventive_penalty, :corrective_penalty]
-        link = compute_ctgs_linking_constraints(opfdict, opfdata, modelinfo)
-        lagrangian_c = sum(λ.ctgs.*link[:ctgs])
-    else
-        lagrangian_c = 0
-    end
-
-    return obj + lagrangian_t + lagrangian_c
-end
-
-function compute_lagrangian_function(opfdict, λ::DualSolution, opfdata::OPFData,
                                      opfBlockData::OPFBlocks, blk::Int,
                                      modelinfo::ModelParams, algparams::AlgParams)
 
@@ -588,12 +440,12 @@ function compute_lagrangian_function(opfdict, λ::DualSolution, opfdata::OPFData
     k = block[1]
     t = block[2]
 
-    obj = compute_objective_function(opfdict, opfdata, opfBlockData, blk, modelinfo)
+    obj = compute_objective_function(opfdict, opfdata, opfBlockData, blk, modelinfo, algparams)
 
     if T > 1
         @assert modelinfo.time_link_constr_type == :penalty
-        link = compute_time_linking_constraints(opfdict, opfdata, opfBlockData, blk, modelinfo)
-        lagrangian_t = sum(λ.ramping.*link[:ramping])
+        link = compute_time_linking_constraints(opfdict, opfdata, modelinfo, t)
+        lagrangian_t = sum(λ.ramping[:,t].*link[:ramping][:])
     else
         lagrangian_t = 0
     end
@@ -601,8 +453,8 @@ function compute_lagrangian_function(opfdict, λ::DualSolution, opfdata::OPFData
 
     if K > 1 && algparams.decompCtgs
         @assert modelinfo.ctgs_link_constr_type ∈ [:frequency_ctrl, :preventive_penalty, :corrective_penalty]
-        link = compute_ctgs_linking_constraints(opfdict, opfdata, opfBlockData, blk, modelinfo)
-        lagrangian_c = sum(λ.ctgs.*link[:ctgs])
+        link = compute_ctgs_linking_constraints(opfdict, opfdata, modelinfo, k, t)
+        lagrangian_c = sum(λ.ctgs[:,k,t].*link[:ctgs][:])
     else
         lagrangian_c = 0
     end
@@ -613,7 +465,6 @@ end
 function compute_proximal_function(x1::PrimalSolution, x2::PrimalSolution,
                                    opfBlockData::OPFBlocks, blk::Int,
                                    modelinfo::ModelParams, algparams::AlgParams)
-    (ngen, K, T) = size(x1.Pg)
     block = opfBlockData.blkIndex[blk]
     k = block[1]
     t = block[2]
@@ -627,59 +478,39 @@ function compute_proximal_function(x1::PrimalSolution, x2::PrimalSolution,
         end
     end
 
-    if K > 1 && algparams.decompCtgs
-        prox_pg += sum((x1.Pg[:,2:K,:] .- x2.Pg[:,2:K,:]).^2)
+    if k > 1 && algparams.decompCtgs
+        prox_pg += sum((x1.Pg[:,k,t] .- x2.Pg[:,k,t]).^2)
 
         if modelinfo.ctgs_link_constr_type == :frequency_ctrl
-            prox_penalty += sum((x1.ωt[2:K,:] .- x2.ωt[2:K,:]).^2)
+            prox_penalty += (x1.ωt[k,t] - x2.ωt[k,t])^2
         end
         if modelinfo.ctgs_link_constr_type ∈ [:preventive_penalty, :corrective_penalty]
-            prox_penalty += sum((x1.Zk[:,2:K,:] .- x2.Zk[:,2:K,:]).^2)
+            prox_penalty += sum((x1.Zk[:,k,t] .- x2.Zk[:,k,t]).^2)
         end
     end
 
     return 0.5algparams.τ*(prox_pg + prox_penalty)
 end
 
-function compute_proximal_function(x1::PrimalSolution, x2::PrimalSolution,
-                                   modelinfo::ModelParams, algparams::AlgParams)
-    (ngen, K, T) = size(x1.Pg)
-
-    prox_pg = sum((x1.Pg[:,1,:] .- x2.Pg[:,1,:]).^2)
-    prox_penalty = 0
-
-    if modelinfo.time_link_constr_type == :penalty
-        prox_penalty += sum((x1.Zt[:,2:T] .- x2.Zt[:,2:T]).^2)
-    end
-
+function compute_objective_function(opfdict, opfdata::OPFData, opfBlockData::OPFBlocks, blk::Int, modelinfo::ModelParams, algparams::AlgParams)
+    K = size(opfdict[:Pg],2)
+    block = opfBlockData.blkIndex[blk]
+    t = block[2]
     if K > 1 && algparams.decompCtgs
-        prox_pg += sum((x1.Pg[:,2:K,:] .- x2.Pg[:,2:K,:]).^2)
-
-        if modelinfo.ctgs_link_constr_type == :frequency_ctrl
-            prox_penalty += sum((x1.ωt[2:K,:] .- x2.ωt[2:K,:]).^2)
-        end
-        if modelinfo.ctgs_link_constr_type ∈ [:preventive_penalty, :corrective_penalty]
-            prox_penalty += sum((x1.Zk[:,2:K,:] .- x2.Zk[:,2:K,:]).^2)
-        end
+        k = block[1]
+        return compute_objective_function(opfdict, opfdata, modelinfo, algparams, k, t)
+    else
+        return sum(compute_objective_function(opfdict, opfdata, modelinfo, algparams, k, t) for k=1:K)
     end
-
-    return 0.5algparams.τ*(prox_pg + prox_penalty)
 end
 
-function compute_objective_function(x::PrimalSolution, opfdata::OPFData, opfBlockData::OPFBlocks, blk::Int,
-                                    modelinfo::ModelParams)
-    d = Dict(:Pg => x.Pg,
-             :ωt => x.ωt,
-             :Zt => x.Zt,
-             :Zk => x.Zk,
-             :sigma_real => x.sigma_real,
-             :sigma_imag => x.sigma_imag,
-             :sigma_lineFr => x.sigma_lineFr,
-             :sigma_lineTo => x.sigma_lineTo)
-    return compute_objective_function(d, opfdata, opfBlockData, blk, modelinfo)
+function compute_objective_function(opfdict, opfdata::OPFData, modelinfo::ModelParams, algparams::AlgParams)
+    (_, K, T) = size(opfdict[:Pg])
+    return sum(compute_objective_function(opfdict, opfdata, modelinfo, algparams, k, t) for k=1:K, t=1:T)
 end
 
 function compute_objective_function(x::PrimalSolution, opfdata::OPFData,
+                                    opfBlockData::OPFBlocks, blk::Int,
                                     modelinfo::ModelParams, algparams::AlgParams)
     d = Dict(:Pg => x.Pg,
              :ωt => x.ωt,
@@ -689,7 +520,7 @@ function compute_objective_function(x::PrimalSolution, opfdata::OPFData,
              :sigma_imag => x.sigma_imag,
              :sigma_lineFr => x.sigma_lineFr,
              :sigma_lineTo => x.sigma_lineTo)
-    return compute_objective_function(d, opfdata, modelinfo, algparams)
+    return compute_objective_function(d, opfdata, opfBlockData, blk, modelinfo, algparams)
 end
 
 function compute_lyapunov_function(x::PrimalSolution, λ::DualSolution, opfdata::OPFData,
@@ -711,30 +542,6 @@ function compute_lyapunov_function(x::PrimalSolution, λ::DualSolution, opfdata:
     quadratic_penalty = compute_quadratic_penalty(d, opfdata, opfBlockData, blk, modelinfo, algparams)
     # proximal = 0.5algparams.τ*dist(x, xref; modelinfo = modelinfo, algparams = algparams, lnorm = 2)^2
     proximal = compute_proximal_function(x, xref, opfBlockData, blk, modelinfo, algparams)
-
-    return lagrangian + quadratic_penalty + 0.5proximal
-end
-
-function compute_lyapunov_function(x::PrimalSolution, λ::DualSolution, opfdata::OPFData,
-                                   xref::PrimalSolution,
-                                   modelinfo::ModelParams,
-                                   algparams::AlgParams,
-                                   ctgs::Int = 0,
-                                   time::Int = 0)
-    d = Dict(:Pg => x.Pg,
-             :ωt => x.ωt,
-             :St => x.St,
-             :Zt => x.Zt,
-             :Sk => x.Sk,
-             :Zk => x.Zk,
-             :sigma_real => x.sigma_real,
-             :sigma_imag => x.sigma_imag,
-             :sigma_lineFr => x.sigma_lineFr,
-             :sigma_lineTo => x.sigma_lineTo)
-    lagrangian = compute_lagrangian_function(d, λ, opfdata, modelinfo, algparams, ctgs, time)
-    quadratic_penalty = compute_quadratic_penalty(d, opfdata, modelinfo, algparams)
-    # proximal = 0.5algparams.τ*dist(x, xref; modelinfo = modelinfo, algparams = algparams, lnorm = 2)^2
-    proximal = compute_proximal_function(x, xref, modelinfo, algparams)
 
     return lagrangian + quadratic_penalty + 0.5proximal
 end

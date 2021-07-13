@@ -89,46 +89,38 @@ function update_primal_penalty(x::PrimalSolution, opfdata::OPFData,
                                dual::DualSolution,
                                modelinfo::ModelParams,
                                algparams::AlgParams)
-    (ngen, K, T) = size(x.Pg)
+    ngen = size(x.Pg, 1)
     block = opfBlockData.blkIndex[blk]
     k = block[1]
     t = block[2]
 
-    if modelinfo.time_link_constr_type == :penalty
+    if t > 1 && modelinfo.time_link_constr_type == :penalty
         β = [opfdata.generators[g].ramp_agc for g=1:ngen]
-        if t > 1
-            @views x.Zt[:,t] .= ((algparams.τ*primal.Zt[:,t]) .- dual.ramping[:,t] .-
-                            (algparams.ρ_t*(+x.Pg[:,1,t-1] .- x.Pg[:,1,t] .+ x.St[:,t] .- β))
-                        ) ./  max(algparams.zero, algparams.τ + algparams.ρ_t + (modelinfo.obj_scale*algparams.θ_t))
-        end
+        @views x.Zt[:,t] .= ((algparams.τ*primal.Zt[:,t]) .- dual.ramping[:,t] .-
+                                (algparams.ρ_t*(+x.Pg[:,1,t-1] .- x.Pg[:,1,t] .+ x.St[:,t] .- β))
+                            ) ./  max(algparams.zero, algparams.τ + algparams.ρ_t + (modelinfo.obj_scale*algparams.θ_t))
     end
-    if K > 1 && algparams.decompCtgs
+    if k > 1 && algparams.decompCtgs
         if modelinfo.ctgs_link_constr_type == :frequency_ctrl
-            @views for k=2:K
-                x.ωt[k,t] = (( algparams.τ*primal.ωt[k,t]) -
-                                sum(opfdata.generators[g].alpha *
-                                        (dual.ctgs[g,k,:] .+ (algparams.ρ_c * (x.Pg[g,1,:] .- x.Pg[g,k,:])))
+            x.ωt[k,t] = (( algparams.τ*primal.ωt[k,t]) -
+                            sum(opfdata.generators[g].alpha *
+                                    (dual.ctgs[g,k,t] + (algparams.ρ_c * (x.Pg[g,1,t] - x.Pg[g,k,t])))
+                                for g=1:ngen)
+                        ) ./ max(algparams.zero, algparams.τ + (modelinfo.obj_scale*modelinfo.weight_freq_ctrl) +
+                                sum(algparams.ρ_c*(opfdata.generators[g].alpha)^2
                                     for g=1:ngen)
-                            ) ./ max(algparams.zero, algparams.τ + (modelinfo.obj_scale*modelinfo.weight_freq_ctrl) +
-                                    sum(algparams.ρ_c*(opfdata.generators[g].alpha)^2
-                                        for g=1:ngen)
                                 )
-            end
         end
         if modelinfo.ctgs_link_constr_type ∈ [:preventive_penalty, :corrective_penalty]
-            β = zeros(ngen,T)
             if modelinfo.ctgs_link_constr_type == :corrective_penalty
-                @views for g=1:ngen
-                    β[g,:] .= opfdata.generators[g].scen_agc
-                end
+                β = [opfdata.generators[g].scen_agc for g=1:ngen]
             else
+                β = zeros(ngen)
                 @assert norm(x.Sk) <= algparams.zero
             end
-            @views for k=2:K
-                x.Zk[:,k,:] .= ((algparams.τ*primal.Zk[:,k,:]) .- dual.ctgs[:,k,:] .-
-                                (algparams.ρ_c*(+x.Pg[:,1,:] .- x.Pg[:,k,:] .+ x.Sk[:,k,:] .- β))
-                            ) ./  max(algparams.zero, algparams.τ + algparams.ρ_c + (modelinfo.obj_scale*algparams.θ_c))
-            end
+            @views x.Zk[:,k,t] .=   ((algparams.τ*primal.Zk[:,k,t]) .- dual.ctgs[:,k,t] .-
+                                        (algparams.ρ_c*(+x.Pg[:,1,t] .- x.Pg[:,k,t] .+ x.Sk[:,k,t] .- β))
+                                    ) ./  max(algparams.zero, algparams.τ + algparams.ρ_c + (modelinfo.obj_scale*algparams.θ_c))
         end
     end
 
@@ -140,14 +132,13 @@ function update_dual_vars(λ::DualSolution, opfdata::OPFData,
                           primal::PrimalSolution,
                           modelinfo::ModelParams,
                           algparams::AlgParams)
-    (ngen, K, T) = size(primal.Pg)
     block = opfBlockData.blkIndex[blk]
     k = block[1]
     t = block[2]
 
     maxviol_t, maxviol_c = 0.0, 0.0
 
-    if T > 1 || (K > 1 && algparams.decompCtgs)
+    if t > 1 || (k > 1 && algparams.decompCtgs)
         d = Dict(:Pg => primal.Pg,
                  :ωt => primal.ωt,
                  :St => primal.St,
@@ -156,19 +147,17 @@ function update_dual_vars(λ::DualSolution, opfdata::OPFData,
                  :Zk => primal.Zk)
     end
 
-    if T > 1
+    if t > 1
         @assert modelinfo.time_link_constr_type == :penalty
-        link_constr = compute_time_linking_constraints(d, opfdata, opfBlockData, blk, modelinfo)
-        viol_t = abs.(link_constr[:ramping])
-        λ.ramping += algparams.ρ_t*link_constr[:ramping]
-        maxviol_t = maximum(viol_t)
+        link_constr = compute_time_linking_constraints(d, opfdata, modelinfo, t)
+        λ.ramping[:,t] += algparams.ρ_t*link_constr[:ramping][:]
+        maxviol_t = maximum(abs.(link_constr[:ramping][:]))
     end
-    if K > 1 && algparams.decompCtgs
+    if k > 1 && algparams.decompCtgs
         @assert modelinfo.ctgs_link_constr_type ∈ [:frequency_ctrl, :preventive_penalty, :corrective_penalty]
-        link_constr = compute_ctgs_linking_constraints(d, opfdata, opfBlockData, blk, modelinfo)
-        viol_c = abs.(link_constr[:ctgs])
-        λ.ctgs += algparams.ρ_c*link_constr[:ctgs]
-        maxviol_c = maximum(viol_c)
+        link_constr = compute_ctgs_linking_constraints(d, opfdata, modelinfo, k, t)
+        λ.ctgs[:,k,t] += algparams.ρ_c*link_constr[:ctgs][:]
+        maxviol_c = maximum(abs.(link_constr[:ctgs][:]))
     end
 
     return maxviol_t, maxviol_c

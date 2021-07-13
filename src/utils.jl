@@ -137,7 +137,7 @@ function update_runinfo(
     obj = 0.0
     for blk in runinfo.par_order
         if ismywork(blk, comm)
-            obj += compute_objective_function(runinfo.x, opfdata, opfBlockData, blk, modelinfo)
+            obj += compute_objective_function(runinfo.x, opfdata, opfBlockData, blk, modelinfo, algparams)
         end
     end
     obj = comm_sum(obj, comm)
