@@ -90,13 +90,9 @@ end
 function f(x,y)
     nlp = ProxALEvaluator(case_file, load_file, modelinfo, algparams, ProxAL.ExaTronBackend(), opt_sol, lyapunov_sol, nothing)
 
-    println("Creating problem: $elapsed_t")
-    println("Benchmark Start")
-
     nlp.alminfo.x.Pg[1] = x[1]
     info = ProxAL.optimize!(nlp)
     y[1] = info.x.Pg[1]
-    println("AugLag iterations: $(info.iter) with $np ranks in $elapsed_t seconds")
     nothing
 end
 
