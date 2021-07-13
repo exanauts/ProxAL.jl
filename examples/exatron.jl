@@ -10,6 +10,8 @@ using LinearAlgebra, JuMP, Ipopt
 using CatViews
 using CUDA
 using MPI
+using Enzyme
+using Enzyme_jll
 
 MPI.Init()
 
@@ -17,10 +19,10 @@ MPI.Init()
 # (case, T, ramp_scale, load_scale, maxρ, quad_penalty) = ("case_ACTIVSg2000_Corrected", 20, 0.3, 1.0, 0.1, 1e5) # 290 iterations
 # (case, T, ramp_scale, load_scale, maxρ, quad_penalty) = ("case_ACTIVSg2000_Corrected", 20, 0.3, 1.0, 0.01, 1e3) # 449 iterations
 # (case, T, ramp_scale, load_scale, maxρ, quad_penalty) = ("case_ACTIVSg2000_Corrected", 20, 0.3, 1.0, 0.01, 1e5) # 521 iterations
-(case, T, ramp_scale, load_scale, maxρ, quad_penalty) = ("case_ACTIVSg2000_Corrected", 20, 0.3, 1.0, 0.1, 1e3) # 225 iterations
+# (case, T, ramp_scale, load_scale, maxρ, quad_penalty) = ("case_ACTIVSg2000_Corrected", 20, 0.3, 1.0, 0.1, 1e3) # 225 iterations
 # (case, T, ramp_scale, load_scale, maxρ, quad_penalty) = ("case9241pegase", 2, 0.3, 0.8, 0.01, 1e3)
 # (case, T, ramp_scale, load_scale, maxρ, quad_penalty) = ("case118", 168, 0.2, 1.0, 0.1, 1e5)
-# (case, T, ramp_scale, load_scale, maxρ, quad_penalty) = ("case9", 6, 0.04, 1.0, 0.1, 0.1)
+(case, T, ramp_scale, load_scale, maxρ, quad_penalty) = ("case9", 2, 0.04, 1.0, 0.1, 0.1)
 
 T = parse(Int, ARGS[1])
 if MPI.Comm_rank(MPI.COMM_WORLD) == 0
@@ -33,8 +35,8 @@ K = 0
 # Load case
 DATA_DIR = joinpath(dirname(@__FILE__), "..", "data")
 case_file = joinpath(DATA_DIR, "$(case).m")
-# load_file = joinpath(DATA_DIR, "mp_demand", "$(case)_oneweek_168")
-load_file = joinpath(DATA_DIR, "mp_demand", "$(case)_3600")
+load_file = joinpath(DATA_DIR, "mp_demand", "$(case)_oneweek_168")
+# load_file = joinpath(DATA_DIR, "mp_demand", "$(case)_3600")
 
 # Model/formulation settings
 modelinfo = ModelParams()
@@ -57,10 +59,10 @@ modelinfo.init_opf = false
 
 # Algorithm settings
 algparams = AlgParams()
-algparams.verbose = 1
+algparams.verbose = 0
 algparams.tol = 1e-3
 algparams.decompCtgs = true
-algparams.iterlim = 100
+algparams.iterlim = 1
 algparams.device = ProxAL.CUDADevice
 algparams.optimizer = optimizer_with_attributes(Ipopt.Optimizer, "print_level" => 0)
 algparams.tron_rho_pq=5*1e4
@@ -84,20 +86,32 @@ if MPI.Comm_rank(MPI.COMM_WORLD) == 0
    println("ProxAL/ExaTron $ranks ranks, $T periods")
 end
 
-elapsed_t = @elapsed begin
-  nlp = ProxALEvaluator(case_file, load_file, modelinfo, algparams, ProxAL.ExaTronBackend(), opt_sol, lyapunov_sol)
-end
+# if MPI.Comm_rank(MPI.COMM_WORLD) == 0
+function f(x,y)
+    nlp = ProxALEvaluator(case_file, load_file, modelinfo, algparams, ProxAL.ExaTronBackend(), opt_sol, lyapunov_sol, nothing)
 
-if MPI.Comm_rank(MPI.COMM_WORLD) == 0
     println("Creating problem: $elapsed_t")
     println("Benchmark Start")
-    np = MPI.Comm_size(MPI.COMM_WORLD)
-    elapsed_t = @elapsed begin
-      info = ProxAL.optimize!(nlp)
-    end
+
+    nlp.alminfo.x.Pg[1] = x[1]
+    info = ProxAL.optimize!(nlp)
+    y[1] = info.x.Pg[1]
     println("AugLag iterations: $(info.iter) with $np ranks in $elapsed_t seconds")
-else
-  info = ProxAL.optimize!(nlp)
+    nothing
 end
+
+x  = Float64[1.3]
+dx = Float64[0.0]
+y  = Float64[0.0]
+dy = Float64[1.0]
+println("Before passive run: x=$x, y=$y")
+f(x,y)
+println("Before autodiff run: x=$x, dx=$dx, y=$y, dy=$dy")
+autodiff(f, Duplicated(x,dx), Duplicated(y,dy))
+println("After autodiff run: x=$x, dx=$dx, y=$y, dy=$dy")
+
+# else
+#   info = ProxAL.optimize!(nlp)
+# end
 
 MPI.Finalize()
