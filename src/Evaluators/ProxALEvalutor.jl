@@ -162,7 +162,7 @@ function optimize!(nlp::ProxALEvaluator; print_timings=false)
                         # Updating my own primal values
                         opfBlockData.colValue[:,blk] .= nlp_opt_sol[:,blk]
                         update_primal_nlpvars(x, opfBlockData, blk, modelinfo, algparams)
-                        for blkn in runinfo.par_order[1,:]
+                        for blkn in runinfo.par_order
                             blockn = opfBlockData.blkIndex[blkn]
                             kn = blockn[1]
                             tn = blockn[2]
@@ -185,7 +185,7 @@ function optimize!(nlp::ProxALEvaluator; print_timings=false)
             # Primal update of penalty vars
             x.Zt .= 0.0
             elapsed_t = @elapsed begin
-                for blk in runinfo.par_order[1,:]
+                for blk in runinfo.par_order
                     if ismywork(blk, comm)
                         update_primal_penalty(x, opfdata, opfBlockData, blk, x, λ, modelinfo, algparams)
                     end
@@ -213,7 +213,7 @@ function optimize!(nlp::ProxALEvaluator; print_timings=false)
     function dual_update()
         elapsed_t = @elapsed begin
             maxviol_t = 0.0; maxviol_c = 0.0
-            for blk in runinfo.par_order[1,:]
+            for blk in runinfo.par_order
                 block = opfBlockData.blkIndex[blk]
                 k = block[1]
                 t = block[2]
