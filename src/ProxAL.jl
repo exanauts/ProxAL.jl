@@ -94,7 +94,7 @@ function update_primal_penalty(x::PrimalSolution, opfdata::OPFData,
     k = block[1]
     t = block[2]
 
-    if t > 1 && modelinfo.time_link_constr_type == :penalty
+    if t > 1 && k == 1 && modelinfo.time_link_constr_type == :penalty
         β = [opfdata.generators[g].ramp_agc for g=1:ngen]
         @views x.Zt[:,t] .= ((algparams.τ*primal.Zt[:,t]) .- dual.ramping[:,t] .-
                                 (algparams.ρ_t*(+x.Pg[:,1,t-1] .- x.Pg[:,1,t] .+ x.St[:,t] .- β))
@@ -147,7 +147,7 @@ function update_dual_vars(λ::DualSolution, opfdata::OPFData,
                  :Zk => primal.Zk)
     end
 
-    if t > 1
+    if t > 1 && k == 1
         @assert modelinfo.time_link_constr_type == :penalty
         link_constr = compute_time_linking_constraints(d, opfdata, modelinfo, t)
         λ.ramping[:,t] += algparams.ρ_t*link_constr[:ramping][:]
