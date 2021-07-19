@@ -32,54 +32,49 @@ function update_primal_nlpvars(x::PrimalSolution, opfBlockData::OPFBlocks, blk::
                                modelinfo::ModelParams,
                                algparams::AlgParams)
     # FIX ME: Make it work without views also in the non decomposed contingencies case
-    if algparams.decompCtgs
-        block = opfBlockData.blkIndex[blk]
-        k = block[1]
-        t = block[2]
-        range_k = algparams.decompCtgs ? (k:k) : (1:(modelinfo.num_ctgs + 1))
+    block = opfBlockData.blkIndex[blk]
+    k = block[1]
+    t = block[2]
+    range_k = algparams.decompCtgs ? (k:k) : (1:(modelinfo.num_ctgs + 1))
 
-        from = 1
-        to = size(x.Pg,1)*length(range_k)
-        @views x.Pg[:,range_k,t] .= opfBlockData.colValue[from:to,blk]
+    from = 1
+    to = size(x.Pg,1)*length(range_k)
+    @views x.Pg[:,range_k,t][:] .= opfBlockData.colValue[from:to,blk]
 
-        from = 1+to
-        to = to + size(x.Qg, 1)*length(range_k)
-        @views x.Qg[:,range_k,t] .= opfBlockData.colValue[from:to,blk]
+    from = 1+to
+    to = to + size(x.Qg, 1)*length(range_k)
+    @views x.Qg[:,range_k,t][:] .= opfBlockData.colValue[from:to,blk]
 
-        from = 1+to
-        to = to + size(x.Vm, 1)*length(range_k)
-        @views x.Vm[:,range_k,t] .= opfBlockData.colValue[from:to,blk]
+    from = 1+to
+    to = to + size(x.Vm, 1)*length(range_k)
+    @views x.Vm[:,range_k,t][:] .= opfBlockData.colValue[from:to,blk]
 
-        from = 1+to
-        to = to + size(x.Va, 1)*length(range_k)
-        @views x.Va[:,range_k,t] .= opfBlockData.colValue[from:to,blk]
+    from = 1+to
+    to = to + size(x.Va, 1)*length(range_k)
+    @views x.Va[:,range_k,t][:] .= opfBlockData.colValue[from:to,blk]
 
-        from = 1+to
-        to = to + length(range_k)
+    from = 1+to
+    to = to + length(range_k)
+    if !algparams.decompCtgs
         @views x.ωt[range_k,t] .= opfBlockData.colValue[from:to,blk]
-
-        from = 1+to
-        to = to + size(x.St, 1)
-        @views x.St[:,t] .= opfBlockData.colValue[from:to,blk]
-
-        from = 1+to
-        to = to + size(x.Zt, 1)
-        @views x.Zt[:,t] .= opfBlockData.colValue[from:to,blk]
-
-        from = 1+to
-        to = to + size(x.Sk, 1)*length(range_k)
-        @views x.Sk[:,range_k,t] .= opfBlockData.colValue[from:to,blk]
-
-        # Zk
-        from = 1+to
-        to = to + size(x.Sk, 1)*length(range_k)
-        @views x.Sk[:,range_k,t] .= opfBlockData.colValue[from:to,blk]
-    else
-        solution = get_block_view(x, opfBlockData.blkIndex[blk],
-                                modelinfo,
-                                algparams)
-        solution .= opfBlockData.colValue[:,blk]
     end
+
+    from = 1+to
+    to = to + size(x.St, 1)
+    @views x.St[:,t] .= opfBlockData.colValue[from:to,blk]
+
+    from = 1+to
+    to = to + size(x.Zt, 1)
+    # @views x.Zt[:,t] .= opfBlockData.colValue[from:to,blk]
+
+    from = 1+to
+    to = to + size(x.Sk, 1)*length(range_k)
+    @views x.Sk[:,range_k,t][:] .= opfBlockData.colValue[from:to,blk]
+
+    # Zk
+    # from = 1+to
+    # to = to + size(x.Sk, 1)*length(range_k)
+    # @views x.Zk[:,range_k,t] .= opfBlockData.colValue[from:to,blk]
     return nothing
 end
 

@@ -98,7 +98,9 @@ function optimize!(nlp::ProxALEvaluator; print_timings=false)
         @views opt_sol[fr:to, blk] .= solution.va[:]
         # wt
         fr = to +1  ; to = fr + k_per_block -1
-        @views opt_sol[fr:to, blk] .= solution.ωt[:]
+        if !algparams.decompCtgs
+            @views opt_sol[fr:to, blk] .= solution.ωt[:]
+        end
         # St
         fr = to +1  ; to = fr + ngen - 1
         @views opt_sol[fr:to, blk] .= solution.st[:]

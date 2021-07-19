@@ -278,7 +278,7 @@ function compute_objective_function(
     @assert t >= 1 && t <= T
     @assert k >= 1 && k <= K
 
-    if k == 1 && modelinfo.allow_obj_gencost
+    if kIdx == 1 && modelinfo.allow_obj_gencost
         baseMVA = opfdata.baseMVA
         gens = opfdata.generators
         obj_gencost = sum(gens[g].coeff[gens[g].n-2]*(baseMVA*Pg[g,k,t])^2
@@ -584,7 +584,6 @@ function compute_lyapunov_function(
              :sigma_lineTo => x.sigma_lineTo)
     lagrangian = compute_lagrangian_function(d, λ, opfdata, opfBlockData, blk, modelinfo, algparams)
     quadratic_penalty = compute_quadratic_penalty(d, opfdata, opfBlockData, blk, modelinfo, algparams)
-    # proximal = 0.5algparams.τ*dist(x, xref; modelinfo = modelinfo, algparams = algparams, lnorm = 2)^2
     proximal = compute_proximal_function(x, xref, opfBlockData, blk, modelinfo, algparams)
 
     return lagrangian + quadratic_penalty + 0.5proximal
