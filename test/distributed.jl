@@ -58,15 +58,17 @@ algparams.gpu_optimizer = optimizer_with_attributes(
     "tol" => 1e-5,
 )
 
+optimal_obvalue = round(11.258316111585623, digits = 6)
+optimal_pg = round.([0.8979870694509675, 1.3432060120295906, 0.9418738103137331, 0.9840203268625166, 1.448040098924617, 1.0149638876964715], digits = 5)
 @testset "Test ProxAL on $(case) with $T-period, $K-ctgs, time_link=penalty and Ipopt" begin
     algparams.mode = :coldstart
     nlp = ProxALEvaluator(case_file, load_file, modelinfo, algparams, ProxAL.JuMPBackend())
     info = ProxAL.optimize!(nlp)
-    # @test isapprox(info.maxviol_c[end], 0.0)
-    @test isapprox(info.x.Pg[:], [0.8979849196165037, 1.3432106614001416, 0.9418713794662078, 0.9840203268799962, 1.4480400989162827, 1.0149638876932787], rtol = rtol)
-    @test isapprox(info.λ.ramping[:], [0.0, 0.0, 0.0, 2.1600093405682597e-6, -7.2856620728201185e-6, 5.051385899057505e-6], rtol = rtol)
-    @test isapprox(info.maxviol_t[end], 2.687848059435005e-5, rtol = rtol)
-    @test isapprox(info.maxviol_d[end], 7.28542741650351e-6, rtol = rtol)
-    @test info.iter == 5
+    @test isapprox(info.objvalue[end], optimal_obvalue, rtol = rtol)
+    @test isapprox(info.x.Pg[:], optimal_pg, rtol = rtol)
+    @test norm(info.x.Zt[:], Inf) <= 1e-4
+    @test info.maxviol_t[end] <= algparams.tol
+    @test info.maxviol_d[end] <= algparams.tol
+    @test info.iter <= algparams.iterlim
 end
 MPI.Finalize()
