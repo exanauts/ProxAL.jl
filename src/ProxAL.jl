@@ -31,7 +31,6 @@ export JuMPBackend, ExaPFBackend, ExaTronBackend
 function update_primal_nlpvars(x::PrimalSolution, opfBlockData::OPFBlocks, blk::Int,
                                modelinfo::ModelParams,
                                algparams::AlgParams)
-    # FIX ME: Make it work without views also in the non decomposed contingencies case
     block = opfBlockData.blkIndex[blk]
     k = block[1]
     t = block[2]
@@ -63,6 +62,7 @@ function update_primal_nlpvars(x::PrimalSolution, opfBlockData::OPFBlocks, blk::
     to = to + size(x.St, 1)
     @views x.St[:,t] .= opfBlockData.colValue[from:to,blk]
 
+    # Zt will be updated in update_primal_penalty
     from = 1+to
     to = to + size(x.Zt, 1)
     # @views x.Zt[:,t] .= opfBlockData.colValue[from:to,blk]
@@ -71,7 +71,7 @@ function update_primal_nlpvars(x::PrimalSolution, opfBlockData::OPFBlocks, blk::
     to = to + size(x.Sk, 1)*length(range_k)
     @views x.Sk[:,range_k,t][:] .= opfBlockData.colValue[from:to,blk]
 
-    # Zk
+    # Zk will be updated in update_primal_penalty
     # from = 1+to
     # to = to + size(x.Sk, 1)*length(range_k)
     # @views x.Zk[:,range_k,t] .= opfBlockData.colValue[from:to,blk]

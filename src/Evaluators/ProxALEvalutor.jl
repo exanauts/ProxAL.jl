@@ -185,7 +185,6 @@ function optimize!(nlp::ProxALEvaluator; print_timings=false)
 
 
             # Primal update of penalty vars
-            x.Zt .= 0.0
             elapsed_t = @elapsed begin
                 for blk in runinfo.par_order
                     if ismywork(blk, comm)
