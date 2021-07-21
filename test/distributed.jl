@@ -13,8 +13,6 @@ T = 2
 K = 0
 ramp_scale = 0.5
 load_scale = 1.0
-maxρ = 0.1
-quad_penalty = 0.1
 rtol = 1e-2
 
 # Load case
@@ -37,12 +35,6 @@ modelinfo.num_ctgs = K
 # Algorithm settings
 algparams = AlgParams()
 algparams.verbose = 0
-algparams.init_opf = true
-algparams.θ_t = quad_penalty
-algparams.θ_c = quad_penalty
-algparams.ρ_t = algparams.ρ_c = maxρ
-algparams.τ = 3maxρ
-algparams.decompCtgs = false
 
 # For JuMP
 algparams.optimizer = optimizer_with_attributes(
@@ -66,8 +58,10 @@ optimal_pg = round.([0.8979870694509675, 1.3432060120295906, 0.9418738103137331,
     info = ProxAL.optimize!(nlp)
     @test isapprox(info.objvalue[end], optimal_obvalue, rtol = rtol)
     @test isapprox(info.x.Pg[:], optimal_pg, rtol = rtol)
-    @test norm(info.x.Zt[:], Inf) <= 1e-4
+    @test isapprox(info.maxviol_c[end], 0.0)
+    @test isapprox(info.maxviol_c_actual[end], 0.0)
     @test info.maxviol_t[end] <= algparams.tol
+    @test info.maxviol_t_actual[end] <= algparams.tol
     @test info.maxviol_d[end] <= algparams.tol
     @test info.iter <= algparams.iterlim
 end
