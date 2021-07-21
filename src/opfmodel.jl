@@ -341,7 +341,6 @@ function compute_time_linking_constraints(
     Trange = (tIdx == 0) ? (1:T) : (tIdx:tIdx)
 
     link = Dict{Symbol, Array}()
-    singletons = []
     if modelinfo.time_link_constr_type == :inequality
         link[:ramping_p] = [(t > 1) ? (+Pg[g,1,t-1] - Pg[g,1,t] - gens[g].ramp_agc) : 0.0 for g=1:ngen,t=Trange]
         link[:ramping_n] = [(t > 1) ? (-Pg[g,1,t-1] + Pg[g,1,t] - gens[g].ramp_agc) : 0.0 for g=1:ngen,t=Trange]
@@ -593,143 +592,6 @@ function compute_dual_error(
     x::PrimalSolution, xprev::PrimalSolution,
     λ::DualSolution, λprev::DualSolution,
     opfdata::OPFData,
-    opfBlockData::OPFBlocks, blk::Int,
-    modelinfo::ModelParams,
-    algparams::AlgParams;
-    lnorm = Inf
-)
-    (ngen, K, T) = size(x.Pg)
-    block = opfBlockData.blkIndex[blk]
-    k = block[1]
-    t = block[2]
-
-    err_pg = zeros(ngen, K)
-    err_ωt = zeros(K)
-    err_st = zeros(ngen)
-    err_zt = zeros(ngen)
-    err_sk = zeros(ngen, K)
-    err_zk = zeros(ngen, K)
-
-    if T > 1
-        @assert modelinfo.time_link_constr_type == :penalty
-        @views begin
-            # for convenience
-            β = zeros(ngen)
-            for g=1:ngen
-                β[g] = opfdata.generators[g].ramp_agc
-            end
-
-            #----------------------------------------------------------------------------
-            true_pg_dual = zeros(ngen, K)
-            lagrangian_pg_err = zeros(ngen, K)
-            penalty_pg_forward_err = zeros(ngen, K)
-            penalty_pg_reverse_err = zeros(ngen, K)
-            if t > 1
-                true_pg_dual = -λ.ramping[:,t]
-                lagrangian_pg_err = -λprev.ramping[:,t]
-                penalty_pg_forward_err = -algparams.ρ_t[:,t].*(
-                                            (algparams.jacobi ? xprev.Pg[:,1,t-1] : x.Pg[:,1,t-1]) .-
-                                            x.Pg[:,1,t] .+ x.St[:,t] .+ xprev.Zt[:,t] .- β[:]
-                                        )
-                penalty_pg_reverse_err = +algparams.ρ_t[:,t].*(
-                                            x.Pg[:,1,t-1] .- xprev.Pg[:,1,t] .+ xprev.St[:,t] .+ xprev.Zt[:,t] .- β[:]
-                                        )
-            end
-            prox_pg_err = algparams.τ*(x.Pg[:,1,t] .- xprev.Pg[:,1,t])
-            #----------------------------------------------------------------------------
-
-            if t > 1
-                err_pg[:,1] += -true_pg_dual .+ lagrangian_pg_err .- penalty_pg_reverse_err
-                err_pg[:,1] += true_pg_dual .- lagrangian_pg_err .- penalty_pg_forward_err
-            end
-            err_pg[:,1] -= prox_pg_err[:]
-            if t > 1
-                err_st[:] += penalty_pg_forward_err
-                err_st[:] += -true_pg_dual .+ lagrangian_pg_err
-                err_zt[:] += -true_pg_dual .+ lagrangian_pg_err - (algparams.ρ_t[:,t].*(
-                                            x.Pg[:,1,t-1] .- x.Pg[:,1,t] .+ x.St[:,t] .+ x.Zt[:,t] .- β
-                                        ))
-                err_zt[:] -= (algparams.τ*(x.Zt[:,t] - xprev.Zt[:,t]))
-            end
-        end
-    end
-
-    if K > 1 && algparams.decompCtgs
-        @assert modelinfo.ctgs_link_constr_type ∈ [:frequency_ctrl, :preventive_penalty, :corrective_penalty]
-        @views begin
-            # for convenience
-            β = zeros(ngen, K, T)
-            pg_base = zeros(ngen, K, T)
-            pg_base_prev = zeros(ngen, K, T)
-            if modelinfo.ctgs_link_constr_type ∈ [:corrective_inequality, :corrective_equality, :corrective_penalty]
-                for g=1:ngen
-                    β[g,:,:] .= opfdata.generators[g].scen_agc
-                end
-            end
-            for k=2:K, g=1:ngen
-                pg_base[g,k,:] .= x.Pg[g,1,:]
-                pg_base_prev[g,k,:] .= xprev.Pg[g,1,:]
-            end
-
-            #----------------------------------------------------------------------------
-            true_pg_ctgs_dual = -λ.ctgs[:,2:K,:]
-            lagrangian_pg_ctgs_err = -λprev.ctgs[:,2:K,:]
-            penalty_pg_base_err = pg_base[:,2:K,:] .-
-                                        xprev.Pg[:,2:K,:] .+ xprev.Sk[:,2:K,:] .+ xprev.Zk[:,2:K,:] .- β[:,2:K,:]
-            penalty_pg_ctgs_err = (algparams.jacobi ? pg_base_prev[:,2:K,:] : pg_base[:,2:K,:]) -
-                                            x.Pg[:,2:K,:] .+     x.Sk[:,2:K,:] .+ xprev.Zk[:,2:K,:] .- β[:,2:K,:]
-            prox_pg_err = algparams.τ*(x.Pg[:,2:K,:] .- xprev.Pg[:,2:K,:])
-            for g=1:ngen
-                penalty_pg_ctgs_err[g,:,:] += opfdata.generators[g].alpha*xprev.ωt[2:K,:]
-                penalty_pg_base_err[g,:,:] += opfdata.generators[g].alpha*xprev.ωt[2:K,:]
-            end
-            penalty_pg_base_err .= algparams.ρ_c[:,2:K,:].*penalty_pg_base_err
-            penalty_pg_ctgs_err .= -algparams.ρ_c[:,2:K,:].*penalty_pg_ctgs_err
-            #----------------------------------------------------------------------------
-
-            err_pg[:,1,:] += dropdims(sum(-true_pg_ctgs_dual .+ lagrangian_pg_ctgs_err .- penalty_pg_base_err; dims = 2); dims = 2)
-            err_pg[:,2:K,:] += true_pg_ctgs_dual .- lagrangian_pg_ctgs_err .- penalty_pg_ctgs_err .- prox_pg_err
-            if modelinfo.ctgs_link_constr_type == :frequency_ctrl
-                for g=1:ngen
-                    err_ωt[2:K,:] += opfdata.generators[g].alpha*(
-                                        -true_pg_ctgs_dual[g,:,:].+lagrangian_pg_ctgs_err[g,:,:].-
-                                        (algparams.ρ_c[g,2:K,:].*(
-                                            pg_base[g,2:K,:] .- x.Pg[g,2:K,:] .+ (opfdata.generators[g].alpha*x.ωt[2:K,:])
-                                        ))
-                                    )
-                    err_ωt[2:K,:] -= algparams.τ*(x.ωt[2:K,:] - xprev.ωt[2:K,:])
-                end
-            else
-                err_sk[:,2:K,:] += penalty_pg_ctgs_err
-            end
-            if modelinfo.time_link_constr_type ∈ [:preventive_equality, :preventive_penalty, :corrective_equality, :corrective_penalty]
-                err_sk[:,2:K,:] += -true_pg_ctgs_dual .+ lagrangian_pg_ctgs_err
-            end
-            if modelinfo.time_link_constr_type ∈ [:preventive_penalty, :corrective_penalty]
-                err_zk[:,2:K,:] += -true_pg_ctgs_dual .+ lagrangian_pg_ctgs_err - (algparams.ρ_c[:,2:K,:].*(
-                                            pg_base .- x.Pg[:,2:K,:] .+ x.Sk[:,2:K,:] .+ x.Zk[:,2:K,:] .- β[:,2:K,:]
-                                        ))
-                err_zk[:,2:K,:] -= (algparams.τ*(x.Zk[:,2:K,:] - xprev.Zk[:,2:K,:]))
-            end
-        end
-    end
-
-    err_pg_view = view(err_pg, :, :, :)
-    err_ωt_view = view(err_ωt, :, :)
-    err_st_view = view(err_st, :, :)
-    err_zt_view = view(err_zt, :, :)
-    err_sk_view = view(err_sk, :, :, :)
-    err_zk_view = view(err_zk, :, :, :)
-
-    dual_error = CatView(err_pg_view, err_ωt_view, err_st_view, err_zt_view, err_sk_view, err_zk_view)
-
-    return dual_error
-end
-
-function compute_dual_error(
-    x::PrimalSolution, xprev::PrimalSolution,
-    λ::DualSolution, λprev::DualSolution,
-    opfdata::OPFData,
     modelinfo::ModelParams, algparams::AlgParams;
     lnorm = Inf
 )
@@ -772,7 +634,7 @@ function compute_dual_error(
             err_zt[:,2:T] += -true_pg_dual .+ lagrangian_pg_err - (algparams.ρ_t*(
                                         x.Pg[:,1,1:(T-1)] .- x.Pg[:,1,2:T] .+ x.St[:,2:T] .+ x.Zt[:,2:T] .- β[:,2:T]
                                     ))
-            err_zt[:,2:T] -= (algparams.τ*(x.Zt[:,2:T] - xprev.Zt[:,2:T]))
+            err_zt[:,2:T] -= ((algparams.ρ_t/32.0)*(x.Zt[:,2:T] - xprev.Zt[:,2:T]))
         end
     end
 
@@ -819,8 +681,8 @@ function compute_dual_error(
                                             pg_base[g,2:K,:] .- x.Pg[g,2:K,:] .+ (opfdata.generators[g].alpha*x.ωt[2:K,:])
                                         ))
                                     )
-                    err_ωt[2:K,:] -= algparams.τ*(x.ωt[2:K,:] - xprev.ωt[2:K,:])
                 end
+                err_ωt[2:K,:] -= (algparams.ρ_c/32.0)*(x.ωt[2:K,:] - xprev.ωt[2:K,:])
             else
                 err_sk[:,2:K,:] += penalty_pg_ctgs_err
             end
@@ -831,7 +693,7 @@ function compute_dual_error(
                 err_zk[:,2:K,:] += -true_pg_ctgs_dual .+ lagrangian_pg_ctgs_err - (algparams.ρ_c*(
                                             pg_base .- x.Pg[:,2:K,:] .+ x.Sk[:,2:K,:] .+ x.Zk[:,2:K,:] .- β[:,2:K,:]
                                         ))
-                err_zk[:,2:K,:] -= (algparams.τ*(x.Zk[:,2:K,:] - xprev.Zk[:,2:K,:]))
+                err_zk[:,2:K,:] -= ((algparams.ρ_c/32.0)*(x.Zk[:,2:K,:] - xprev.Zk[:,2:K,:]))
             end
         end
     end
@@ -848,6 +710,73 @@ function compute_dual_error(
     return norm(dual_error, lnorm)
 end
 
+function compute_true_ramp_error(
+    x::PrimalSolution,
+    opfdata::OPFData,
+    modelinfo::ModelParams,
+    tIdx::Int = 0
+)
+    d = Dict(:Pg => x.Pg,
+             :St => x.St,
+             :Zt => x.Zt)
+    true_time_link_constr_type = modelinfo.time_link_constr_type
+    modelinfo.time_link_constr_type = :equality
+    link = compute_time_linking_constraints(d, opfdata, modelinfo, tIdx)
+    modelinfo.time_link_constr_type = true_time_link_constr_type
+
+    #return maximum(max.(link[:ramping_p], link[:ramping_n], 0.0))
+    return maximum(abs.(link[:ramping]))
+end
+
+function compute_true_ctgs_error(
+    x::PrimalSolution,
+    opfdata::OPFData,
+    modelinfo::ModelParams,
+    kIdx::Int = 0, tIdx::Int = 0
+)
+    d = Dict(:Pg => x.Pg,
+             :ωt => x.ωt,
+             :Sk => x.Sk,
+             :Zk => x.Zk)
+    ineq = false
+    true_ctgs_link_constr_type = modelinfo.ctgs_link_constr_type
+    if true_ctgs_link_constr_type ∈ [:corrective_penalty, :corrective_equality]
+        modelinfo.ctgs_link_constr_type = :corrective_inequality
+        ineq = true
+    end
+    if true_ctgs_link_constr_type ∈ [:preventive_penalty]
+        modelinfo.ctgs_link_constr_type = :preventive_equality
+    end
+    link = compute_ctgs_linking_constraints(d, opfdata, modelinfo, kIdx, tIdx)
+    modelinfo.ctgs_link_constr_type = true_ctgs_link_constr_type
+
+    return ineq ? maximum(abs.(link[:ctgs_p][:]), abs.(link[:ctgs_n][:])) : maximum(abs.(link[:ctgs][:]))
+end
+
+function compute_true_ramp_error(
+    x::PrimalSolution, opfdata::OPFData,
+    opfBlockData::OPFBlocks, blk::Int,
+    modelinfo::ModelParams,
+)
+    block = opfBlockData.blkIndex[blk]
+    k = block[1]
+    t = block[2]
+    if k > 1
+        return 0.0
+    end
+    return compute_true_ramp_error(x, opfdata, modelinfo, t)
+end
+
+function compute_true_ctgs_error(
+    x::PrimalSolution, opfdata::OPFData,
+    opfBlockData::OPFBlocks, blk::Int,
+    modelinfo::ModelParams,
+)
+    block = opfBlockData.blkIndex[blk]
+    k = block[1]
+    t = block[2]
+    return compute_true_ctgs_error(x, opfdata, modelinfo, k, t)
+end 
 
 
 """

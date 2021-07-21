@@ -91,17 +91,17 @@ function update_primal_penalty(x::PrimalSolution, opfdata::OPFData,
 
     if t > 1 && k == 1 && modelinfo.time_link_constr_type == :penalty
         β = [opfdata.generators[g].ramp_agc for g=1:ngen]
-        @views x.Zt[:,t] .= ((algparams.τ*primal.Zt[:,t]) .- dual.ramping[:,t] .-
+        @views x.Zt[:,t] .= (((algparams.ρ_t/32.0)*primal.Zt[:,t]) .- dual.ramping[:,t] .-
                                 (algparams.ρ_t*(+x.Pg[:,1,t-1] .- x.Pg[:,1,t] .+ x.St[:,t] .- β))
-                            ) ./  max(algparams.zero, algparams.τ + algparams.ρ_t + (modelinfo.obj_scale*algparams.θ_t))
+                            ) ./  max(algparams.zero, (algparams.ρ_t/32.0) + algparams.ρ_t + (modelinfo.obj_scale*algparams.θ_t))
     end
     if k > 1 && algparams.decompCtgs
         if modelinfo.ctgs_link_constr_type == :frequency_ctrl
-            x.ωt[k,t] = (( algparams.τ*primal.ωt[k,t]) -
+            x.ωt[k,t] = (( (algparams.ρ_c/32.0)*primal.ωt[k,t]) -
                             sum(opfdata.generators[g].alpha *
                                     (dual.ctgs[g,k,t] + (algparams.ρ_c * (x.Pg[g,1,t] - x.Pg[g,k,t])))
                                 for g=1:ngen)
-                        ) ./ max(algparams.zero, algparams.τ + (modelinfo.obj_scale*modelinfo.weight_freq_ctrl) +
+                        ) ./ max(algparams.zero, (algparams.ρ_c/32.0) + (modelinfo.obj_scale*modelinfo.weight_freq_ctrl) +
                                 sum(algparams.ρ_c*(opfdata.generators[g].alpha)^2
                                     for g=1:ngen)
                                 )
@@ -113,9 +113,9 @@ function update_primal_penalty(x::PrimalSolution, opfdata::OPFData,
                 β = zeros(ngen)
                 @assert norm(x.Sk) <= algparams.zero
             end
-            @views x.Zk[:,k,t] .=   ((algparams.τ*primal.Zk[:,k,t]) .- dual.ctgs[:,k,t] .-
+            @views x.Zk[:,k,t] .=   (((algparams.ρ_c/32.0)*primal.Zk[:,k,t]) .- dual.ctgs[:,k,t] .-
                                         (algparams.ρ_c*(+x.Pg[:,1,t] .- x.Pg[:,k,t] .+ x.Sk[:,k,t] .- β))
-                                    ) ./  max(algparams.zero, algparams.τ + algparams.ρ_c + (modelinfo.obj_scale*algparams.θ_c))
+                                    ) ./  max(algparams.zero, (algparams.ρ_c/32.0) + algparams.ρ_c + (modelinfo.obj_scale*algparams.θ_c))
         end
     end
 

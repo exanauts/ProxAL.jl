@@ -69,6 +69,9 @@ function optimize!(nlp::ProxALEvaluator; print_timings=false)
     opfdata   = nlp.opfdata
     comm      = nlp.comm
 
+    algparams.θ_t = algparams.θ_c = 1.0
+    algparams.ρ_t = algparams.ρ_c = 1.0
+    algparams.τ = 3.0
     runinfo.initial_solve &&
         (algparams_copy = deepcopy(algparams))
     opfBlockData = runinfo.opfBlockData
@@ -247,15 +250,16 @@ function optimize!(nlp::ProxALEvaluator; print_timings=false)
         runinfo.wall_time_elapsed_ideal += elapsed_t
     end
     #------------------------------------------------------------------------------------
-    function proximal_update()
+    function proximal_parameter_update()
         elapsed_t = @elapsed begin
-            if algparams.updateτ
-                maxρ = algparams.decompCtgs ? max(maxρ_t, maxρ_c) : maxρ_t
-                # lyapunov = compute_lyapunov_function(runinfo.x, runinfo.λ, opfdata; xref = runinfo.xprev, modelinfo = modelinfo, algparams = algparams)
-                # delta_lyapunov = runinfo.lyapunovprev - lyapunov
-                # if delta_lyapunov <= 0.0 && algparams.τ < 3.0maxρ
-                if runinfo.iter%10 == 0 && algparams.τ < 3.0maxρ
-                    algparams.τ += maxρ
+            if algparams.updateτ && runinfo.iter > 1
+                maxθ = algparams.decompCtgs  ? max(algparams.θ_t, algparams.θ_c) : algparams.θ_t
+                delta = runinfo.lyapunov[end-1] - runinfo.lyapunov[end]
+                # if runinfo.iter%10 == 0 && algparams.τ < 3.0maxρ
+                #     algparams.τ += maxρ
+                # end
+                if delta < 0.0 && algparams.τ < 320.0*maxθ
+                    algparams.τ *= 1.5
                 end
             end
         end
@@ -263,6 +267,61 @@ function optimize!(nlp::ProxALEvaluator; print_timings=false)
         runinfo.wall_time_elapsed_ideal += elapsed_t
     end
     #------------------------------------------------------------------------------------
+    function penalty_parameter_update()
+        elapsed_t = @elapsed begin
+            if max(runinfo.maxviol_t[end], runinfo.maxviol_d[end]) <= algparams.tol
+                if runinfo.maxviol_t_actual[end] > algparams.tol && algparams.θ_t < 1e+8
+                    algparams.θ_t *= 10.0
+                    if algparams.verbose > 0 && comm_rank(comm) == 0
+                        (algparams.θ_t >= 1e+8) &&
+                            (@warn "penalty parameter too large. problem will likely not converge" maxlog=1)
+                    end
+                end
+            end
+            if algparams.decompCtgs && modelinfo.num_ctgs > 0 &&
+                modelinfo.ctgs_link_constr_type ∈ [:preventive_penalty, :corrective_penalty] &&
+                max(runinfo.maxviol_c[end], runinfo.maxviol_d[end]) <= algparams.tol
+                if runinfo.maxviol_c_actual[end] > algparams.tol && algparams.θ_c < 1e+8
+                    algparams.θ_c *= 10.0
+                    if algparams.verbose > 0 && comm_rank(comm) == 0
+                        (algparams.θ_c >= 1e+8) &&
+                            (@warn "penalty parameter too large. problem will likely not converge" maxlog=1)
+                    end
+                end
+            end
+        end
+        runinfo.wall_time_elapsed_actual += elapsed_t
+        runinfo.wall_time_elapsed_ideal += elapsed_t
+    end
+    #------------------------------------------------------------------------------------
+    function auglag_parameter_update()
+        elapsed_t = @elapsed begin
+            # ρ_t update
+            if algparams.updateρ_t
+                if runinfo.maxviol_t[end] > 10.0*runinfo.maxviol_d[end] && algparams.ρ_t < 32.0*algparams.θ_t
+                    algparams.ρ_t = min(2.0*algparams.ρ_t, 32.0*algparams.θ_t)
+                    algparams.τ = 3.0*algparams.ρ_t
+                elseif runinfo.maxviol_d[end] > 10.0*runinfo.maxviol_t[end]
+                    algparams.ρ_t *= 0.5
+                    algparams.τ = 3.0*algparams.ρ_t
+                end
+            end
+
+            # ρ_c update
+            if algparams.updateρ_c && algparams.decompCtgs && modelinfo.num_ctgs > 0
+                @info "tau-update not finalized when decompCtgs = true" maxlog=1
+                if runinfo.maxviol_c[end] > 10.0*runinfo.maxviol_d[end] && algparams.ρ_c < 32.0*algparams.θ_c
+                    algparams.ρ_c = min(2algparams.ρ_c, 32algparams.θ_c)
+                    algparams.τ = 3.0*max(algparams.ρ_c, algparams.ρ_t)
+                elseif runinfo.maxviol_d[end] > 10runinfo.maxviol_c[end]
+                    algparams.ρ_c *= 0.5
+                    algparams.τ = 3.0*max(algparams.ρ_c, algparams.ρ_t)
+                end
+            end
+        end
+        runinfo.wall_time_elapsed_actual += elapsed_t
+        runinfo.wall_time_elapsed_ideal += elapsed_t
+    end
 
     # Initialization of Pg, Qg, Vm, Va via a OPF solve
     algparams.init_opf && opf_initialization!(nlp)
@@ -289,19 +348,31 @@ function optimize!(nlp::ProxALEvaluator; print_timings=false)
         # Dual update
         dual_update()
 
-        # Prox update
-        proximal_update()
-
         # Update counters and write output
-        update_runinfo(runinfo, opfdata, opfBlockData, modelinfo, algparams, comm)
+        runinfo_update(runinfo, opfdata, opfBlockData, modelinfo, algparams, comm)
 
+        # Prox update
+        proximal_parameter_update()
+
+        # Penalty update
+        penalty_parameter_update()
+
+        # Auglag parameter update
+        auglag_parameter_update()
     end
 
 
     for runinfo.iter=1:algparams.iterlim
-          iteration()
+        iteration()
+
         # Check convergence
-        if max(runinfo.maxviol_t[end], runinfo.maxviol_c[end], runinfo.maxviol_d[end]) <= algparams.tol
+        if max(
+            runinfo.maxviol_t[end],
+            runinfo.maxviol_c[end],
+            runinfo.maxviol_t_actual[end],
+            runinfo.maxviol_c_actual[end],
+            runinfo.maxviol_d[end]
+        ) <= algparams.tol
             break
         end
     end

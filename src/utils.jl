@@ -11,6 +11,8 @@ mutable struct ProxALMData
     maxviol_t::Vector{Float64}
     maxviol_c::Vector{Float64}
     maxviol_d::Vector{Float64}
+    maxviol_t_actual::Vector{Float64}
+    maxviol_c_actual::Vector{Float64}
     dist_x::Vector{Float64}
     dist_λ::Vector{Float64}
     nlp_opt_sol::Array{Float64,2}
@@ -89,6 +91,8 @@ mutable struct ProxALMData
         maxviol_t = []
         maxviol_c = []
         maxviol_d = []
+        maxviol_t_actual = []
+        maxviol_c_actual = []
         dist_x = []
         dist_λ = []
         nlp_opt_sol = Array{Float64, 2}(undef, blocks.colCount, blocks.blkCount)
@@ -110,6 +114,8 @@ mutable struct ProxALMData
             maxviol_t,
             maxviol_c,
             maxviol_d,
+            maxviol_t_actual,
+            maxviol_c_actual,
             dist_x,
             dist_λ,
             nlp_opt_sol,
@@ -126,7 +132,7 @@ mutable struct ProxALMData
     end
 end
 
-function update_runinfo(
+function runinfo_update(
     runinfo::ProxALMData, opfdata::OPFData,
     opfBlockData::OPFBlocks,
     modelinfo::ModelParams,
@@ -153,7 +159,26 @@ function update_runinfo(
     lyapunov = comm_sum(lyapunov, comm)
     push!(runinfo.lyapunov, lyapunov)
 
+    maxviol_t_actual = 0.0
+    for blk in runinfo.par_order
+        if ismywork(blk, comm)
+            maxviol_t_actual = compute_true_ramp_error(runinfo.x, opfdata, opfBlockData, blk, modelinfo)
+        end
+    end
+    maxviol_t_actual = comm_max(maxviol_t_actual, comm)
+    push!(runinfo.maxviol_t_actual, maxviol_t_actual)
+
+    maxviol_c_actual = 0.0
+    for blk in runinfo.par_order
+        if ismywork(blk, comm)
+            maxviol_c_actual = compute_true_ctgs_error(runinfo.x, opfdata, opfBlockData, blk, modelinfo)
+        end
+    end
+    maxviol_c_actual = comm_max(maxviol_c_actual, comm)
+    push!(runinfo.maxviol_c_actual, maxviol_c_actual)
+
     # FIX ME: Frigging bug in the parallel implementation of the dual error
+    # FIX ME: Re-implement parallel implementation of the dual error
     # (ngen, K, T) = size(runinfo.x.Pg)
     # smaxviol_d = 3*ngen*K + 2*ngen + K
     # @show smaxviol_d
