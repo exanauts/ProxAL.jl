@@ -198,6 +198,7 @@ function runinfo_update(
 
     push!(runinfo.dist_x, NaN)
     push!(runinfo.dist_λ, NaN)
+    #=
     optimgap = NaN
     lyapunov_gap = NaN
     if !isempty(runinfo.opt_sol)
@@ -220,5 +221,27 @@ function runinfo_update(
                     runinfo.dist_x[iter],
                     optimgap,
                     lyapunov_gap)
+    end
+    =#
+    if algparams.verbose > 0 && comm_rank(comm) == 0
+        if iter == 1
+            @printf("---------------------------------------------------------------------------------------------------------------\n");
+            @printf("iter ramp_err   ramp_err   ctgs_err   ctgs_err   dual_error lyapunov_f   rho_t   rho_c theta_t theta_c     tau \n");
+            @printf("     (penalty)  (actual)   (penalty)  (actual)\n");
+            @printf("---------------------------------------------------------------------------------------------------------------\n");
+        end
+        @printf("%4d ", iter-1);
+        @printf("%10.4e ", runinfo.maxviol_t[iter])
+        @printf("%10.4e ", runinfo.maxviol_t_actual[iter])
+        @printf("%10.4e ", runinfo.maxviol_c[iter])
+        @printf("%10.4e ", runinfo.maxviol_c_actual[iter])
+        @printf("%10.4e ", runinfo.maxviol_d[iter])
+        @printf("%10.4e ", runinfo.lyapunov[iter])
+        @printf("%7.2f ", algparams.ρ_t)
+        @printf("%7.2f ", algparams.ρ_c)
+        @printf("%7.2f ", algparams.θ_t)
+        @printf("%7.2f ", algparams.θ_c)
+        @printf("%7.2f ", algparams.τ)
+        @printf("\n")
     end
 end
