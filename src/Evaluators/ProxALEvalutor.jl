@@ -9,19 +9,24 @@ struct ProxALEvaluator <: AbstractNLPEvaluator
 end
 
 """
-    ProxALEvaluator(case_file::String, load_file::String,
-                modelinfo::ModelParams,
-                algparams::AlgParams,
-                space::AbstractSpace=JuMPBackend(),
-                comm::MPI.Comm = MPI.COMM_WORLD)
+    ProxALEvaluator(
+        case_file::String,
+        load_file::String,
+        modelinfo::ModelParams,
+        algparams::AlgParams,
+        space::AbstractSpace=JuMPBackend(),
+        comm::MPI.Comm = MPI.COMM_WORLD
+    )
 
 Instantiate multi-period ACOPF
 specified in `case_file` with loads in `load_file` with model parameters
-`modelinfo` and algorithm parameters `algparams`, and
+`modelinfo`, algorithm parameters `algparams`, modeling backend `space`, and
 a MPI communicator `comm`.
+
 """
 function ProxALEvaluator(
-    case_file::String, load_file::String,
+    case_file::String,
+    load_file::String,
     modelinfo::ModelParams,
     algparams::AlgParams,
     space::AbstractSpace=JuMPBackend(),
@@ -49,10 +54,12 @@ function ProxALEvaluator(
             if modelinfo.ctgs_link_constr_type == :preventive_equality
                 @warn(str * "         Forcing ctgs_link_constr_type = :preventive_penalty\n")
                 modelinfo.ctgs_link_constr_type = :preventive_penalty
-            else
-                @assert modelinfo.ctgs_link_constr_type ∈ [:corrective_equality, :corrective_inequality]
-                @warn(str * "         Forcing ctgs_link_constr_type = :preventive_penalty\n")
+            elseif modelinfo.ctgs_link_constr_type ∈ [:corrective_equality, :corrective_inequality]
+                @warn(str * "         Forcing ctgs_link_constr_type = :corrective_penalty\n")
                 modelinfo.ctgs_link_constr_type = :corrective_penalty
+            else
+                @warn(str * "         Forcing ctgs_link_constr_type = :frequency_ctrl\n")
+                modelinfo.ctgs_link_constr_type = :frequency_ctrl
             end
         end
     end
@@ -62,6 +69,13 @@ function ProxALEvaluator(
     return ProxALEvaluator(alminfo, modelinfo, algparams, opfdata, rawdata, space, comm)
 end
 
+"""
+    optimize!(nlp::ProxALEvaluator)
+
+Solve problem using the `nlp` evaluator
+of the decomposition algorithm.
+
+"""
 function optimize!(nlp::ProxALEvaluator; print_timings=false)
     algparams = nlp.algparams
     modelinfo = nlp.modelinfo
@@ -255,9 +269,6 @@ function optimize!(nlp::ProxALEvaluator; print_timings=false)
             if algparams.updateτ && runinfo.iter > 1
                 maxθ = algparams.decompCtgs  ? max(algparams.θ_t, algparams.θ_c) : algparams.θ_t
                 delta = runinfo.lyapunov[end-1] - runinfo.lyapunov[end]
-                # if runinfo.iter%10 == 0 && algparams.τ < 3.0maxρ
-                #     algparams.τ += maxρ
-                # end
                 if delta < 0.0 && algparams.τ < 320.0*maxθ
                     algparams.τ *= 1.5
                 end
@@ -278,9 +289,10 @@ function optimize!(nlp::ProxALEvaluator; print_timings=false)
                     end
                 end
             end
-            if algparams.decompCtgs && modelinfo.num_ctgs > 0 &&
+            if (algparams.decompCtgs && modelinfo.num_ctgs > 0 &&
                 modelinfo.ctgs_link_constr_type ∈ [:preventive_penalty, :corrective_penalty] &&
                 max(runinfo.maxviol_c[end], runinfo.maxviol_d[end]) <= algparams.tol
+            )
                 if runinfo.maxviol_c_actual[end] > algparams.tol && algparams.θ_c < 1e+8
                     algparams.θ_c *= 10.0
                     if algparams.verbose > 0 && comm_rank(comm) == 0
@@ -311,9 +323,9 @@ function optimize!(nlp::ProxALEvaluator; print_timings=false)
             if algparams.updateρ_c && algparams.decompCtgs && modelinfo.num_ctgs > 0
                 @info "tau-update not finalized when decompCtgs = true" maxlog=1
                 if runinfo.maxviol_c[end] > 10.0*runinfo.maxviol_d[end] && algparams.ρ_c < 32.0*algparams.θ_c
-                    algparams.ρ_c = min(2algparams.ρ_c, 32algparams.θ_c)
+                    algparams.ρ_c = min(2.0*algparams.ρ_c, 32.0*algparams.θ_c)
                     algparams.τ = 3.0*max(algparams.ρ_c, algparams.ρ_t)
-                elseif runinfo.maxviol_d[end] > 10runinfo.maxviol_c[end]
+                elseif runinfo.maxviol_d[end] > 10*runinfo.maxviol_c[end]
                     algparams.ρ_c *= 0.5
                     algparams.τ = 3.0*max(algparams.ρ_c, algparams.ρ_t)
                 end

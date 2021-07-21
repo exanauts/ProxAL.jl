@@ -50,14 +50,14 @@ algparams.gpu_optimizer = optimizer_with_attributes(
     "tol" => 1e-5,
 )
 
-optimal_obvalue = round(11.258316111585623, digits = 6)
-optimal_pg = round.([0.8979870694509675, 1.3432060120295906, 0.9418738103137331, 0.9840203268625166, 1.448040098924617, 1.0149638876964715], digits = 5)
+OPTIMAL_OBJVALUE = round(11.258316111585623, digits = 6)
+OPTIMAL_PG = round.([0.8979870694509675, 1.3432060120295906, 0.9418738103137331, 0.9840203268625166, 1.448040098924617, 1.0149638876964715], digits = 5)
 @testset "Test ProxAL on $(case) with $T-period, $K-ctgs, time_link=penalty and Ipopt" begin
     algparams.mode = :coldstart
     nlp = ProxALEvaluator(case_file, load_file, modelinfo, algparams, ProxAL.JuMPBackend())
     info = ProxAL.optimize!(nlp)
-    @test isapprox(info.objvalue[end], optimal_obvalue, rtol = rtol)
-    @test isapprox(info.x.Pg[:], optimal_pg, rtol = rtol)
+    @test isapprox(info.objvalue[end], OPTIMAL_OBJVALUE, rtol = rtol)
+    @test isapprox(info.x.Pg[:], OPTIMAL_PG, rtol = rtol)
     @test isapprox(info.maxviol_c[end], 0.0)
     @test isapprox(info.maxviol_c_actual[end], 0.0)
     @test info.maxviol_t[end] <= algparams.tol

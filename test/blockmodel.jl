@@ -36,7 +36,7 @@ load_file = joinpath(DATA_DIR, "mp_demand", "$(case)_oneweek_168")
     algparams.mode = :coldstart
     algparams.ρ_t = maxρ
     algparams.ρ_c = maxρ
-    algparams.τ = 3maxρ
+    algparams.τ = 3.0*maxρ
 
     modelinfo.case_name = case
     algparams.optimizer = optimizer_with_attributes(

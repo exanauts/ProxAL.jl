@@ -67,35 +67,35 @@ end
             algparams.decompCtgs = false
             @testset "$T-period, $K-ctgs, time_link=penalty" begin
                 modelinfo.num_ctgs = K
-                optimal_obvalue = round(11.258316111585623, digits = 6)
-                optimal_pg = round.([0.8979870694509675, 1.3432060120295906, 0.9418738103137331, 0.9840203268625166, 1.448040098924617, 1.0149638876964715], digits = 5)
+                OPTIMAL_OBJVALUE = round(11.258316111585623, digits = 6)
+                OPTIMAL_PG = round.([0.8979870694509675, 1.3432060120295906, 0.9418738103137331, 0.9840203268625166, 1.448040098924617, 1.0149638876964715], digits = 5)
 
                 @testset "Non-decomposed formulation" begin
                     algparams.mode = :nondecomposed
                     algparams.θ_t = algparams.θ_c = quad_penalty
                     nlp = NonDecomposedModel(case_file, load_file, modelinfo, algparams)
                     result = ProxAL.optimize!(nlp)
-                    @test isapprox(result["objective_value_nondecomposed"], optimal_obvalue, rtol = rtol)
-                    @test isapprox(result["primal"].Pg[:], optimal_pg, rtol = rtol)
+                    @test isapprox(result["objective_value_nondecomposed"], OPTIMAL_OBJVALUE, rtol = rtol)
+                    @test isapprox(result["primal"].Pg[:], OPTIMAL_PG, rtol = rtol)
                     @test norm(result["primal"].Zt[:], Inf) <= algparams.tol
                 end
 
                 @testset "Lyapunov bound" begin
                     algparams.mode = :lyapunov_bound
                     algparams.ρ_t = algparams.ρ_c = maxρ
-                    algparams.τ = 3maxρ
+                    algparams.τ = 3.0*maxρ
                     nlp = NonDecomposedModel(case_file, load_file, modelinfo, algparams)
                     result = ProxAL.optimize!(nlp)
-                    @test isapprox(result["objective_value_lyapunov_bound"], optimal_obvalue)
-                    @test isapprox(result["primal"].Pg[:], optimal_pg, rtol = rtol)
+                    @test isapprox(result["objective_value_lyapunov_bound"], OPTIMAL_OBJVALUE)
+                    @test isapprox(result["primal"].Pg[:], OPTIMAL_PG, rtol = rtol)
                 end
 
                 @testset "ProxALM" begin
                     algparams.mode = :coldstart
                     nlp = ProxALEvaluator(case_file, load_file, modelinfo, algparams, JuMPBackend(), Dict(), Dict(), nothing)
                     runinfo = ProxAL.optimize!(nlp)
-                    @test isapprox(runinfo.objvalue[end], optimal_obvalue, rtol = rtol)
-                    @test isapprox(runinfo.x.Pg[:], optimal_pg, rtol = rtol)
+                    @test isapprox(runinfo.objvalue[end], OPTIMAL_OBJVALUE, rtol = rtol)
+                    @test isapprox(runinfo.x.Pg[:], OPTIMAL_PG, rtol = rtol)
                     @test isapprox(runinfo.maxviol_c[end], 0.0)
                     @test isapprox(runinfo.maxviol_c_actual[end], 0.0)
                     @test runinfo.maxviol_t[end] <= algparams.tol
@@ -111,37 +111,37 @@ end
             algparams.decompCtgs = false
             @testset "$T-period, $K-ctgs, time_link=penalty, ctgs_link=frequency_ctrl" begin
                 modelinfo.num_ctgs = K
-                optimal_obvalue = round(11.258316111574212, digits = 6)
-                optimal_pg = round.([0.8979870693416382, 1.3432060108971793, 0.9418738115511179, 0.9055318507524525, 1.3522597485901564, 0.9500221754747974, 0.9840203265549852, 1.4480400977338292, 1.014963889201792, 0.9932006221514175, 1.459056452449548, 1.024878608445939], digits = 5)
-                optimal_ωt = round.([0.0, -0.00012071650257302939, 0.0, -0.00014688472954291597], sigdigits = 4)
+                OPTIMAL_OBJVALUE = round(11.258316111574212, digits = 6)
+                OPTIMAL_PG = round.([0.8979870693416382, 1.3432060108971793, 0.9418738115511179, 0.9055318507524525, 1.3522597485901564, 0.9500221754747974, 0.9840203265549852, 1.4480400977338292, 1.014963889201792, 0.9932006221514175, 1.459056452449548, 1.024878608445939], digits = 5)
+                OPTIMAL_WT = round.([0.0, -0.00012071650257302939, 0.0, -0.00014688472954291597], sigdigits = 4)
 
                 @testset "Non-decomposed formulation" begin
                     algparams.mode = :nondecomposed
                     algparams.θ_t = algparams.θ_c = quad_penalty
                     nlp = NonDecomposedModel(case_file, load_file, modelinfo, algparams)
                     result = ProxAL.optimize!(nlp)
-                    @test isapprox(result["objective_value_nondecomposed"], optimal_obvalue, rtol = rtol)
-                    @test isapprox(result["primal"].Pg[:], optimal_pg, rtol = rtol)
+                    @test isapprox(result["objective_value_nondecomposed"], OPTIMAL_OBJVALUE, rtol = rtol)
+                    @test isapprox(result["primal"].Pg[:], OPTIMAL_PG, rtol = rtol)
                     @test norm(result["primal"].Zt[:], Inf) <= algparams.tol
-                    @test isapprox(result["primal"].ωt[:], optimal_ωt, rtol = 1e-1)
+                    @test isapprox(result["primal"].ωt[:], OPTIMAL_WT, rtol = 1e-1)
                 end
                 @testset "Lyapunov bound" begin
                     algparams.mode = :lyapunov_bound
                     algparams.ρ_t = algparams.ρ_c = maxρ
-                    algparams.τ = 3maxρ
+                    algparams.τ = 3.0*maxρ
                     nlp = NonDecomposedModel(case_file, load_file, modelinfo, algparams)
                     result = ProxAL.optimize!(nlp)
-                    @test isapprox(result["objective_value_lyapunov_bound"], optimal_obvalue)
-                    @test isapprox(result["primal"].Pg[:], optimal_pg, rtol = rtol) # [0.8979870693416395, 1.3432060108971777, 0.9418738115511173, 0.9055318507524539, 1.3522597485901549, 0.9500221754747968, 0.9840203265549855, 1.4480400977338292, 1.0149638892017916, 0.9932006221514178, 1.459056452449548, 1.0248786084459387]
+                    @test isapprox(result["objective_value_lyapunov_bound"], OPTIMAL_OBJVALUE)
+                    @test isapprox(result["primal"].Pg[:], OPTIMAL_PG, rtol = rtol) # [0.8979870693416395, 1.3432060108971777, 0.9418738115511173, 0.9055318507524539, 1.3522597485901549, 0.9500221754747968, 0.9840203265549855, 1.4480400977338292, 1.0149638892017916, 0.9932006221514178, 1.459056452449548, 1.0248786084459387]
                 end
 
                 @testset "ProxALM" begin
                     algparams.mode = :coldstart
                     nlp = ProxALEvaluator(case_file, load_file, modelinfo, algparams, JuMPBackend(), Dict(), Dict(), nothing)
                     runinfo = ProxAL.optimize!(nlp)
-                    @test isapprox(runinfo.objvalue[end], optimal_obvalue, rtol = rtol)
-                    @test isapprox(runinfo.x.Pg[:], optimal_pg, rtol = rtol)
-                    @test isapprox(runinfo.x.ωt[:], optimal_ωt, rtol = 1e-1)
+                    @test isapprox(runinfo.objvalue[end], OPTIMAL_OBJVALUE, rtol = rtol)
+                    @test isapprox(runinfo.x.Pg[:], OPTIMAL_PG, rtol = rtol)
+                    @test isapprox(runinfo.x.ωt[:], OPTIMAL_WT, rtol = 1e-1)
                     @test isapprox(runinfo.maxviol_c[end], 0.0)
                     @test isapprox(runinfo.maxviol_c_actual[end], 0.0)
                     @test runinfo.maxviol_t[end] <= algparams.tol
@@ -158,36 +158,36 @@ end
             algparams.decompCtgs = true
             @testset "$T-period, $K-ctgs, time_link=penalty, ctgs_link=frequency_ctrl, decompCtgs" begin
                 modelinfo.num_ctgs = K
-                optimal_obvalue = round(11.258316111574212, digits = 6)
-                optimal_pg = round.([0.8979870693416382, 1.3432060108971793, 0.9418738115511179, 0.9055318507524525, 1.3522597485901564, 0.9500221754747974, 0.9840203265549852, 1.4480400977338292, 1.014963889201792, 0.9932006221514175, 1.459056452449548, 1.024878608445939], digits = 5)
-                optimal_ωt = round.([0.0, -0.00012071650257302939, 0.0, -0.00014688472954291597], sigdigits = 4)
+                OPTIMAL_OBJVALUE = round(11.258316111574212, digits = 6)
+                OPTIMAL_PG = round.([0.8979870693416382, 1.3432060108971793, 0.9418738115511179, 0.9055318507524525, 1.3522597485901564, 0.9500221754747974, 0.9840203265549852, 1.4480400977338292, 1.014963889201792, 0.9932006221514175, 1.459056452449548, 1.024878608445939], digits = 5)
+                OPTIMAL_WT = round.([0.0, -0.00012071650257302939, 0.0, -0.00014688472954291597], sigdigits = 4)
 
                 @testset "Non-decomposed formulation" begin
                     algparams.mode = :nondecomposed
                     algparams.θ_t = algparams.θ_c = quad_penalty
                     nlp = NonDecomposedModel(case_file, load_file, modelinfo, algparams)
                     result = ProxAL.optimize!(nlp)
-                    @test isapprox(result["objective_value_nondecomposed"], optimal_obvalue, rtol = rtol)
-                    @test isapprox(result["primal"].Pg[:], optimal_pg, rtol = rtol)
+                    @test isapprox(result["objective_value_nondecomposed"], OPTIMAL_OBJVALUE, rtol = rtol)
+                    @test isapprox(result["primal"].Pg[:], OPTIMAL_PG, rtol = rtol)
                     @test norm(result["primal"].Zt[:], Inf) <= algparams.tol
-                    @test isapprox(result["primal"].ωt[:], optimal_ωt, rtol = 1e-1)
+                    @test isapprox(result["primal"].ωt[:], OPTIMAL_WT, rtol = 1e-1)
                 end
                 @testset "Lyapunov bound" begin
                     algparams.mode = :lyapunov_bound
                     algparams.ρ_t = algparams.ρ_c = maxρ
-                    algparams.τ = 3maxρ
+                    algparams.τ = 3.0*maxρ
                     nlp = NonDecomposedModel(case_file, load_file, modelinfo, algparams)
                     result = ProxAL.optimize!(nlp)
-                    @test isapprox(result["objective_value_lyapunov_bound"], optimal_obvalue)
-                    @test isapprox(result["primal"].Pg[:], optimal_pg, rtol = rtol)
+                    @test isapprox(result["objective_value_lyapunov_bound"], OPTIMAL_OBJVALUE)
+                    @test isapprox(result["primal"].Pg[:], OPTIMAL_PG, rtol = rtol)
                 end
                 @testset "ProxALM" begin
                     algparams.mode = :coldstart
                     nlp = ProxALEvaluator(case_file, load_file, modelinfo, algparams, JuMPBackend(), Dict(), Dict(), nothing)
                     runinfo = ProxAL.optimize!(nlp)
-                    @test_broken isapprox(runinfo.objvalue[end], optimal_obvalue, rtol = rtol)
-                    @test_broken isapprox(runinfo.x.Pg[:], optimal_pg, rtol = rtol)
-                    @test_broken isapprox(runinfo.x.ωt[:], optimal_ωt, rtol = 1e-1)
+                    @test_broken isapprox(runinfo.objvalue[end], OPTIMAL_OBJVALUE, rtol = rtol)
+                    @test_broken isapprox(runinfo.x.Pg[:], OPTIMAL_PG, rtol = rtol)
+                    @test_broken isapprox(runinfo.x.ωt[:], OPTIMAL_WT, rtol = 1e-1)
                     @test_broken runinfo.maxviol_c[end] <= algparams.tol
                     @test_broken runinfo.maxviol_t[end] <= algparams.tol
                     @test_broken runinfo.maxviol_c_actual[end] <= algparams.tol

@@ -95,6 +95,25 @@ function add_variables! end
 # Constraints
 function add_ctgs_linking_constraints! end
 
+struct EmptyBlockModel <: AbstractBlockModel end
+
+function init!(block::EmptyBlockModel, algparams::AlgParams) end
+
+function set_objective!(block::EmptyBlockModel, algparams::AlgParams,
+                        primal::PrimalSolution, dual::DualSolution)
+end
+function get_solution(block::EmptyBlockModel) end
+
+struct JuMPBlockModel <: AbstractBlockModel
+    id::Int
+    k::Int
+    t::Int
+    model::JuMP.Model
+    data::OPFData
+    params::ModelParams
+    rawdata::RawData
+end
+
 ### Implementation of JuMPBlockModel
 """
     JuMPBlockModel(
@@ -102,7 +121,6 @@ function add_ctgs_linking_constraints! end
         opfdata::OPFData, raw_data::RawData,
         modelinfo::ModelParams, t::Int, k::Int, T::Int,
     )
-)
 
 Use the modeler JuMP to define the optimal power flow
 inside the block model.
@@ -120,24 +138,6 @@ of the structure `OPFBlocks`, used for decomposition purpose.
 - `T::Int`: final horizon
 
 """
-struct EmptyBlockModel <: AbstractBlockModel end
-
-function init!(block::EmptyBlockModel, algparams::AlgParams) end
-
-function set_objective!(block::EmptyBlockModel, algparams::AlgParams,
-                        primal::PrimalSolution, dual::DualSolution)
-end
-function get_solution(block::EmptyBlockModel) end
-struct JuMPBlockModel <: AbstractBlockModel
-    id::Int
-    k::Int
-    t::Int
-    model::JuMP.Model
-    data::OPFData
-    params::ModelParams
-    rawdata::RawData
-end
-
 function JuMPBlockModel(
     blk::Int,
     opfdata::OPFData, raw_data::RawData, algparams::AlgParams,

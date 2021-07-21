@@ -65,16 +65,13 @@ function update_primal_nlpvars(x::PrimalSolution, opfBlockData::OPFBlocks, blk::
     # Zt will be updated in update_primal_penalty
     from = 1+to
     to = to + size(x.Zt, 1)
-    # @views x.Zt[:,t] .= opfBlockData.colValue[from:to,blk]
 
     from = 1+to
     to = to + size(x.Sk, 1)*length(range_k)
     @views x.Sk[:,range_k,t][:] .= opfBlockData.colValue[from:to,blk]
 
     # Zk will be updated in update_primal_penalty
-    # from = 1+to
-    # to = to + size(x.Sk, 1)*length(range_k)
-    # @views x.Zk[:,range_k,t] .= opfBlockData.colValue[from:to,blk]
+
     return nothing
 end
 
@@ -92,7 +89,7 @@ function update_primal_penalty(x::PrimalSolution, opfdata::OPFData,
     if t > 1 && k == 1 && modelinfo.time_link_constr_type == :penalty
         β = [opfdata.generators[g].ramp_agc for g=1:ngen]
         @views x.Zt[:,t] .= (((algparams.ρ_t/32.0)*primal.Zt[:,t]) .- dual.ramping[:,t] .-
-                                (algparams.ρ_t*(+x.Pg[:,1,t-1] .- x.Pg[:,1,t] .+ x.St[:,t] .- β))
+                                (algparams.ρ_t*(x.Pg[:,1,t-1] .- x.Pg[:,1,t] .+ x.St[:,t] .- β))
                             ) ./  max(algparams.zero, (algparams.ρ_t/32.0) + algparams.ρ_t + (modelinfo.obj_scale*algparams.θ_t))
     end
     if k > 1 && algparams.decompCtgs
@@ -114,7 +111,7 @@ function update_primal_penalty(x::PrimalSolution, opfdata::OPFData,
                 @assert norm(x.Sk) <= algparams.zero
             end
             @views x.Zk[:,k,t] .=   (((algparams.ρ_c/32.0)*primal.Zk[:,k,t]) .- dual.ctgs[:,k,t] .-
-                                        (algparams.ρ_c*(+x.Pg[:,1,t] .- x.Pg[:,k,t] .+ x.Sk[:,k,t] .- β))
+                                        (algparams.ρ_c*(x.Pg[:,1,t] .- x.Pg[:,k,t] .+ x.Sk[:,k,t] .- β))
                                     ) ./  max(algparams.zero, (algparams.ρ_c/32.0) + algparams.ρ_c + (modelinfo.obj_scale*algparams.θ_c))
         end
     end

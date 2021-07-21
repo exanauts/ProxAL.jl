@@ -7,6 +7,22 @@ struct NonDecomposedModel <: AbstractNLPEvaluator
     space::AbstractSpace
 end
 
+"""
+    NonDecomposedModel(
+        case_file::String,
+        load_file::String,
+        modelinfo::ModelParams,
+        algparams::AlgParams,
+        space::AbstractSpace=JuMPBackend(),
+        comm::MPI.Comm = MPI.COMM_WORLD
+    )
+
+Instantiate non-decomposed multi-period ACOPF instance
+specified in `case_file` with loads in `load_file` with model parameters
+`modelinfo` and algorithm parameters `algparams`, and
+a MPI communicator `comm`.
+
+"""
 function NonDecomposedModel(
     case_file::String, load_file::String,
     modelinfo::ModelParams,
@@ -29,11 +45,11 @@ function NonDecomposedModel(
 end
 
 """
-    optimize!(nlp::FullModel)
+    optimize!(nlp::NonDecomposedModel)
 
-Solves the nondecomposed multi-period ACOPF instance
-specified in `opfdata` and `rawdata` with model parameters
-`modelinfo` and algorithm parameters `algparams`.
+Solve problem using the `nlp` evaluator
+of the nondecomposed model.
+
 """
 function optimize!(nlp::NonDecomposedModel)
 
@@ -70,7 +86,7 @@ function opf_solve_nondecomposed(opfmodel::JuMP.Model, opfdata::OPFData,
     status = termination_status(opfmodel)
     if status ∉ MOI_OPTIMAL_STATUSES
         (algparams.verbose > 0) &&
-            @warn("$(algparams.mode) model status: $status")
+            @warn("$(algparams.mode) model not solved to optimality. status: $status")
         return nothing
     end
 

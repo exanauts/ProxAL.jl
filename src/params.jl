@@ -32,8 +32,8 @@ Specifies ProxAL's algorithmic parameters.
 | `zero::Float64` |    tolerance below which is regarded as zero | 1.0e-8
 | `θ_t::Float64` |     see [Formulation](@ref) | 1.0
 | `θ_c::Float64` |     see [Formulation](@ref) | 1.0
-| `ρ_t::Float64` |     AL parameter for ramp constraints | 1.0
-| `ρ_c::Float64` |     AL parameter for ctgs constraints | 1.0
+| `ρ_t::Float64` |     AL penalty weight for ramp constraints | 1.0
+| `ρ_c::Float64` |     AL penalty weight for ctgs constraints | 1.0
 | `updateρ_t::Bool` |  if true: dynamically update `ρ_t` | true
 | `updateρ_c::Bool` |  if true: dynamically update `ρ_c` | true
 | `τ::Float64`       | Proximal weight parameter | 3.0
