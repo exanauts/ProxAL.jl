@@ -34,12 +34,12 @@ Specifies ProxAL's algorithmic parameters.
 | `θ_c::Float64` |     see [Formulation](@ref) | 1.0
 | `ρ_t::Float64` |     AL parameter for ramp constraints | 1.0
 | `ρ_c::Float64` |     AL parameter for ctgs constraints | 1.0
-| `updateρ_t::Bool` |  if true: dynamically update `ρ_t` | false
-| `updateρ_c::Bool` |  if true: dynamically update `ρ_c` | false
+| `updateρ_t::Bool` |  if true: dynamically update `ρ_t` | true
+| `updateρ_c::Bool` |  if true: dynamically update `ρ_c` | true
 | `τ::Float64`       | Proximal weight parameter | 3.0
-| `updateτ::Bool` |    if true: dynamically update `τ` | false
-| `verbose::Int` |     level of output: 0 (none), 1 (stdout), 2 (+plots), 3 (+outfiles) | 0
-| `mode::Symbol` |     computation mode `∈ [:nondecomposed, :coldstart, :lyapunov_bound]` | `:nondecomposed`
+| `updateτ::Bool` |    if true: dynamically update `τ` | true
+| `verbose::Int` |     level of output: 0 (none), 1 (stdout) | 0
+| `mode::Symbol` |     computation mode `∈ [:nondecomposed, :coldstart, :lyapunov_bound]` | `:coldstart`
 | `optimizer::Any` |   NLP solver | `nothing`
 | `gpu_optimizer::Any` | GPU-compatible NLP solver | `nothing`
 | `nr_tol::Float64`    | Tolerance of the Newton-Raphson algorithm (used only in `ExaPFBackend()` model) | 1e-10
@@ -57,12 +57,12 @@ Base.@kwdef mutable struct AlgParams
     θ_c::Float64     = 1.0   # weight_quadratic_penalty_ctgs
     ρ_t::Float64     = 1.0   # AL parameter for ramp constraints
     ρ_c::Float64     = 1.0   # AL parameter for ctgs constraints
-    updateρ_t::Bool  = false # Dynamically update ρ for ramp constraints
-    updateρ_c::Bool  = false # Dynamically update ρ for ctgs constraints
+    updateρ_t::Bool  = true  # Dynamically update ρ for ramp constraints
+    updateρ_c::Bool  = true  # Dynamically update ρ for ctgs constraints
     τ::Float64       = 3.0   # Proximal coefficient
-    updateτ::Bool    = false # Dynamically update τ
+    updateτ::Bool    = true  # Dynamically update τ
     verbose::Int     = 0     # level of output: 0 (none), 1 (stdout), 2 (+plots), 3 (+outfiles)
-    mode::Symbol            = :nondecomposed # computation mode [:nondecomposed, :coldstart, :lyapunov_bound]
+    mode::Symbol            = :coldstart     # computation mode [:nondecomposed, :coldstart, :lyapunov_bound]
     optimizer::Any          = nothing        # NLP solver for fullmodel and subproblems
     gpu_optimizer::Any      = nothing        # GPU-compatible NLP solver for fullmodel and subproblems
     nr_tol::Float64         = 1e-10          # Tolerance of the Newton-Raphson algorithm (for ExaBlockModel backend)
