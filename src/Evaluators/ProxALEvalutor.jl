@@ -399,8 +399,8 @@ function opf_initialization!(nlp::ProxALEvaluator)
 
     modelinfo_single = deepcopy(modelinfo)
     modelinfo_single.num_time_periods = 1
-    primal = ProxAL.PrimalSolution(opfdata, modelinfo_single)
-    dual = ProxAL.DualSolution(opfdata, modelinfo_single)
+    primal = ProxAL.OPFPrimalSolution(opfdata, modelinfo_single)
+    dual = ProxAL.OPFDualSolution(opfdata, modelinfo_single)
     algparams = AlgParams()
     algparams.mode = :coldstart
     algparams.optimizer = optimizer_with_attributes(Ipopt.Optimizer,
