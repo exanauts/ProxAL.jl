@@ -192,7 +192,7 @@ as possible (the number of columns in `raw.pd_arr`).
 All loads in all time periods will be multiplied by `load_scale`.
 The `ramp_scale` is the factor which multiplies ``p_{g}^{max}``
 to get generator ramping ``r_g``.
-These are set in `ModelParams`.  See [Model parameters](@ref).
+These are set in `ModelInfo`.  See [Model parameters](@ref).
 
 `lineOff` is a transmission line that can be deleted to
 represent a contingency.

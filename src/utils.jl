@@ -1,4 +1,4 @@
-mutable struct ProxALMData
+mutable struct ProxALProblem
     opfBlockData::OPFBlocks
 
     #---- iterate information ----
@@ -28,11 +28,11 @@ mutable struct ProxALMData
     par_order
     plt
 
-    function ProxALMData(
+    function ProxALProblem(
         opfdata::OPFData, rawdata::RawData,
-        modelinfo::ModelParams,
+        modelinfo::ModelInfo,
         algparams::AlgParams,
-        space::AbstractSpace,
+        backend::AbstractBackend,
         comm::Union{MPI.Comm,Nothing},
         opt_sol = Dict(),
         lyapunov_sol = Dict(),
@@ -56,12 +56,12 @@ mutable struct ProxALMData
         λ = (initial_dual === nothing) ?
                 DualSolution(opfdata, modelinfo) :
                 deepcopy(initial_dual)
-        backend = if isa(space, JuMPBackend)
-            JuMPBlockModel
-        elseif isa(space, ExaPFBackend)
-            ExaBlockModel
-        elseif isa(space, ExaTronBackend)
-            TronBlockModel
+        backend = if isa(backend, JuMPBackend)
+            JuMPBlockBackend
+        elseif isa(backend, ExaPFBackend)
+            ExaBlockBackend
+        elseif isa(backend, ExaTronBackend)
+            TronBlockBackend
         end
         # NLP blocks
         blocks = OPFBlocks(
@@ -133,9 +133,9 @@ mutable struct ProxALMData
 end
 
 function runinfo_update(
-    runinfo::ProxALMData, opfdata::OPFData,
+    runinfo::ProxALProblem, opfdata::OPFData,
     opfBlockData::OPFBlocks,
-    modelinfo::ModelParams,
+    modelinfo::ModelInfo,
     algparams::AlgParams,
     comm::Union{MPI.Comm,Nothing}
 )

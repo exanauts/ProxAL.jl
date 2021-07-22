@@ -36,7 +36,7 @@ will be sent to the remote ranks who own period t-1 and t+1.
 This is nonblocking. An array of requests is returned.
 
 """
-function comm_neighbors!(data::AbstractArray, blocks::OPFBlocks, runinfo::ProxALMData, comm::MPI.Comm)
+function comm_neighbors!(data::AbstractArray, blocks::OPFBlocks, runinfo::ProxALProblem, comm::MPI.Comm)
 	requests = MPI.Request[]
     # For each period send to t-1 and t+1
     for blk in runinfo.par_order[1,:]
@@ -78,7 +78,7 @@ function comm_neighbors!(data::AbstractArray, blocks::OPFBlocks, runinfo::ProxAL
     return requests
 end
 
-function comm_neighbors!(data::AbstractArray, blocks::OPFBlocks, runinfo::ProxALMData, comm::Nothing) 
+function comm_neighbors!(data::AbstractArray, blocks::OPFBlocks, runinfo::ProxALProblem, comm::Nothing) 
     return nothing
 end
 

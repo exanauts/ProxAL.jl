@@ -1,10 +1,10 @@
 struct ProxALEvaluator <: AbstractNLPEvaluator
-    alminfo::ProxALMData
-    modelinfo::ModelParams
+    alminfo::ProxALProblem
+    modelinfo::ModelInfo
     algparams::AlgParams
     opfdata::OPFData
     rawdata::RawData
-    space::AbstractSpace
+    space::AbstractBackend
     comm::Union{MPI.Comm,Nothing}
 end
 
@@ -12,9 +12,9 @@ end
     ProxALEvaluator(
         case_file::String,
         load_file::String,
-        modelinfo::ModelParams,
+        modelinfo::ModelInfo,
         algparams::AlgParams,
-        space::AbstractSpace=JuMPBackend(),
+        space::AbstractBackend=JuMPBackend(),
         comm::MPI.Comm = MPI.COMM_WORLD
     )
 
@@ -27,9 +27,9 @@ a MPI communicator `comm`.
 function ProxALEvaluator(
     case_file::String,
     load_file::String,
-    modelinfo::ModelParams,
+    modelinfo::ModelInfo,
     algparams::AlgParams,
-    space::AbstractSpace=JuMPBackend(),
+    space::AbstractBackend=JuMPBackend(),
     opt_sol::Dict = Dict(),
     lyapunov_sol::Dict = Dict(),
     comm::Union{MPI.Comm,Nothing} = MPI.COMM_WORLD
@@ -65,7 +65,7 @@ function ProxALEvaluator(
     end
 
     # ctgs_arr = deepcopy(rawdata.ctgs_arr)
-    alminfo = ProxALMData(opfdata, rawdata, modelinfo, algparams, space, comm, opt_sol, lyapunov_sol)
+    alminfo = ProxALProblem(opfdata, rawdata, modelinfo, algparams, space, comm, opt_sol, lyapunov_sol)
     return ProxALEvaluator(alminfo, modelinfo, algparams, opfdata, rawdata, space, comm)
 end
 
@@ -405,7 +405,7 @@ function opf_initialization!(nlp::ProxALEvaluator)
     algparams.mode = :coldstart
     algparams.optimizer = optimizer_with_attributes(Ipopt.Optimizer,
             "print_level" => Int64(algparams.verbose > 0)*5)
-    blockmodel = ProxAL.JuMPBlockModel(1, opfdata, rawdata, algparams, modelinfo_single, 1, 1, 0)
+    blockmodel = ProxAL.JuMPBlockBackend(1, opfdata, rawdata, algparams, modelinfo_single, 1, 1, 0)
     ProxAL.init!(blockmodel, algparams)
     ProxAL.set_objective!(blockmodel, algparams, primal, dual)
     n = JuMP.num_variables(blockmodel.model)

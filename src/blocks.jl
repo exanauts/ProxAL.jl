@@ -1,33 +1,12 @@
-function localcopy(modelinfo)
-    info = deepcopy(modelinfo)
-    info.num_time_periods = 1
-    return info
-end
 
-function load_local_data(rawdata, opfdata, modelinfo, t, k; decompCtgs=false)
-    lineOff = Line()
-    if decompCtgs
-        if k > 1
-            lineOff = opfdata.lines[rawdata.ctgs_arr[k - 1]]
-        end
-    end
-    data = opf_loaddata(
-        rawdata;
-        time_horizon_start=t,
-        time_horizon_end=t,
-        load_scale=modelinfo.load_scale,
-        ramp_scale=modelinfo.ramp_scale,
-        lineOff=lineOff,
-    )
-    return data
-end
+abstract type AbstractBlocks end
 
 """
     OPFBlocks(
         opfdata::OPFData,
         rawdata::RawData;
-        modelinfo::ModelParams = ModelParams(),
-        backend=JuMPBlockModel,
+        modelinfo::ModelInfo = ModelInfo(),
+        backend=JuMPBlockBackend,
         algparams::AlgParams = AlgParams()
     )
 
@@ -38,7 +17,7 @@ to one optimization subproblem (and hence, to a particular timestep),
 and the attribute `blkCount` enumerates the total number of subproblems.
 The subproblems are specified using `AbstractBlockModel` objects,
 allowing to define them either with JuMP
-(if `backend=JuMPBlockModel` is chosen) or with ExaPF (`backend=ExaBlockModel`).
+(if `backend=JuMPBlockBackend` is chosen) or with ExaPF (`backend=ExaBlockBackend`).
 
 
 ### Decomposition by contingencies
@@ -55,14 +34,14 @@ total number of contingencies).
 
 ### Deporting the resolution on the GPU
 
-When the backend is set to `ExaBlockModel` (and a CUDA GPU is available), the user
+When the backend is set to `ExaBlockBackend` (and a CUDA GPU is available), the user
 could chose to deport the resolution of each subproblem directly on
 the GPU simply by setting `algparams.device=CUDADevice`. However, note that
 we could not instantiate more subproblems on the GPU than the number of GPU
 available.
 
 """
-mutable struct OPFBlocks
+mutable struct OPFBlocks <: AbstractBlocks
     blkCount::Int64
     blkIndex::CartesianIndices
     blkModel::Vector{AbstractBlockModel}
@@ -73,8 +52,8 @@ end
 function OPFBlocks(
     opfdata::OPFData,
     rawdata::RawData;
-    modelinfo::ModelParams = ModelParams(),
-    backend=JuMPBlockModel,
+    modelinfo::ModelInfo = ModelInfo(),
+    backend=JuMPBlockBackend,
     algparams::AlgParams = AlgParams(),
     comm::Union{MPI.Comm,Nothing}
 )
@@ -93,13 +72,37 @@ function OPFBlocks(
     colValue = zeros(colCount,blkCount)
     blkModel = AbstractBlockModel[]
 
+    function local_copy(modelinfo)
+        info = deepcopy(modelinfo)
+        info.num_time_periods = 1
+        return info
+    end
+
+    function load_local_data(rawdata, opfdata, modelinfo, t, k; decompCtgs=false)
+        lineOff = Line()
+        if decompCtgs
+            if k > 1
+                lineOff = opfdata.lines[rawdata.ctgs_arr[k - 1]]
+            end
+        end
+        data = opf_loaddata(
+            rawdata;
+            time_horizon_start=t,
+            time_horizon_end=t,
+            load_scale=modelinfo.load_scale,
+            ramp_scale=modelinfo.ramp_scale,
+            lineOff=lineOff,
+        )
+        return data
+    end
+
     for blk in LinearIndices(blkIndex)
         k = blkIndex[blk][1]
         t = blkIndex[blk][2]
         if ismywork(blk, comm)
 
             # Local info
-            localinfo = localcopy(modelinfo)
+            localinfo = local_copy(modelinfo)
             if algparams.decompCtgs
                 @assert k > 0
                 localinfo.num_ctgs = 0

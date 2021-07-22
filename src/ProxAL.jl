@@ -15,7 +15,7 @@ include("Evaluators/Evaluators.jl")
 include("params.jl")
 include("opfdata.jl")
 include("opfsolution.jl")
-include("blockmodel.jl")
+include("backends.jl")
 include("blocks.jl")
 include("opfmodel.jl")
 include("utils.jl")
@@ -23,13 +23,13 @@ include("communication.jl")
 include("Evaluators/ProxALEvalutor.jl")
 include("Evaluators/NonDecomposedModel.jl")
 
-export ModelParams, AlgParams
+export ModelInfo, AlgParams
 export ProxALEvaluator, NonDecomposedModel
 export optimize!
 export JuMPBackend, ExaPFBackend, ExaTronBackend
 
 function update_primal_nlpvars(x::PrimalSolution, opfBlockData::OPFBlocks, blk::Int,
-                               modelinfo::ModelParams,
+                               modelinfo::ModelInfo,
                                algparams::AlgParams)
     block = opfBlockData.blkIndex[blk]
     k = block[1]
@@ -79,7 +79,7 @@ function update_primal_penalty(x::PrimalSolution, opfdata::OPFData,
                                opfBlockData::OPFBlocks, blk::Int,
                                primal::PrimalSolution,
                                dual::DualSolution,
-                               modelinfo::ModelParams,
+                               modelinfo::ModelInfo,
                                algparams::AlgParams)
     ngen = size(x.Pg, 1)
     block = opfBlockData.blkIndex[blk]
@@ -122,7 +122,7 @@ end
 function update_dual_vars(λ::DualSolution, opfdata::OPFData,
                           opfBlockData::OPFBlocks, blk::Int,
                           primal::PrimalSolution,
-                          modelinfo::ModelParams,
+                          modelinfo::ModelInfo,
                           algparams::AlgParams)
     block = opfBlockData.blkIndex[blk]
     k = block[1]
