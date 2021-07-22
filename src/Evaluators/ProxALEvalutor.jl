@@ -1,5 +1,5 @@
 struct ProxALEvaluator <: AbstractNLPEvaluator
-    alminfo::ProxALProblem
+    problem::ProxALProblem
     modelinfo::ModelInfo
     algparams::AlgParams
     opfdata::OPFData
@@ -65,8 +65,8 @@ function ProxALEvaluator(
     end
 
     # ctgs_arr = deepcopy(rawdata.ctgs_arr)
-    alminfo = ProxALProblem(opfdata, rawdata, modelinfo, algparams, space, comm, opt_sol, lyapunov_sol)
-    return ProxALEvaluator(alminfo, modelinfo, algparams, opfdata, rawdata, space, comm)
+    problem = ProxALProblem(opfdata, rawdata, modelinfo, algparams, space, comm, opt_sol, lyapunov_sol)
+    return ProxALEvaluator(problem, modelinfo, algparams, opfdata, rawdata, space, comm)
 end
 
 """
@@ -79,7 +79,7 @@ of the decomposition algorithm.
 function optimize!(nlp::ProxALEvaluator; print_timings=false)
     algparams = nlp.algparams
     modelinfo = nlp.modelinfo
-    runinfo   = nlp.alminfo
+    runinfo   = nlp.problem
     opfdata   = nlp.opfdata
     comm      = nlp.comm
 
@@ -392,7 +392,7 @@ function optimize!(nlp::ProxALEvaluator; print_timings=false)
 end
 
 function opf_initialization!(nlp::ProxALEvaluator)
-    runinfo   = nlp.alminfo
+    runinfo   = nlp.problem
     modelinfo = nlp.modelinfo
     opfdata   = nlp.opfdata
     rawdata   = nlp.rawdata

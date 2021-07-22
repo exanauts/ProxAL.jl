@@ -1,5 +1,5 @@
 struct NonDecomposedModel <: AbstractNLPEvaluator
-    alminfo::ProxALProblem
+    problem::ProxALProblem
     modelinfo::ModelInfo
     algparams::AlgParams
     opfdata::OPFData
@@ -40,8 +40,8 @@ function NonDecomposedModel(
     )
 
     # ctgs_arr = deepcopy(rawdata.ctgs_arr)
-    alminfo = ProxALProblem(opfdata, rawdata, modelinfo, algparams, space, nothing)
-    return NonDecomposedModel(alminfo, modelinfo, algparams, opfdata, rawdata, space)
+    problem = ProxALProblem(opfdata, rawdata, modelinfo, algparams, space, nothing)
+    return NonDecomposedModel(problem, modelinfo, algparams, opfdata, rawdata, space)
 end
 
 """
