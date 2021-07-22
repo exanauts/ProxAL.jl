@@ -457,7 +457,7 @@ function compute_quadratic_penalty(
 end
 
 function compute_lagrangian_function(
-    opfdict, λ::DualSolution,
+    opfdict, λ::OPFDualSolution,
     opfdata::OPFData,
     opfBlockData::OPFBlocks, blk::Int,
     modelinfo::ModelInfo,
@@ -490,7 +490,7 @@ function compute_lagrangian_function(
 end
 
 function compute_proximal_function(
-    x1::PrimalSolution, x2::PrimalSolution,
+    x1::OPFPrimalSolution, x2::OPFPrimalSolution,
     opfBlockData::OPFBlocks, blk::Int,
     modelinfo::ModelInfo,
     algparams::AlgParams
@@ -545,7 +545,7 @@ function compute_objective_function(
 end
 
 function compute_objective_function(
-    x::PrimalSolution, opfdata::OPFData,
+    x::OPFPrimalSolution, opfdata::OPFData,
     opfBlockData::OPFBlocks, blk::Int,
     modelinfo::ModelInfo, algparams::AlgParams
 )
@@ -561,9 +561,9 @@ function compute_objective_function(
 end
 
 function compute_lyapunov_function(
-    x::PrimalSolution, λ::DualSolution, opfdata::OPFData,
+    x::OPFPrimalSolution, λ::OPFDualSolution, opfdata::OPFData,
     opfBlockData::OPFBlocks, blk::Int,
-    xref::PrimalSolution,
+    xref::OPFPrimalSolution,
     modelinfo::ModelInfo,
     algparams::AlgParams
 )
@@ -585,8 +585,8 @@ function compute_lyapunov_function(
 end
 
 function compute_dual_error(
-    x::PrimalSolution, xprev::PrimalSolution,
-    λ::DualSolution, λprev::DualSolution,
+    x::OPFPrimalSolution, xprev::OPFPrimalSolution,
+    λ::OPFDualSolution, λprev::OPFDualSolution,
     opfdata::OPFData,
     modelinfo::ModelInfo, algparams::AlgParams;
     lnorm = Inf
@@ -707,7 +707,7 @@ function compute_dual_error(
 end
 
 function compute_true_ramp_error(
-    x::PrimalSolution,
+    x::OPFPrimalSolution,
     opfdata::OPFData,
     modelinfo::ModelInfo,
     tIdx::Int = 0
@@ -725,7 +725,7 @@ function compute_true_ramp_error(
 end
 
 function compute_true_ctgs_error(
-    x::PrimalSolution,
+    x::OPFPrimalSolution,
     opfdata::OPFData,
     modelinfo::ModelInfo,
     kIdx::Int = 0, tIdx::Int = 0
@@ -750,7 +750,7 @@ function compute_true_ctgs_error(
 end
 
 function compute_true_ramp_error(
-    x::PrimalSolution, opfdata::OPFData,
+    x::OPFPrimalSolution, opfdata::OPFData,
     opfBlockData::OPFBlocks, blk::Int,
     modelinfo::ModelInfo,
 )
@@ -764,7 +764,7 @@ function compute_true_ramp_error(
 end
 
 function compute_true_ctgs_error(
-    x::PrimalSolution, opfdata::OPFData,
+    x::OPFPrimalSolution, opfdata::OPFData,
     opfBlockData::OPFBlocks, blk::Int,
     modelinfo::ModelInfo,
 )
@@ -782,8 +782,8 @@ end
         opfdata::OPFData,
         k::Int, t::Int,
         algparams::AlgParams,
-        primal::PrimalSolution,
-        dual::DualSolution
+        primal::OPFPrimalSolution,
+        dual::OPFDualSolution
     )
 
 Let `k` and `t` denote the contingency number and time period of
@@ -825,8 +825,8 @@ function opf_block_get_auglag_penalty_expr(
     opfdata::OPFData,
     k::Int, t::Int,
     algparams::AlgParams,
-    primal::PrimalSolution,
-    dual::DualSolution
+    primal::OPFPrimalSolution,
+    dual::OPFDualSolution
 )
 
     (ngen, K, T) = size(primal.Pg)

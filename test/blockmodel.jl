@@ -48,8 +48,8 @@ load_file = joinpath(DATA_DIR, "mp_demand", "$(case)_oneweek_168")
 
     # Instantiate primal and dual buffers
     nlp = ProxALEvaluator(case_file, load_file, modelinfo, algparams, JuMPBackend(), Dict(), Dict(), nothing)
-    primal = ProxAL.PrimalSolution(nlp)
-    dual = ProxAL.DualSolution(nlp)
+    primal = ProxAL.OPFPrimalSolution(nlp)
+    dual = ProxAL.OPFDualSolution(nlp)
 
     modelinfo_local = deepcopy(nlp.modelinfo)
     modelinfo_local.num_time_periods = 1

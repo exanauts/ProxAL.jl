@@ -1,6 +1,3 @@
-
-abstract type AbstractBlocks end
-
 """
     OPFBlocks(
         opfdata::OPFData,

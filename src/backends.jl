@@ -1,5 +1,3 @@
-abstract type AbstractBackend end
-
 """
     ExaPFBackend <: AbstractBackend
 
@@ -70,8 +68,8 @@ function get_solution end
     set_objective!(
         block::AbstractBlockModel,
         algparams::AlgParams,
-        primal::PrimalSolution,
-        dual::DualSolution
+        primal::AbstractPrimalSolution,
+        dual::AbstractDualSolution
     )
 
 Update the objective inside `block`'s optimization subproblem.
@@ -100,7 +98,7 @@ struct EmptyBlockModel <: AbstractBlockModel end
 function init!(block::EmptyBlockModel, algparams::AlgParams) end
 
 function set_objective!(block::EmptyBlockModel, algparams::AlgParams,
-                        primal::PrimalSolution, dual::DualSolution)
+                        primal::AbstractPrimalSolution, dual::AbstractDualSolution)
 end
 function get_solution(block::EmptyBlockModel) end
 
@@ -212,7 +210,7 @@ function init!(block::JuMPBlockBackend, algparams::AlgParams)
 end
 
 function set_objective!(block::JuMPBlockBackend, algparams::AlgParams,
-                        primal::PrimalSolution, dual::DualSolution)
+                        primal::AbstractPrimalSolution, dual::AbstractDualSolution)
     blk = block.id
     opfmodel = block.model
     opfdata = block.data
@@ -379,7 +377,7 @@ function add_ctgs_linking_constraints!(block::ExaBlockBackend)
 end
 
 function update_penalty!(block::ExaBlockBackend, algparams::AlgParams,
-                         primal::PrimalSolution, dual::DualSolution)
+                         primal::AbstractPrimalSolution, dual::AbstractDualSolution)
     examodel = block.model
     opfdata = block.data
     modelinfo = block.params
@@ -419,7 +417,7 @@ function update_penalty!(block::ExaBlockBackend, algparams::AlgParams,
 end
 
 function set_objective!(block::ExaBlockBackend, algparams::AlgParams,
-                        primal::PrimalSolution, dual::DualSolution)
+                        primal::AbstractPrimalSolution, dual::AbstractDualSolution)
     update_penalty!(block, algparams, primal, dual)
     return
 end
@@ -614,7 +612,7 @@ function init!(block::TronBlockBackend, algparams::AlgParams)
 end
 
 function set_objective!(block::TronBlockBackend, algparams::AlgParams,
-                        primal::PrimalSolution, dual::DualSolution)
+                        primal::AbstractPrimalSolution, dual::AbstractDualSolution)
     examodel = block.env
     opfdata = block.data
     modelinfo = block.params
