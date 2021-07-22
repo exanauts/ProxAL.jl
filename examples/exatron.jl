@@ -10,6 +10,7 @@ using LinearAlgebra, JuMP, Ipopt
 using CatViews
 using CUDA
 using MPI
+using Logging
 
 MPI.Init()
 
@@ -43,17 +44,11 @@ modelinfo.load_scale = load_scale
 modelinfo.ramp_scale = ramp_scale
 modelinfo.allow_obj_gencost = true
 modelinfo.allow_constr_infeas = false
-modelinfo.weight_quadratic_penalty_time = quad_penalty
 modelinfo.weight_freq_ctrl = quad_penalty
 modelinfo.time_link_constr_type = :penalty
 modelinfo.ctgs_link_constr_type = :frequency_ctrl
 modelinfo.case_name = case
 modelinfo.num_ctgs = K
-# rho related
-modelinfo.maxρ_t = maxρ
-modelinfo.maxρ_c = maxρ
-# Initialize block OPFs with base OPF solution
-modelinfo.init_opf = false
 
 # Algorithm settings
 algparams = AlgParams()
@@ -69,6 +64,7 @@ algparams.tron_outer_iterlim=30
 algparams.tron_inner_iterlim=2000
 algparams.tron_scale=1e-5
 algparams.mode = :coldstart
+algparams.init_opf = false
 
 # case_ACTIVSg2000_Corrected parameters
 algparams.tron_rho_pq=5*1e4
@@ -83,12 +79,14 @@ ranks = MPI.Comm_size(MPI.COMM_WORLD)
 if MPI.Comm_rank(MPI.COMM_WORLD) == 0
    println("ProxAL/ExaTron $ranks ranks, $T periods")
 end
-
+cur_logger = global_logger(NullLogger())
 elapsed_t = @elapsed begin
-  nlp = ProxALEvaluator(case_file, load_file, modelinfo, algparams, ProxAL.ExaTronBackend(), opt_sol, lyapunov_sol)
+  redirect_stdout(devnull) do
+    global nlp = ProxALEvaluator(case_file, load_file, modelinfo, algparams, ProxAL.ExaTronBackend(), opt_sol, lyapunov_sol)
+  end
 end
-
 if MPI.Comm_rank(MPI.COMM_WORLD) == 0
+    global_logger(cur_logger)
     println("Creating problem: $elapsed_t")
     println("Benchmark Start")
     np = MPI.Comm_size(MPI.COMM_WORLD)
