@@ -77,11 +77,7 @@ end
 
 mutable struct DualSolution
     ramping
-    ramping_p
-    ramping_n
     ctgs
-    ctgs_p
-    ctgs_n
 
     function DualSolution(opfdata::OPFData, modelinfo::ModelParams) 
         ngen = length(opfdata.generators)
@@ -91,13 +87,9 @@ mutable struct DualSolution
         @assert K >= 1
 
         ramping = zeros(ngen,T)
-        ramping_p = zeros(ngen,T)
-        ramping_n = zeros(ngen,T)
         ctgs = zeros(ngen,K,T)
-        ctgs_p = zeros(ngen,K,T)
-        ctgs_n = zeros(ngen,K,T)
 
-        new(ramping,ramping_p,ramping_n,ctgs,ctgs_p,ctgs_n)
+        new(ramping,ctgs)
     end
 end
 
@@ -176,32 +168,12 @@ function get_coupling_view(λ::DualSolution,
                            modelinfo::ModelParams,
                            algparams::AlgParams)
     ramping = @view λ.ramping[:]
-    ramping_p = @view λ.ramping_p[:]
-    ramping_n = @view λ.ramping_n[:]
     ctgs = @view λ.ctgs[:]
-    ctgs_p = @view λ.ctgs_p[:]
-    ctgs_n = @view λ.ctgs_n[:]
 
     if algparams.decompCtgs
-        if modelinfo.time_link_constr_type == :inequality
-            if modelinfo.ctgs_link_constr_type == :corrective_inequality
-                return CatView(ramping_p, ramping_n, ctgs_p, ctgs_n)
-            else
-                return CatView(ramping_p, ramping_n, ctgs)
-            end
-        else
-            if modelinfo.ctgs_link_constr_type == :corrective_inequality
-                return CatView(ramping, ctgs_p, ctgs_n)
-            else
-                return CatView(ramping, ctgs)
-            end
-        end
+        return CatView(ramping, ctgs)
     else
-        if modelinfo.time_link_constr_type == :inequality
-            return CatView(ramping_p, ramping_n)
-        else
-            return CatView(ramping)
-        end
+        return CatView(ramping)
     end
 end
 

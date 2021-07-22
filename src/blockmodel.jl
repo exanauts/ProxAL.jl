@@ -95,6 +95,25 @@ function add_variables! end
 # Constraints
 function add_ctgs_linking_constraints! end
 
+struct EmptyBlockModel <: AbstractBlockModel end
+
+function init!(block::EmptyBlockModel, algparams::AlgParams) end
+
+function set_objective!(block::EmptyBlockModel, algparams::AlgParams,
+                        primal::PrimalSolution, dual::DualSolution)
+end
+function get_solution(block::EmptyBlockModel) end
+
+struct JuMPBlockModel <: AbstractBlockModel
+    id::Int
+    k::Int
+    t::Int
+    model::JuMP.Model
+    data::OPFData
+    params::ModelParams
+    rawdata::RawData
+end
+
 ### Implementation of JuMPBlockModel
 """
     JuMPBlockModel(
@@ -102,7 +121,6 @@ function add_ctgs_linking_constraints! end
         opfdata::OPFData, raw_data::RawData,
         modelinfo::ModelParams, t::Int, k::Int, T::Int,
     )
-)
 
 Use the modeler JuMP to define the optimal power flow
 inside the block model.
@@ -120,24 +138,6 @@ of the structure `OPFBlocks`, used for decomposition purpose.
 - `T::Int`: final horizon
 
 """
-struct EmptyBlockModel <: AbstractBlockModel end
-
-function init!(block::EmptyBlockModel, algparams::AlgParams) end
-
-function set_objective!(block::EmptyBlockModel, algparams::AlgParams,
-                        primal::PrimalSolution, dual::DualSolution)
-end
-function get_solution(block::EmptyBlockModel) end
-struct JuMPBlockModel <: AbstractBlockModel
-    id::Int
-    k::Int
-    t::Int
-    model::JuMP.Model
-    data::OPFData
-    params::ModelParams
-    rawdata::RawData
-end
-
 function JuMPBlockModel(
     blk::Int,
     opfdata::OPFData, raw_data::RawData, algparams::AlgParams,
@@ -219,9 +219,9 @@ function set_objective!(block::JuMPBlockModel, algparams::AlgParams,
     modelinfo = block.params
     k, t = block.k, block.t
 
-    obj_expr = compute_objective_function(opfmodel, opfdata, modelinfo)
+    obj_expr = compute_objective_function(opfmodel, opfdata, modelinfo, algparams, k, t)
     auglag_penalty = opf_block_get_auglag_penalty_expr(
-        blk, opfmodel, modelinfo, opfdata, k, t, algparams, primal, dual)
+        opfmodel, modelinfo, opfdata, k, t, algparams, primal, dual)
     @objective(opfmodel, Min, obj_expr + auglag_penalty)
     return
 end
@@ -404,7 +404,7 @@ function update_penalty!(block::ExaBlockModel, algparams::AlgParams,
         pgf = primal.Pg[:, 1, t-1] .+ primal.Zt[:, t] .- ramp_agc
         ExaPF.update_primal!(examodel, ExaPF.Previous(), pgf)
         # Update parameters
-        examodel.ρf = algparams.ρ_t[1, t]
+        examodel.ρf = algparams.ρ_t
     end
 
     # Update next values
@@ -414,7 +414,7 @@ function update_penalty!(block::ExaBlockModel, algparams::AlgParams,
         ExaPF.update_multipliers!(examodel, ExaPF.Next(), λt)
         ExaPF.update_primal!(examodel, ExaPF.Next(), pgt)
         # Update parameters
-        examodel.ρt = algparams.ρ_t[1, t+1]
+        examodel.ρt = algparams.ρ_t
     end
 end
 
@@ -632,7 +632,7 @@ function set_objective!(block::TronBlockModel, algparams::AlgParams,
     pgc = primal.Pg[:, k, t]
     ExaTron.set_proximal_ref!(examodel, pgc)
     ExaTron.set_proximal_term!(examodel, algparams.τ / σ)
-    ExaTron.set_penalty!(examodel, algparams.ρ_t[1, t] / σ)
+    ExaTron.set_penalty!(examodel, algparams.ρ_t / σ)
 
     # Update previous values
     if t > 1

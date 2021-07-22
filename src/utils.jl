@@ -11,6 +11,8 @@ mutable struct ProxALMData
     maxviol_t::Vector{Float64}
     maxviol_c::Vector{Float64}
     maxviol_d::Vector{Float64}
+    maxviol_t_actual::Vector{Float64}
+    maxviol_c_actual::Vector{Float64}
     dist_x::Vector{Float64}
     dist_λ::Vector{Float64}
     nlp_opt_sol::Array{Float64,2}
@@ -89,6 +91,8 @@ mutable struct ProxALMData
         maxviol_t = []
         maxviol_c = []
         maxviol_d = []
+        maxviol_t_actual = []
+        maxviol_c_actual = []
         dist_x = []
         dist_λ = []
         nlp_opt_sol = Array{Float64, 2}(undef, blocks.colCount, blocks.blkCount)
@@ -110,6 +114,8 @@ mutable struct ProxALMData
             maxviol_t,
             maxviol_c,
             maxviol_d,
+            maxviol_t_actual,
+            maxviol_c_actual,
             dist_x,
             dist_λ,
             nlp_opt_sol,
@@ -126,7 +132,7 @@ mutable struct ProxALMData
     end
 end
 
-function update_runinfo(
+function runinfo_update(
     runinfo::ProxALMData, opfdata::OPFData,
     opfBlockData::OPFBlocks,
     modelinfo::ModelParams,
@@ -137,7 +143,7 @@ function update_runinfo(
     obj = 0.0
     for blk in runinfo.par_order
         if ismywork(blk, comm)
-            obj += compute_objective_function(runinfo.x, opfdata, opfBlockData, blk, modelinfo)
+            obj += compute_objective_function(runinfo.x, opfdata, opfBlockData, blk, modelinfo, algparams)
         end
     end
     obj = comm_sum(obj, comm)
@@ -153,7 +159,26 @@ function update_runinfo(
     lyapunov = comm_sum(lyapunov, comm)
     push!(runinfo.lyapunov, lyapunov)
 
+    maxviol_t_actual = 0.0
+    for blk in runinfo.par_order
+        if ismywork(blk, comm)
+            maxviol_t_actual = compute_true_ramp_error(runinfo.x, opfdata, opfBlockData, blk, modelinfo)
+        end
+    end
+    maxviol_t_actual = comm_max(maxviol_t_actual, comm)
+    push!(runinfo.maxviol_t_actual, maxviol_t_actual)
+
+    maxviol_c_actual = 0.0
+    for blk in runinfo.par_order
+        if ismywork(blk, comm)
+            maxviol_c_actual = compute_true_ctgs_error(runinfo.x, opfdata, opfBlockData, blk, modelinfo)
+        end
+    end
+    maxviol_c_actual = comm_max(maxviol_c_actual, comm)
+    push!(runinfo.maxviol_c_actual, maxviol_c_actual)
+
     # FIX ME: Frigging bug in the parallel implementation of the dual error
+    # FIX ME: Re-implement parallel implementation of the dual error
     # (ngen, K, T) = size(runinfo.x.Pg)
     # smaxviol_d = 3*ngen*K + 2*ngen + K
     # @show smaxviol_d
@@ -173,14 +198,13 @@ function update_runinfo(
 
     push!(runinfo.dist_x, NaN)
     push!(runinfo.dist_λ, NaN)
+    #=
     optimgap = NaN
     lyapunov_gap = NaN
     if !isempty(runinfo.opt_sol)
         xstar = runinfo.opt_sol["primal"]
-        λstar = runinfo.opt_sol["dual"]
         zstar = runinfo.opt_sol["objective_value_nondecomposed"]
         runinfo.dist_x[iter] = dist(runinfo.x, xstar, modelinfo, algparams)
-        runinfo.dist_λ[iter] = dist(runinfo.λ, λstar, modelinfo, algparams)
         optimgap = 100.0 * abs(runinfo.objvalue[iter] - zstar) / abs(zstar)
     end
     if !isempty(runinfo.lyapunov_sol)
@@ -189,14 +213,35 @@ function update_runinfo(
     end
 
     if algparams.verbose > 0 && comm_rank(comm) == 0
-        @printf("iter %3d: ramp_err = %.3e, ctgs_err = %.3e, dual_err = %.3e, |x-x*| = %.3f, |λ-λ*| = %.3f, gap = %.2f%%, lyapgap = %.2f%%\n",
+        @printf("iter %3d: ramp_err = %.3e, ctgs_err = %.3e, dual_err = %.3e, |x-x*| = %.3f, gap = %.2f%%, lyapgap = %.2f%%\n",
                     iter,
                     runinfo.maxviol_t[iter],
                     runinfo.maxviol_c[iter],
                     runinfo.maxviol_d[iter],
                     runinfo.dist_x[iter],
-                    runinfo.dist_λ[iter],
                     optimgap,
                     lyapunov_gap)
+    end
+    =#
+    if algparams.verbose > 0 && comm_rank(comm) == 0
+        if iter == 1
+            @printf("---------------------------------------------------------------------------------------------------------------\n");
+            @printf("iter ramp_err   ramp_err   ctgs_err   ctgs_err   dual_error lyapunov_f   rho_t   rho_c theta_t theta_c     tau \n");
+            @printf("     (penalty)  (actual)   (penalty)  (actual)\n");
+            @printf("---------------------------------------------------------------------------------------------------------------\n");
+        end
+        @printf("%4d ", iter-1);
+        @printf("%10.4e ", runinfo.maxviol_t[iter])
+        @printf("%10.4e ", runinfo.maxviol_t_actual[iter])
+        @printf("%10.4e ", runinfo.maxviol_c[iter])
+        @printf("%10.4e ", runinfo.maxviol_c_actual[iter])
+        @printf("%10.4e ", runinfo.maxviol_d[iter])
+        @printf("%10.4e ", runinfo.lyapunov[iter])
+        @printf("%7.2f ", algparams.ρ_t)
+        @printf("%7.2f ", algparams.ρ_c)
+        @printf("%7.2f ", algparams.θ_t)
+        @printf("%7.2f ", algparams.θ_c)
+        @printf("%7.2f ", algparams.τ)
+        @printf("\n")
     end
 end
