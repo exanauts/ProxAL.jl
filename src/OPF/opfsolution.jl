@@ -1,7 +1,7 @@
 #
 # Data structures to represent primal and dual solutions
 #
-mutable struct PrimalSolution
+mutable struct OPFPrimalSolution <: AbstractPrimalSolution
     Pg
     Qg
     Vm
@@ -16,7 +16,7 @@ mutable struct PrimalSolution
     sigma_lineFr
     sigma_lineTo
 
-    function PrimalSolution(opfdata::OPFData, modelinfo::ModelParams) 
+    function OPFPrimalSolution(opfdata::OPFData, modelinfo::ModelInfo) 
         buses = opfdata.buses
         gens  = opfdata.generators
         ngen  = length(gens)
@@ -71,15 +71,15 @@ mutable struct PrimalSolution
     end
 end
 
-function PrimalSolution(nlp::AbstractNLPEvaluator) 
-    return PrimalSolution(nlp.opfdata, nlp.modelinfo)
+function OPFPrimalSolution(nlp::AbstractNLPEvaluator) 
+    return OPFPrimalSolution(nlp.opfdata, nlp.modelinfo)
 end
 
-mutable struct DualSolution
+mutable struct OPFDualSolution <: AbstractDualSolution
     ramping
     ctgs
 
-    function DualSolution(opfdata::OPFData, modelinfo::ModelParams) 
+    function OPFDualSolution(opfdata::OPFData, modelinfo::ModelInfo) 
         ngen = length(opfdata.generators)
         T = modelinfo.num_time_periods
         K = modelinfo.num_ctgs + 1 # base case counted separately
@@ -93,12 +93,12 @@ mutable struct DualSolution
     end
 end
 
-function DualSolution(nlp::AbstractNLPEvaluator) 
-    return DualSolution(nlp.opfdata, nlp.modelinfo)
+function OPFDualSolution(nlp::AbstractNLPEvaluator) 
+    return OPFDualSolution(nlp.opfdata, nlp.modelinfo)
 end
 
-function get_block_view(x::PrimalSolution, block::CartesianIndex,
-                        modelinfo::ModelParams,
+function get_block_view(x::OPFPrimalSolution, block::CartesianIndex,
+                        modelinfo::ModelInfo,
                         algparams::AlgParams)
     k = block[1]
     t = block[2]
@@ -126,8 +126,8 @@ function get_block_view(x::PrimalSolution, block::CartesianIndex,
     return solution
 end
 
-function get_coupling_view(x::PrimalSolution,
-                           modelinfo::ModelParams,
+function get_coupling_view(x::OPFPrimalSolution,
+                           modelinfo::ModelInfo,
                            algparams::AlgParams)
     Pg = @view x.Pg[:]
     return Pg
@@ -164,8 +164,8 @@ function get_coupling_view(x::PrimalSolution,
     =#
 end
 
-function get_coupling_view(λ::DualSolution,
-                           modelinfo::ModelParams,
+function get_coupling_view(λ::OPFDualSolution,
+                           modelinfo::ModelInfo,
                            algparams::AlgParams)
     ramping = @view λ.ramping[:]
     ctgs = @view λ.ctgs[:]
@@ -177,8 +177,8 @@ function get_coupling_view(λ::DualSolution,
     end
 end
 
-function dist(x1::PrimalSolution, x2::PrimalSolution,
-              modelinfo::ModelParams,
+function dist(x1::OPFPrimalSolution, x2::OPFPrimalSolution,
+              modelinfo::ModelInfo,
               algparams::AlgParams,
               lnorm = Inf)
     x1vec = get_coupling_view(x1, modelinfo, algparams)
@@ -186,8 +186,8 @@ function dist(x1::PrimalSolution, x2::PrimalSolution,
     return norm(x1vec .- x2vec, lnorm) #/(1e-16 + norm(x2vec, lnorm))
 end
 
-function dist(λ1::DualSolution, λ2::DualSolution,
-              modelinfo::ModelParams,
+function dist(λ1::OPFDualSolution, λ2::OPFDualSolution,
+              modelinfo::ModelInfo,
               algparams::AlgParams,
               lnorm = Inf)
     λ1vec = get_coupling_view(λ1, modelinfo, algparams)

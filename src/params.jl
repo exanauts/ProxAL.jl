@@ -65,7 +65,7 @@ Base.@kwdef mutable struct AlgParams
     mode::Symbol            = :coldstart     # computation mode [:nondecomposed, :coldstart, :lyapunov_bound]
     optimizer::Any          = nothing        # NLP solver for fullmodel and subproblems
     gpu_optimizer::Any      = nothing        # GPU-compatible NLP solver for fullmodel and subproblems
-    nr_tol::Float64         = 1e-10          # Tolerance of the Newton-Raphson algorithm (for ExaBlockModel backend)
+    nr_tol::Float64         = 1e-10          # Tolerance of the Newton-Raphson algorithm (for ExaBlockBackend backend)
     init_opf::Bool          = false
     device::TargetDevice    = CPU
     verbose_inner::Int      = 0
@@ -78,7 +78,7 @@ Base.@kwdef mutable struct AlgParams
 end
 
 """
-    ModelParams
+    ModelInfo
 
 Specifies the ACOPF model structure.
 
@@ -99,7 +99,7 @@ Specifies the ACOPF model structure.
 | `time_link_constr_type::Symbol` | `∈ [:penalty, :equality, :inequality]` see [Formulation](@ref) | `:penalty`
 | `ctgs_link_constr_type::Symbol` | `∈ [:frequency_ctrl, :preventive_penalty, :preventive_equality, :corrective_penalty, :corrective_equality, :corrective_inequality]`, see [Formulation](@ref) | `:frequency_ctrl`
 """
-Base.@kwdef mutable struct ModelParams
+Base.@kwdef mutable struct ModelInfo
     num_time_periods::Int = 1
     num_ctgs::Int = 0
     load_scale::Float64 = 1.0

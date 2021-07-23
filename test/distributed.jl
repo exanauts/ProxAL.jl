@@ -21,7 +21,7 @@ load_file = joinpath(DATA_DIR, "mp_demand", "$(case)_oneweek_168")
 # ctgs_arr = deepcopy(rawdata.ctgs_arr)
 
 # Model/formulation settings
-modelinfo = ModelParams()
+modelinfo = ModelInfo()
 modelinfo.num_time_periods = T
 modelinfo.load_scale = load_scale
 modelinfo.ramp_scale = ramp_scale

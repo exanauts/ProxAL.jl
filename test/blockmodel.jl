@@ -19,11 +19,11 @@ rtol = 1e-4
 case_file = joinpath(DATA_DIR, "$(case).m")
 load_file = joinpath(DATA_DIR, "mp_demand", "$(case)_oneweek_168")
 
-@testset "Block Model Formulation" begin
+@testset "Block Model Backends" begin
     # ctgs_arr = deepcopy(rawdata.ctgs_arr)
 
     # Model/formulation settings
-    modelinfo = ModelParams()
+    modelinfo = ModelInfo()
     modelinfo.num_time_periods = T
     modelinfo.load_scale = load_scale
     modelinfo.ramp_scale = ramp_scale
@@ -48,8 +48,8 @@ load_file = joinpath(DATA_DIR, "mp_demand", "$(case)_oneweek_168")
 
     # Instantiate primal and dual buffers
     nlp = ProxALEvaluator(case_file, load_file, modelinfo, algparams, JuMPBackend(), Dict(), Dict(), nothing)
-    primal = ProxAL.PrimalSolution(nlp)
-    dual = ProxAL.DualSolution(nlp)
+    primal = ProxAL.OPFPrimalSolution(nlp)
+    dual = ProxAL.OPFDualSolution(nlp)
 
     modelinfo_local = deepcopy(nlp.modelinfo)
     modelinfo_local.num_time_periods = 1
@@ -63,8 +63,8 @@ load_file = joinpath(DATA_DIR, "mp_demand", "$(case)_oneweek_168")
                             ramp_scale = ramp_scale)
 
         local solution, n
-        @testset "JuMP Block model" begin
-            blockmodel = ProxAL.JuMPBlockModel(blkid, opfdata_c, nlp.rawdata, algparams, modelinfo_local, t, 1, T)
+        @testset "JuMP Block backend" begin
+            blockmodel = ProxAL.JuMPBlockBackend(blkid, opfdata_c, nlp.rawdata, algparams, modelinfo_local, t, 1, T)
             ProxAL.init!(blockmodel, nlp.algparams)
 
             ProxAL.set_objective!(blockmodel, nlp.algparams, primal, dual)
@@ -77,10 +77,10 @@ load_file = joinpath(DATA_DIR, "mp_demand", "$(case)_oneweek_168")
         pg_jump = solution.pg
         slack_jump = solution.st
 
-        @testset "ExaPF Block model" begin
+        @testset "ExaPF Block backend" begin
             # TODO: currently, we need to build directly ExaPF object
             # with rawdata, as ExaPF is dealing only with struct of arrays objects.
-            blockmodel = ProxAL.ExaBlockModel(blkid, opfdata_c, nlp.rawdata, algparams, modelinfo_local, t, 1, T)
+            blockmodel = ProxAL.ExaBlockBackend(blkid, opfdata_c, nlp.rawdata, algparams, modelinfo_local, t, 1, T)
             ProxAL.init!(blockmodel, nlp.algparams)
             ProxAL.set_objective!(blockmodel, nlp.algparams, primal, dual)
 
@@ -111,7 +111,7 @@ load_file = joinpath(DATA_DIR, "mp_demand", "$(case)_oneweek_168")
         end
 
         @testset "ExaTron BlockModel" begin
-            blockmodel = ProxAL.TronBlockModel(
+            blockmodel = ProxAL.TronBlockBackend(
                 blkid, opfdata_c, nlp.rawdata, algparams, modelinfo_local, t, 1, T;
             )
             ProxAL.init!(blockmodel, nlp.algparams)

@@ -1,19 +1,19 @@
 struct NonDecomposedModel <: AbstractNLPEvaluator
-    alminfo::ProxALMData
-    modelinfo::ModelParams
+    problem::ProxALProblem
+    modelinfo::ModelInfo
     algparams::AlgParams
     opfdata::OPFData
     rawdata::RawData
-    space::AbstractSpace
+    space::AbstractBackend
 end
 
 """
     NonDecomposedModel(
         case_file::String,
         load_file::String,
-        modelinfo::ModelParams,
+        modelinfo::ModelInfo,
         algparams::AlgParams,
-        space::AbstractSpace=JuMPBackend(),
+        space::AbstractBackend=JuMPBackend(),
         comm::MPI.Comm = MPI.COMM_WORLD
     )
 
@@ -25,9 +25,9 @@ a MPI communicator `comm`.
 """
 function NonDecomposedModel(
     case_file::String, load_file::String,
-    modelinfo::ModelParams,
+    modelinfo::ModelInfo,
     algparams::AlgParams,
-    space::AbstractSpace=JuMPBackend(),
+    space::AbstractBackend=JuMPBackend(),
     time_horizon_start=1
 )
     rawdata = RawData(case_file, load_file)
@@ -40,8 +40,8 @@ function NonDecomposedModel(
     )
 
     # ctgs_arr = deepcopy(rawdata.ctgs_arr)
-    alminfo = ProxALMData(opfdata, rawdata, modelinfo, algparams, space, nothing)
-    return NonDecomposedModel(alminfo, modelinfo, algparams, opfdata, rawdata, space)
+    problem = ProxALProblem(opfdata, rawdata, modelinfo, algparams, space, nothing)
+    return NonDecomposedModel(problem, modelinfo, algparams, opfdata, rawdata, space)
 end
 
 """
@@ -57,7 +57,7 @@ function optimize!(nlp::NonDecomposedModel)
     return opf_solve_nondecomposed(opfmodel, nlp.opfdata, nlp.modelinfo, nlp.algparams)
 end
 
-function opf_model_nondecomposed(opfdata::OPFData, rawdata::RawData, modelinfo::ModelParams, algparams::AlgParams)
+function opf_model_nondecomposed(opfdata::OPFData, rawdata::RawData, modelinfo::ModelInfo, algparams::AlgParams)
     opfmodel = JuMP.Model(algparams.optimizer)
     opf_model_add_variables(opfmodel, opfdata, modelinfo, algparams)
     opf_model_add_block_constraints(opfmodel, opfdata, rawdata, modelinfo)
@@ -80,7 +80,7 @@ function opf_model_nondecomposed(opfdata::OPFData, rawdata::RawData, modelinfo::
 end
 
 function opf_solve_nondecomposed(opfmodel::JuMP.Model, opfdata::OPFData,
-                                 modelinfo::ModelParams,
+                                 modelinfo::ModelInfo,
                                  algparams::AlgParams)
     JuMP.optimize!(opfmodel)
     status = termination_status(opfmodel)
@@ -91,7 +91,7 @@ function opf_solve_nondecomposed(opfmodel::JuMP.Model, opfdata::OPFData,
     end
 
 
-    x = PrimalSolution(opfdata, modelinfo)
+    x = OPFPrimalSolution(opfdata, modelinfo)
     x.Pg .= value.(opfmodel[:Pg])
     x.Qg .= value.(opfmodel[:Qg])
     x.Vm .= value.(opfmodel[:Vm])

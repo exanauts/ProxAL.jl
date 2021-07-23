@@ -1,10 +1,10 @@
 struct ProxALEvaluator <: AbstractNLPEvaluator
-    alminfo::ProxALMData
-    modelinfo::ModelParams
+    problem::ProxALProblem
+    modelinfo::ModelInfo
     algparams::AlgParams
     opfdata::OPFData
     rawdata::RawData
-    space::AbstractSpace
+    space::AbstractBackend
     comm::Union{MPI.Comm,Nothing}
 end
 
@@ -12,9 +12,9 @@ end
     ProxALEvaluator(
         case_file::String,
         load_file::String,
-        modelinfo::ModelParams,
+        modelinfo::ModelInfo,
         algparams::AlgParams,
-        space::AbstractSpace=JuMPBackend(),
+        space::AbstractBackend=JuMPBackend(),
         comm::MPI.Comm = MPI.COMM_WORLD
     )
 
@@ -27,9 +27,9 @@ a MPI communicator `comm`.
 function ProxALEvaluator(
     case_file::String,
     load_file::String,
-    modelinfo::ModelParams,
+    modelinfo::ModelInfo,
     algparams::AlgParams,
-    space::AbstractSpace=JuMPBackend(),
+    space::AbstractBackend=JuMPBackend(),
     opt_sol::Dict = Dict(),
     lyapunov_sol::Dict = Dict(),
     comm::Union{MPI.Comm,Nothing} = MPI.COMM_WORLD
@@ -65,8 +65,8 @@ function ProxALEvaluator(
     end
 
     # ctgs_arr = deepcopy(rawdata.ctgs_arr)
-    alminfo = ProxALMData(opfdata, rawdata, modelinfo, algparams, space, comm, opt_sol, lyapunov_sol)
-    return ProxALEvaluator(alminfo, modelinfo, algparams, opfdata, rawdata, space, comm)
+    problem = ProxALProblem(opfdata, rawdata, modelinfo, algparams, space, comm, opt_sol, lyapunov_sol)
+    return ProxALEvaluator(problem, modelinfo, algparams, opfdata, rawdata, space, comm)
 end
 
 """
@@ -79,7 +79,7 @@ of the decomposition algorithm.
 function optimize!(nlp::ProxALEvaluator; print_timings=false)
     algparams = nlp.algparams
     modelinfo = nlp.modelinfo
-    runinfo   = nlp.alminfo
+    runinfo   = nlp.problem
     opfdata   = nlp.opfdata
     comm      = nlp.comm
 
@@ -392,20 +392,20 @@ function optimize!(nlp::ProxALEvaluator; print_timings=false)
 end
 
 function opf_initialization!(nlp::ProxALEvaluator)
-    runinfo   = nlp.alminfo
+    runinfo   = nlp.problem
     modelinfo = nlp.modelinfo
     opfdata   = nlp.opfdata
     rawdata   = nlp.rawdata
 
     modelinfo_single = deepcopy(modelinfo)
     modelinfo_single.num_time_periods = 1
-    primal = ProxAL.PrimalSolution(opfdata, modelinfo_single)
-    dual = ProxAL.DualSolution(opfdata, modelinfo_single)
+    primal = ProxAL.OPFPrimalSolution(opfdata, modelinfo_single)
+    dual = ProxAL.OPFDualSolution(opfdata, modelinfo_single)
     algparams = AlgParams()
     algparams.mode = :coldstart
     algparams.optimizer = optimizer_with_attributes(Ipopt.Optimizer,
             "print_level" => Int64(algparams.verbose > 0)*5)
-    blockmodel = ProxAL.JuMPBlockModel(1, opfdata, rawdata, algparams, modelinfo_single, 1, 1, 0)
+    blockmodel = ProxAL.JuMPBlockBackend(1, opfdata, rawdata, algparams, modelinfo_single, 1, 1, 0)
     ProxAL.init!(blockmodel, algparams)
     ProxAL.set_objective!(blockmodel, algparams, primal, dual)
     n = JuMP.num_variables(blockmodel.model)

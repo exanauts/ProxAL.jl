@@ -1,25 +1,23 @@
-abstract type AbstractSpace end
-
 """
-    ExaPFBackend <: AbstractSpace
+    ExaPFBackend <: AbstractBackend
 
 Solve OPF in reduced-space with ExaPF.
 """
-struct ExaPFBackend <: AbstractSpace end
+struct ExaPFBackend <: AbstractBackend end
 
 """
-    JuMPBackend <: AbstractSpace
+    JuMPBackend <: AbstractBackend
 
 Solve OPF in full-space with JuMP/MOI.
 """
-struct JuMPBackend <: AbstractSpace end
+struct JuMPBackend <: AbstractBackend end
 
 """
-    ExaTronBackend <: AbstractSpace
+    ExaTronBackend <: AbstractBackend
 
 Solve OPF by decomposition using ExaTron.
 """
-struct ExaTronBackend <: AbstractSpace end
+struct ExaTronBackend <: AbstractBackend end
 
 
 """
@@ -70,8 +68,8 @@ function get_solution end
     set_objective!(
         block::AbstractBlockModel,
         algparams::AlgParams,
-        primal::PrimalSolution,
-        dual::DualSolution
+        primal::AbstractPrimalSolution,
+        dual::AbstractDualSolution
     )
 
 Update the objective inside `block`'s optimization subproblem.
@@ -100,26 +98,26 @@ struct EmptyBlockModel <: AbstractBlockModel end
 function init!(block::EmptyBlockModel, algparams::AlgParams) end
 
 function set_objective!(block::EmptyBlockModel, algparams::AlgParams,
-                        primal::PrimalSolution, dual::DualSolution)
+                        primal::AbstractPrimalSolution, dual::AbstractDualSolution)
 end
 function get_solution(block::EmptyBlockModel) end
 
-struct JuMPBlockModel <: AbstractBlockModel
+struct JuMPBlockBackend <: AbstractBlockModel
     id::Int
     k::Int
     t::Int
     model::JuMP.Model
     data::OPFData
-    params::ModelParams
+    params::ModelInfo
     rawdata::RawData
 end
 
-### Implementation of JuMPBlockModel
+### Implementation of JuMPBlockBackend
 """
-    JuMPBlockModel(
+    JuMPBlockBackend(
         blk::Int,
         opfdata::OPFData, raw_data::RawData,
-        modelinfo::ModelParams, t::Int, k::Int, T::Int,
+        modelinfo::ModelInfo, t::Int, k::Int, T::Int,
     )
 
 Use the modeler JuMP to define the optimal power flow
@@ -132,22 +130,22 @@ of the structure `OPFBlocks`, used for decomposition purpose.
 - `blk::Int`: ID of the block represented by this model
 - `opfdata::OPFData`: data used to build the optimal power flow problem.
 - `raw_data::RawData`: same data, in raw format
-- `modelinfo::ModelParams`: parameters related to specification of the optimization model
+- `modelinfo::ModelInfo`: parameters related to specification of the optimization model
 - `t::Int`: current time-step. Value should be between `1` and `T`.
 - `k::Int`: current contingency
 - `T::Int`: final horizon
 
 """
-function JuMPBlockModel(
+function JuMPBlockBackend(
     blk::Int,
     opfdata::OPFData, raw_data::RawData, algparams::AlgParams,
-    modelinfo::ModelParams, t::Int, k::Int, T::Int;
+    modelinfo::ModelInfo, t::Int, k::Int, T::Int;
 )
     model = JuMP.Model()
-    return JuMPBlockModel(blk, k, t, model, opfdata, modelinfo, raw_data)
+    return JuMPBlockBackend(blk, k, t, model, opfdata, modelinfo, raw_data)
 end
 
-function init!(block::JuMPBlockModel, algparams::AlgParams)
+function init!(block::JuMPBlockBackend, algparams::AlgParams)
     opfmodel = block.model
     # Reset optimizer
     Base.empty!(opfmodel)
@@ -211,8 +209,8 @@ function init!(block::JuMPBlockModel, algparams::AlgParams)
     return opfmodel
 end
 
-function set_objective!(block::JuMPBlockModel, algparams::AlgParams,
-                        primal::PrimalSolution, dual::DualSolution)
+function set_objective!(block::JuMPBlockBackend, algparams::AlgParams,
+                        primal::AbstractPrimalSolution, dual::AbstractDualSolution)
     blk = block.id
     opfmodel = block.model
     opfdata = block.data
@@ -226,7 +224,7 @@ function set_objective!(block::JuMPBlockModel, algparams::AlgParams,
     return
 end
 
-function get_solution(block::JuMPBlockModel)
+function get_solution(block::JuMPBlockBackend)
     opfmodel = block.model
     blk = block.id
     status = termination_status(opfmodel)
@@ -250,11 +248,11 @@ function get_solution(block::JuMPBlockModel)
     return solution
 end
 
-function set_start_values!(block::JuMPBlockModel, x0)
+function set_start_values!(block::JuMPBlockBackend, x0)
     JuMP.set_start_value.(all_variables(block.model), x0)
 end
 
-function optimize!(block::JuMPBlockModel, x0::AbstractArray, algparams::AlgParams)
+function optimize!(block::JuMPBlockBackend, x0::AbstractArray, algparams::AlgParams)
     blk = block.id
     opfmodel = block.model
     set_start_values!(block, x0)
@@ -262,24 +260,24 @@ function optimize!(block::JuMPBlockModel, x0::AbstractArray, algparams::AlgParam
     return get_solution(block)
 end
 
-function add_variables!(block::JuMPBlockModel, algparams::AlgParams)
+function add_variables!(block::JuMPBlockBackend, algparams::AlgParams)
     opf_model_add_variables(
         block.model, block.data, block.params, algparams,
     )
 end
 
-function add_ctgs_linking_constraints!(block::JuMPBlockModel, algparams)
+function add_ctgs_linking_constraints!(block::JuMPBlockBackend, algparams)
     opf_model_add_ctgs_linking_constraints(
         block.model, block.data, block.params,
     )
 end
 
-### Implementation of ExaBlockModel
+### Implementation of ExaBlockBackend
 """
-    ExaBlockModel(
+    ExaBlockBackend(
         blk::Int,
         opfdata::OPFData, raw_data::RawData,
-        modelinfo::ModelParams, t::Int, k::Int, T::Int;
+        modelinfo::ModelInfo, t::Int, k::Int, T::Int;
         device::TargetDevice=CPU,
         nr_tol::Float64=1e-10,
     )
@@ -294,25 +292,25 @@ of the structure `OPFBlocks`, used for decomposition purpose.
 - `blk::Int`: ID of the block represented by this model
 - `opfdata::OPFData`: data used to build the optimal power flow problem.
 - `raw_data::RawData`: same data, in raw format
-- `modelinfo::ModelParams`: parameters related to specification of the optimization model
+- `modelinfo::ModelInfo`: parameters related to specification of the optimization model
 - `t::Int`: current time-step. Value should be between `1` and `T`.
 - `k::Int`: current contingency
 - `T::Int`: final horizon
 
 """
-struct ExaBlockModel <: AbstractBlockModel
+struct ExaBlockBackend <: AbstractBlockModel
     id::Int
     k::Int
     t::Int
     model::ExaPF.AbstractNLPEvaluator
     data::OPFData
-    params::ModelParams
+    params::ModelInfo
 end
 
-function ExaBlockModel(
+function ExaBlockBackend(
     blk::Int,
     opfdata::OPFData, raw_data::RawData, algparams::AlgParams,
-    modelinfo::ModelParams, t::Int, k::Int, T::Int,
+    modelinfo::ModelInfo, t::Int, k::Int, T::Int,
 )
 
     data = Dict{String, Array}()
@@ -340,10 +338,10 @@ function ExaBlockModel(
     end
     model = ExaPF.ProxALEvaluator(power_network, time;
                                   device=target)
-    return ExaBlockModel(blk, k, t, model, opfdata, modelinfo)
+    return ExaBlockBackend(blk, k, t, model, opfdata, modelinfo)
 end
 
-function init!(block::ExaBlockModel, algparams::AlgParams)
+function init!(block::ExaBlockBackend, algparams::AlgParams)
     opfmodel = block.model
     baseMVA = block.data.baseMVA
 
@@ -374,12 +372,12 @@ function init!(block::ExaBlockModel, algparams::AlgParams)
     return opfmodel
 end
 
-function add_ctgs_linking_constraints!(block::ExaBlockModel)
+function add_ctgs_linking_constraints!(block::ExaBlockBackend)
     error("Contingencies are not supported in ExaPF")
 end
 
-function update_penalty!(block::ExaBlockModel, algparams::AlgParams,
-                         primal::PrimalSolution, dual::DualSolution)
+function update_penalty!(block::ExaBlockBackend, algparams::AlgParams,
+                         primal::AbstractPrimalSolution, dual::AbstractDualSolution)
     examodel = block.model
     opfdata = block.data
     modelinfo = block.params
@@ -418,13 +416,13 @@ function update_penalty!(block::ExaBlockModel, algparams::AlgParams,
     end
 end
 
-function set_objective!(block::ExaBlockModel, algparams::AlgParams,
-                        primal::PrimalSolution, dual::DualSolution)
+function set_objective!(block::ExaBlockBackend, algparams::AlgParams,
+                        primal::AbstractPrimalSolution, dual::AbstractDualSolution)
     update_penalty!(block, algparams, primal, dual)
     return
 end
 
-function get_solution(block::ExaBlockModel, output)
+function get_solution(block::ExaBlockBackend, output)
     opfmodel = block.model
 
     # Check optimization status
@@ -459,7 +457,7 @@ function get_solution(block::ExaBlockModel, output)
     return solution
 end
 
-function set_start_values!(block::ExaBlockModel, x0)
+function set_start_values!(block::ExaBlockBackend, x0)
     ngen = length(block.data.generators)
     nbus = length(block.data.buses)
     # Only one contingency, at the moment
@@ -473,7 +471,7 @@ function set_start_values!(block::ExaBlockModel, x0)
     ExaPF.transfer!(block.model, vm, va, pg, qg)
 end
 
-function optimize!(block::ExaBlockModel, x0::Union{Nothing, AbstractArray}, algparams::AlgParams)
+function optimize!(block::ExaBlockBackend, x0::Union{Nothing, AbstractArray}, algparams::AlgParams)
     blk = block.id
     opfmodel = block.model
     optimizer = algparams.gpu_optimizer
@@ -503,12 +501,12 @@ function optimize!(block::ExaBlockModel, x0::Union{Nothing, AbstractArray}, algp
 end
 
 
-### Implementation of TronBlockModel
+### Implementation of TronBlockBackend
 """
-    TronBlockModel(
+    TronBlockBackend(
         blk::Int,
         opfdata::OPFData, raw_data::RawData,
-        modelinfo::ModelParams, t::Int, k::Int, T::Int;
+        modelinfo::ModelInfo, t::Int, k::Int, T::Int;
     )
 
 
@@ -517,20 +515,20 @@ end
 - `blk::Int`: ID of the block represented by this model
 - `opfdata::OPFData`: data used to build the optimal power flow problem.
 - `raw_data::RawData`: same data, in raw format
-- `modelinfo::ModelParams`: parameters related to specification of the optimization model
+- `modelinfo::ModelInfo`: parameters related to specification of the optimization model
 - `t::Int`: current time-step. Value should be between `1` and `T`.
 - `k::Int`: current contingency
 - `T::Int`: final horizon
 
 """
-struct TronBlockModel <: AbstractBlockModel
+struct TronBlockBackend <: AbstractBlockModel
     env::ExaTron.AdmmEnv
     id::Int
     k::Int
     t::Int
     T::Int
     data::OPFData
-    params::ModelParams
+    params::ModelInfo
     iterlim::Int
     tron_scale::Float64
     objective_scaling::Float64
@@ -566,10 +564,10 @@ function ExaTron.OPFData(data::OPFData)
     )
 end
 
-function TronBlockModel(
+function TronBlockBackend(
     blk::Int,
     opfdata::OPFData, raw_data::RawData, algparams::AlgParams,
-    modelinfo::ModelParams, t::Int, k::Int, T::Int;
+    modelinfo::ModelInfo, t::Int, k::Int, T::Int;
 )
     scale = 1e-4
     use_gpu = (algparams.device == CUDADevice)
@@ -579,10 +577,10 @@ function TronBlockModel(
         trondata, use_gpu, t, T, algparams.tron_rho_pq, algparams.tron_rho_pa;
         verbose=algparams.verbose_inner, use_twolevel=true, outer_eps=algparams.tron_outer_eps,
     )
-    return TronBlockModel(env, blk, k, t, T, opfdata, modelinfo, iterlim, scale, modelinfo.obj_scale)
+    return TronBlockBackend(env, blk, k, t, T, opfdata, modelinfo, iterlim, scale, modelinfo.obj_scale)
 end
 
-function init!(block::TronBlockModel, algparams::AlgParams)
+function init!(block::TronBlockBackend, algparams::AlgParams)
     opfmodel = block.env
     baseMVA = block.data.baseMVA
 
@@ -613,8 +611,8 @@ function init!(block::TronBlockModel, algparams::AlgParams)
     return opfmodel
 end
 
-function set_objective!(block::TronBlockModel, algparams::AlgParams,
-                        primal::PrimalSolution, dual::DualSolution)
+function set_objective!(block::TronBlockBackend, algparams::AlgParams,
+                        primal::AbstractPrimalSolution, dual::AbstractDualSolution)
     examodel = block.env
     opfdata = block.data
     modelinfo = block.params
@@ -651,7 +649,7 @@ function set_objective!(block::TronBlockModel, algparams::AlgParams,
     end
 end
 
-function get_solution(block::TronBlockModel, output)
+function get_solution(block::TronBlockBackend, output)
 
     # TODO: parse ExaTron solution
     exatron_status = output.status
@@ -680,7 +678,7 @@ function get_solution(block::TronBlockModel, output)
     return solution
 end
 
-function set_start_values!(block::TronBlockModel, x0)
+function set_start_values!(block::TronBlockBackend, x0)
     ngen = length(block.data.generators)
     nbus = length(block.data.buses)
     # Only one contingency, at the moment
@@ -698,7 +696,7 @@ function set_start_values!(block::TronBlockModel, x0)
     return
 end
 
-function optimize!(block::TronBlockModel, x0::Union{Nothing, AbstractArray}, algparams::AlgParams)
+function optimize!(block::TronBlockBackend, x0::Union{Nothing, AbstractArray}, algparams::AlgParams)
     if isa(x0, Array)
         set_start_values!(block, x0)
     end

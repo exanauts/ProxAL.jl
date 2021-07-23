@@ -1,6 +1,6 @@
 # FIX ME: A lot of the functions here are for the deprecated NonDecomposedModel
 function opf_model_add_variables(opfmodel::JuMP.Model, opfdata::OPFData,
-                                 modelinfo::ModelParams,
+                                 modelinfo::ModelInfo,
                                  algparams::AlgParams)
     # shortcuts for compactness
     buses = opfdata.buses
@@ -106,7 +106,7 @@ function opf_model_add_variables(opfmodel::JuMP.Model, opfdata::OPFData,
     end
 end
 
-function opf_model_add_block_constraints(opfmodel::JuMP.Model, opfdata::OPFData, rawdata::RawData, modelinfo::ModelParams)
+function opf_model_add_block_constraints(opfmodel::JuMP.Model, opfdata::OPFData, rawdata::RawData, modelinfo::ModelInfo)
     T = modelinfo.num_time_periods
     K = (modelinfo.num_ctgs + 1)
     if modelinfo.allow_constr_infeas
@@ -226,7 +226,7 @@ function opf_model_add_imag_power_balance_constraints(opfmodel::JuMP.Model, opfd
     end
 end
 
-function opf_model_add_time_linking_constraints(opfmodel::JuMP.Model, opfdata::OPFData, modelinfo::ModelParams)
+function opf_model_add_time_linking_constraints(opfmodel::JuMP.Model, opfdata::OPFData, modelinfo::ModelInfo)
     (ngen, K, T) = size(opfmodel[:Pg])
 
     if T > 1
@@ -243,7 +243,7 @@ function opf_model_add_time_linking_constraints(opfmodel::JuMP.Model, opfdata::O
     return nothing
 end
 
-function opf_model_add_ctgs_linking_constraints(opfmodel::JuMP.Model, opfdata::OPFData, modelinfo::ModelParams)
+function opf_model_add_ctgs_linking_constraints(opfmodel::JuMP.Model, opfdata::OPFData, modelinfo::ModelInfo)
     (ngen, K, T) = size(opfmodel[:Pg])
 
     if K > 1
@@ -263,7 +263,7 @@ end
 function compute_objective_function(
     opfdict,
     opfdata::OPFData,
-    modelinfo::ModelParams,
+    modelinfo::ModelInfo,
     algparams::AlgParams,
     kIdx::Int, tIdx::Int
 )
@@ -329,7 +329,7 @@ end
 function compute_time_linking_constraints(
     opfdict,
     opfdata::OPFData,
-    modelinfo::ModelParams,
+    modelinfo::ModelInfo,
     tIdx::Int = 0
 )
     Pg = opfdict[:Pg]
@@ -354,7 +354,7 @@ end
 function compute_ctgs_linking_constraints(
     opfdict,
     opfdata::OPFData,
-    modelinfo::ModelParams,
+    modelinfo::ModelInfo,
     kIdx::Int = 0, tIdx::Int = 0
 )
     Pg = opfdict[:Pg]
@@ -385,7 +385,7 @@ function compute_quadratic_penalty(
     opfdict,
     opfdata::OPFData,
     opfBlockData::OPFBlocks, blk::Int,
-    modelinfo::ModelParams,
+    modelinfo::ModelInfo,
     algparams::AlgParams
 )
     (ngen, K, T) = size(opfdict[:Pg])
@@ -423,7 +423,7 @@ end
 function compute_quadratic_penalty(
     opfdict,
     opfdata::OPFData,
-    modelinfo::ModelParams,
+    modelinfo::ModelInfo,
     algparams::AlgParams
 )
     (ngen, K, T) = size(opfdict[:Pg])
@@ -457,10 +457,10 @@ function compute_quadratic_penalty(
 end
 
 function compute_lagrangian_function(
-    opfdict, λ::DualSolution,
+    opfdict, λ::OPFDualSolution,
     opfdata::OPFData,
     opfBlockData::OPFBlocks, blk::Int,
-    modelinfo::ModelParams,
+    modelinfo::ModelInfo,
     algparams::AlgParams
 )
 
@@ -490,9 +490,9 @@ function compute_lagrangian_function(
 end
 
 function compute_proximal_function(
-    x1::PrimalSolution, x2::PrimalSolution,
+    x1::OPFPrimalSolution, x2::OPFPrimalSolution,
     opfBlockData::OPFBlocks, blk::Int,
-    modelinfo::ModelParams,
+    modelinfo::ModelInfo,
     algparams::AlgParams
 )
     block = opfBlockData.blkIndex[blk]
@@ -523,7 +523,7 @@ end
 function compute_objective_function(
     opfdict, opfdata::OPFData,
     opfBlockData::OPFBlocks, blk::Int,
-    modelinfo::ModelParams, algparams::AlgParams
+    modelinfo::ModelInfo, algparams::AlgParams
 )
     K = size(opfdict[:Pg],2)
     block = opfBlockData.blkIndex[blk]
@@ -538,16 +538,16 @@ end
 
 function compute_objective_function(
     opfdict, opfdata::OPFData,
-    modelinfo::ModelParams, algparams::AlgParams
+    modelinfo::ModelInfo, algparams::AlgParams
 )
     (_, K, T) = size(opfdict[:Pg])
     return sum(compute_objective_function(opfdict, opfdata, modelinfo, algparams, k, t) for k=1:K, t=1:T)
 end
 
 function compute_objective_function(
-    x::PrimalSolution, opfdata::OPFData,
+    x::OPFPrimalSolution, opfdata::OPFData,
     opfBlockData::OPFBlocks, blk::Int,
-    modelinfo::ModelParams, algparams::AlgParams
+    modelinfo::ModelInfo, algparams::AlgParams
 )
     d = Dict(:Pg => x.Pg,
              :ωt => x.ωt,
@@ -561,10 +561,10 @@ function compute_objective_function(
 end
 
 function compute_lyapunov_function(
-    x::PrimalSolution, λ::DualSolution, opfdata::OPFData,
+    x::OPFPrimalSolution, λ::OPFDualSolution, opfdata::OPFData,
     opfBlockData::OPFBlocks, blk::Int,
-    xref::PrimalSolution,
-    modelinfo::ModelParams,
+    xref::OPFPrimalSolution,
+    modelinfo::ModelInfo,
     algparams::AlgParams
 )
     d = Dict(:Pg => x.Pg,
@@ -585,10 +585,10 @@ function compute_lyapunov_function(
 end
 
 function compute_dual_error(
-    x::PrimalSolution, xprev::PrimalSolution,
-    λ::DualSolution, λprev::DualSolution,
+    x::OPFPrimalSolution, xprev::OPFPrimalSolution,
+    λ::OPFDualSolution, λprev::OPFDualSolution,
     opfdata::OPFData,
-    modelinfo::ModelParams, algparams::AlgParams;
+    modelinfo::ModelInfo, algparams::AlgParams;
     lnorm = Inf
 )
     (ngen, K, T) = size(x.Pg)
@@ -707,9 +707,9 @@ function compute_dual_error(
 end
 
 function compute_true_ramp_error(
-    x::PrimalSolution,
+    x::OPFPrimalSolution,
     opfdata::OPFData,
-    modelinfo::ModelParams,
+    modelinfo::ModelInfo,
     tIdx::Int = 0
 )
     d = Dict(:Pg => x.Pg,
@@ -725,9 +725,9 @@ function compute_true_ramp_error(
 end
 
 function compute_true_ctgs_error(
-    x::PrimalSolution,
+    x::OPFPrimalSolution,
     opfdata::OPFData,
-    modelinfo::ModelParams,
+    modelinfo::ModelInfo,
     kIdx::Int = 0, tIdx::Int = 0
 )
     d = Dict(:Pg => x.Pg,
@@ -750,9 +750,9 @@ function compute_true_ctgs_error(
 end
 
 function compute_true_ramp_error(
-    x::PrimalSolution, opfdata::OPFData,
+    x::OPFPrimalSolution, opfdata::OPFData,
     opfBlockData::OPFBlocks, blk::Int,
-    modelinfo::ModelParams,
+    modelinfo::ModelInfo,
 )
     block = opfBlockData.blkIndex[blk]
     k = block[1]
@@ -764,9 +764,9 @@ function compute_true_ramp_error(
 end
 
 function compute_true_ctgs_error(
-    x::PrimalSolution, opfdata::OPFData,
+    x::OPFPrimalSolution, opfdata::OPFData,
     opfBlockData::OPFBlocks, blk::Int,
-    modelinfo::ModelParams,
+    modelinfo::ModelInfo,
 )
     block = opfBlockData.blkIndex[blk]
     k = block[1]
@@ -778,12 +778,12 @@ end
 """
     opf_block_get_auglag_penalty_expr(
         opfmodel::JuMP.Model,
-        modelinfo::ModelParams,
+        modelinfo::ModelInfo,
         opfdata::OPFData,
         k::Int, t::Int,
         algparams::AlgParams,
-        primal::PrimalSolution,
-        dual::DualSolution
+        primal::OPFPrimalSolution,
+        dual::OPFDualSolution
     )
 
 Let `k` and `t` denote the contingency number and time period of
@@ -821,12 +821,12 @@ Also, unless otherwise indicated,
 """
 function opf_block_get_auglag_penalty_expr(
     opfmodel::JuMP.Model,
-    modelinfo::ModelParams,
+    modelinfo::ModelInfo,
     opfdata::OPFData,
     k::Int, t::Int,
     algparams::AlgParams,
-    primal::PrimalSolution,
-    dual::DualSolution
+    primal::OPFPrimalSolution,
+    dual::OPFDualSolution
 )
 
     (ngen, K, T) = size(primal.Pg)
