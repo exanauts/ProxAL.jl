@@ -499,25 +499,25 @@ function compute_proximal_function(
     k = block[1]
     t = block[2]
 
-    prox_pg = sum((x1.Pg[:,k,t] .- x2.Pg[:,k,t]).^2)
+    prox_pg = algparams.τ*sum((x1.Pg[:,k,t] .- x2.Pg[:,k,t]).^2)
     prox_penalty = 0
 
     if modelinfo.time_link_constr_type == :penalty
         if t > 1 && k == 1
-            prox_penalty += sum((x1.Zt[:,t] .- x2.Zt[:,t]).^2)
+            prox_penalty += (algparams.ρ_t/32.0)*sum((x1.Zt[:,t] .- x2.Zt[:,t]).^2)
         end
     end
 
     if k > 1 && algparams.decompCtgs
         if modelinfo.ctgs_link_constr_type == :frequency_ctrl
-            prox_penalty += (x1.ωt[k,t] - x2.ωt[k,t])^2
+            prox_penalty += (algparams.ρ_c/32.0)*(x1.ωt[k,t] - x2.ωt[k,t])^2
         end
         if modelinfo.ctgs_link_constr_type ∈ [:preventive_penalty, :corrective_penalty]
-            prox_penalty += sum((x1.Zk[:,k,t] .- x2.Zk[:,k,t]).^2)
+            prox_penalty += (algparams.ρ_c/32.0)*sum((x1.Zk[:,k,t] .- x2.Zk[:,k,t]).^2)
         end
     end
 
-    return 0.5*algparams.τ*(prox_pg + prox_penalty)
+    return 0.5*(prox_pg + prox_penalty)
 end
 
 function compute_objective_function(
