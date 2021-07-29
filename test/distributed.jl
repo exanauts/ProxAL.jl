@@ -50,7 +50,7 @@ algparams.gpu_optimizer = optimizer_with_attributes(
     "tol" => 1e-5,
 )
 
-OPTIMAL_OBJVALUE = round(11.258316111585623, digits = 6)
+OPTIMAL_OBJVALUE = round(11258.316096599736*modelinfo.obj_scale, digits = 6)
 OPTIMAL_PG = round.([0.8979870694509675, 1.3432060120295906, 0.9418738103137331, 0.9840203268625166, 1.448040098924617, 1.0149638876964715], digits = 5)
 @testset "Test ProxAL on $(case) with $T-period, $K-ctgs, time_link=penalty and Ipopt" begin
     algparams.mode = :coldstart
