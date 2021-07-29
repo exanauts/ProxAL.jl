@@ -268,7 +268,6 @@ function optimize!(nlp::ProxALEvaluator; print_timings=false)
                 maxθ = algparams.decompCtgs  ? max(algparams.θ_t, algparams.θ_c) : algparams.θ_t
                 delta = (runinfo.lyapunov[end-1] - runinfo.lyapunov[end])/abs(runinfo.lyapunov[end])
                 if delta < -1e-4 && algparams.τ < 320.0*maxθ
-                    # @show(delta)
                     algparams.τ *= 2.0
                 end
             end

@@ -512,11 +512,13 @@ function compute_proximal_function(
 
     if modelinfo.time_link_constr_type == :penalty
         if t > 1 && k == 1
+            # Note: algparams.ρ_t/32.0 is the prox weight for the zt variables
             prox_penalty += (algparams.ρ_t/32.0)*sum((x1.Zt[:,t] .- x2.Zt[:,t]).^2)
         end
     end
 
     if k > 1 && algparams.decompCtgs
+        # Note: algparams.ρ_c/32.0 is the prox weight for the ωt and zk variables
         if modelinfo.ctgs_link_constr_type == :frequency_ctrl
             prox_penalty += (algparams.ρ_c/32.0)*(x1.ωt[k,t] - x2.ωt[k,t])^2
         end
