@@ -39,12 +39,12 @@ This is nonblocking. An array of requests is returned.
 function comm_neighbors!(data::AbstractArray, blocks::AbstractBlocks, runinfo::ProxALProblem, comm::MPI.Comm)
 	requests = MPI.Request[]
     # For each period send to t-1 and t+1
-    for blk in runinfo.par_order[1,:]
+    for blk in runinfo.par_order
         block = blocks.blkIndex[blk]
         k = block[1]
         t = block[2]
         if ismywork(blk, comm)
-            for blkn in runinfo.par_order[1,:]
+            for blkn in runinfo.par_order
                 blockn = blocks.blkIndex[blkn]
                 kn = blockn[1]
                 tn = blockn[2]
@@ -57,12 +57,12 @@ function comm_neighbors!(data::AbstractArray, blocks::AbstractBlocks, runinfo::P
         end
     end
     # For each period receive from t-1 and t+1
-    for blk in runinfo.par_order[1,:]
+    for blk in runinfo.par_order
         block = blocks.blkIndex[blk]
         k = block[1]
         t = block[2]
         if ismywork(blk, comm)
-            for blkn in runinfo.par_order[1,:]
+            for blkn in runinfo.par_order
                 blockn = blocks.blkIndex[blkn]
                 kn = blockn[1]
                 tn = blockn[2]
