@@ -344,6 +344,8 @@ function compute_time_linking_constraints(
     if modelinfo.time_link_constr_type == :inequality
         link[:ramping_p] = [(t > 1) ? (+Pg[g,1,t-1] - Pg[g,1,t] - gens[g].ramp_agc) : 0.0 for g=1:ngen,t=Trange]
         link[:ramping_n] = [(t > 1) ? (-Pg[g,1,t-1] + Pg[g,1,t] - gens[g].ramp_agc) : 0.0 for g=1:ngen,t=Trange]
+    elseif modelinfo.time_link_constr_type == :equality
+        link[:ramping] = [(t > 1) ? (Pg[g,1,t-1] - Pg[g,1,t] + St[g,t] - gens[g].ramp_agc) : 0.0 for g=1:ngen,t=Trange]
     else
         link[:ramping] = [(t > 1) ? (Pg[g,1,t-1] - Pg[g,1,t] + St[g,t] + Zt[g,t] - gens[g].ramp_agc) : 0.0 for g=1:ngen,t=Trange]
     end
@@ -372,10 +374,16 @@ function compute_ctgs_linking_constraints(
     if modelinfo.ctgs_link_constr_type == :corrective_inequality
         link[:ctgs_p] = [(k > 1) ? (+Pg[g,1,t] - Pg[g,k,t] - gens[g].scen_agc) : 0.0 for g=1:ngen,k=Krange,t=Trange]
         link[:ctgs_n] = [(k > 1) ? (-Pg[g,1,t] + Pg[g,k,t] - gens[g].scen_agc) : 0.0 for g=1:ngen,k=Krange,t=Trange]
+    elseif modelinfo.ctgs_link_constr_type == :corrective_equality
+        link[:ctgs] = [(k > 1) ? (Pg[g,1,t] - Pg[g,k,t] + Sk[g,k,t] - gens[g].scen_agc) : 0.0 for g=1:ngen,k=Krange,t=Trange]
+    elseif modelinfo.ctgs_link_constr_type == :corrective_penalty
+        link[:ctgs] = [(k > 1) ? (Pg[g,1,t] - Pg[g,k,t] + Sk[g,k,t] + Zk[g,k,t] - gens[g].scen_agc) : 0.0 for g=1:ngen,k=Krange,t=Trange]
+    elseif modelinfo.ctgs_link_constr_type == :preventive_equality
+        link[:ctgs] = [(k > 1) ? (Pg[g,1,t] - Pg[g,k,t]) : 0.0 for g=1:ngen,k=Krange,t=Trange]
+    elseif modelinfo.ctgs_link_constr_type == :preventive_penalty
+        link[:ctgs] = [(k > 1) ? (Pg[g,1,t] - Pg[g,k,t] + Zk[g,k,t]) : 0.0 for g=1:ngen,k=Krange,t=Trange]
     else
-        β = [gens[g].scen_agc for g=1:ngen]
-        (modelinfo.ctgs_link_constr_type ∉ [:corrective_inequality, :corrective_equality, :corrective_penalty]) && (β .= 0)
-        link[:ctgs] = [(k > 1) ? (Pg[g,1,t] - Pg[g,k,t] + (gens[g].alpha*ωt[k,t]) + Sk[g,k,t] + Zk[g,k,t] - β[g]) : 0.0 for g=1:ngen,k=Krange,t=Trange]
+        link[:ctgs] = [(k > 1) ? (Pg[g,1,t] - Pg[g,k,t] + (gens[g].alpha*ωt[k,t])) : 0.0 for g=1:ngen,k=Krange,t=Trange]
     end
 
     return link
@@ -499,25 +507,27 @@ function compute_proximal_function(
     k = block[1]
     t = block[2]
 
-    prox_pg = sum((x1.Pg[:,k,t] .- x2.Pg[:,k,t]).^2)
+    prox_pg = algparams.τ*sum((x1.Pg[:,k,t] .- x2.Pg[:,k,t]).^2)
     prox_penalty = 0
 
     if modelinfo.time_link_constr_type == :penalty
         if t > 1 && k == 1
-            prox_penalty += sum((x1.Zt[:,t] .- x2.Zt[:,t]).^2)
+            # Note: algparams.ρ_t/32.0 is the prox weight for the zt variables
+            prox_penalty += (algparams.ρ_t/32.0)*sum((x1.Zt[:,t] .- x2.Zt[:,t]).^2)
         end
     end
 
     if k > 1 && algparams.decompCtgs
+        # Note: algparams.ρ_c/32.0 is the prox weight for the ωt and zk variables
         if modelinfo.ctgs_link_constr_type == :frequency_ctrl
-            prox_penalty += (x1.ωt[k,t] - x2.ωt[k,t])^2
+            prox_penalty += (algparams.ρ_c/32.0)*(x1.ωt[k,t] - x2.ωt[k,t])^2
         end
         if modelinfo.ctgs_link_constr_type ∈ [:preventive_penalty, :corrective_penalty]
-            prox_penalty += sum((x1.Zk[:,k,t] .- x2.Zk[:,k,t]).^2)
+            prox_penalty += (algparams.ρ_c/32.0)*sum((x1.Zk[:,k,t] .- x2.Zk[:,k,t]).^2)
         end
     end
 
-    return 0.5*algparams.τ*(prox_pg + prox_penalty)
+    return 0.5*(prox_pg + prox_penalty)
 end
 
 function compute_objective_function(
@@ -715,12 +725,16 @@ function compute_true_ramp_error(
     d = Dict(:Pg => x.Pg,
              :St => x.St,
              :Zt => x.Zt)
+    if modelinfo.time_link_constr_type == :inequality
+        link = compute_time_linking_constraints(d, opfdata, modelinfo, tIdx)
+        return maximum(max.(link[:ramping_p], link[:ramping_n], 0.0))
+    end
+
     true_time_link_constr_type = modelinfo.time_link_constr_type
     modelinfo.time_link_constr_type = :equality
     link = compute_time_linking_constraints(d, opfdata, modelinfo, tIdx)
     modelinfo.time_link_constr_type = true_time_link_constr_type
 
-    #return maximum(max.(link[:ramping_p], link[:ramping_n], 0.0))
     return maximum(abs.(link[:ramping]))
 end
 
@@ -734,11 +748,14 @@ function compute_true_ctgs_error(
              :ωt => x.ωt,
              :Sk => x.Sk,
              :Zk => x.Zk)
-    ineq = false
+    if modelinfo.ctgs_link_constr_type == :corrective_inequality
+        link = compute_ctgs_linking_constraints(d, opfdata, modelinfo, kIdx, tIdx)
+        return maximum(max.(abs.(link[:ctgs_p][:]), abs.(link[:ctgs_n][:]), 0.0))
+    end
+
     true_ctgs_link_constr_type = modelinfo.ctgs_link_constr_type
-    if true_ctgs_link_constr_type ∈ [:corrective_penalty, :corrective_equality]
-        modelinfo.ctgs_link_constr_type = :corrective_inequality
-        ineq = true
+    if true_ctgs_link_constr_type ∈ [:corrective_penalty]
+        modelinfo.ctgs_link_constr_type = :corrective_equality
     end
     if true_ctgs_link_constr_type ∈ [:preventive_penalty]
         modelinfo.ctgs_link_constr_type = :preventive_equality
@@ -746,7 +763,7 @@ function compute_true_ctgs_error(
     link = compute_ctgs_linking_constraints(d, opfdata, modelinfo, kIdx, tIdx)
     modelinfo.ctgs_link_constr_type = true_ctgs_link_constr_type
 
-    return ineq ? maximum(abs.(link[:ctgs_p][:]), abs.(link[:ctgs_n][:])) : maximum(abs.(link[:ctgs][:]))
+    return maximum(abs.(link[:ctgs][:]))
 end
 
 function compute_true_ramp_error(

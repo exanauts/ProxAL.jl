@@ -51,7 +51,7 @@ Base.@kwdef mutable struct AlgParams
     jacobi::Bool     = true  # if true: do jacobi, else do gauss-siedel
     iterlim::Int     = 100   # maximum number of ADMM iterations
     nlpiterlim::Int  = 100   # maximum number of NLP subproblem iterations
-    tol::Float64     = 1e-4  # tolerance used for ADMM termination
+    tol::Float64     = 1e-3  # tolerance used for ADMM termination
     zero::Float64    = 1e-8  # tolerance below which is regarded as zero
     θ_t::Float64     = 1.0   # weight_quadratic_penalty_time
     θ_c::Float64     = 1.0   # weight_quadratic_penalty_ctgs

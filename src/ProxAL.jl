@@ -323,7 +323,8 @@ function runinfo_update(
     maxviol_t_actual = 0.0
     for blk in runinfo.par_order
         if ismywork(blk, comm)
-            maxviol_t_actual = compute_true_ramp_error(runinfo.x, opfdata, opfBlockData, blk, modelinfo)
+            lmaxviol_t_actual = compute_true_ramp_error(runinfo.x, opfdata, opfBlockData, blk, modelinfo)
+            maxviol_t_actual = max(maxviol_t_actual, lmaxviol_t_actual)
         end
     end
     maxviol_t_actual = comm_max(maxviol_t_actual, comm)
@@ -332,7 +333,8 @@ function runinfo_update(
     maxviol_c_actual = 0.0
     for blk in runinfo.par_order
         if ismywork(blk, comm)
-            maxviol_c_actual = compute_true_ctgs_error(runinfo.x, opfdata, opfBlockData, blk, modelinfo)
+            lmaxviol_c_actual = compute_true_ctgs_error(runinfo.x, opfdata, opfBlockData, blk, modelinfo)
+            maxviol_c_actual = max(maxviol_c_actual, lmaxviol_c_actual)
         end
     end
     maxviol_c_actual = comm_max(maxviol_c_actual, comm)
@@ -386,10 +388,10 @@ function runinfo_update(
     =#
     if algparams.verbose > 0 && comm_rank(comm) == 0
         if iter == 1
-            @printf("---------------------------------------------------------------------------------------------------------------\n");
-            @printf("iter ramp_err   ramp_err   ctgs_err   ctgs_err   dual_error lyapunov_f   rho_t   rho_c theta_t theta_c     tau \n");
+            @printf("--------------------------------------------------------------------------------------------------------------------\n");
+            @printf("iter ramp_err   ramp_err   ctgs_err   ctgs_err   dual_error lyapunov_f    rho_t    rho_c  theta_t  theta_c      tau \n");
             @printf("     (penalty)  (actual)   (penalty)  (actual)\n");
-            @printf("---------------------------------------------------------------------------------------------------------------\n");
+            @printf("--------------------------------------------------------------------------------------------------------------------\n");
         end
         @printf("%4d ", iter-1);
         @printf("%10.4e ", runinfo.maxviol_t[iter])
@@ -398,11 +400,11 @@ function runinfo_update(
         @printf("%10.4e ", runinfo.maxviol_c_actual[iter])
         @printf("%10.4e ", runinfo.maxviol_d[iter])
         @printf("%10.4e ", runinfo.lyapunov[iter])
-        @printf("%7.2f ", algparams.ρ_t)
-        @printf("%7.2f ", algparams.ρ_c)
-        @printf("%7.2f ", algparams.θ_t)
-        @printf("%7.2f ", algparams.θ_c)
-        @printf("%7.2f ", algparams.τ)
+        @printf("%8.2e ", algparams.ρ_t)
+        @printf("%8.2e ", algparams.ρ_c)
+        @printf("%8.2e ", algparams.θ_t)
+        @printf("%8.2e ", algparams.θ_c)
+        @printf("%8.2e ", algparams.τ)
         @printf("\n")
     end
 end
