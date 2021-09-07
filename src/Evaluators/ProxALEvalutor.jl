@@ -174,7 +174,7 @@ function optimize!(nlp::ProxALEvaluator; print_timings=false)
 
             print_timings && comm_barrier(comm)
             elapsed_t = @elapsed begin
-                requests = comm_neighbors!(nlp_opt_sol, opfBlockData, runinfo, comm)
+                requests = comm_neighbors!(nlp_opt_sol, opfBlockData, runinfo, CommPatternTK(), comm)
                 # Every worker sends his contribution
                 comm_sum!(nlp_soltime, comm)
                 comm_wait!(requests)
@@ -230,7 +230,7 @@ function optimize!(nlp::ProxALEvaluator; print_timings=false)
 
         print_timings && comm_barrier(comm)
         elapsed_t = @elapsed begin
-            requests = comm_neighbors!(x.Zt, opfBlockData, runinfo, comm)
+            requests = comm_neighbors!(x.Zt, opfBlockData, runinfo, CommPatternT(), comm)
             comm_wait!(requests)
             print_timings && comm_barrier(comm)
         end
@@ -260,7 +260,7 @@ function optimize!(nlp::ProxALEvaluator; print_timings=false)
           print_timings && println("update_dual_vars(): $elapsed_t")
         end
         elapsed_t = @elapsed begin
-            requests = comm_neighbors!(λ.ramping, opfBlockData, runinfo, comm)
+            requests = comm_neighbors!(λ.ramping, opfBlockData, runinfo, CommPatternT(), comm)
             maxviol_t = comm_max(maxviol_t, comm)
             maxviol_c = comm_max(maxviol_c, comm)
             push!(runinfo.maxviol_t, maxviol_t)
