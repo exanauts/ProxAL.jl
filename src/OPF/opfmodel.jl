@@ -604,11 +604,8 @@ function compute_dual_error(
     (ngen, K, T) = size(x.Pg)
 
     err_pg = zeros(ngen, K, T)
-    err_ωt = zeros(K, T)
     err_st = zeros(ngen, T)
-    err_zt = zeros(ngen, T)
     err_sk = zeros(ngen, K, T)
-    err_zk = zeros(ngen, K, T)
 
     if T > 1
         @assert modelinfo.time_link_constr_type == :penalty
@@ -637,10 +634,6 @@ function compute_dual_error(
             err_pg[:,1,1:T] -= prox_pg_err[:,1:T]
             err_st[:,2:T] += penalty_pg_forward_err
             err_st[:,2:T] += -true_pg_dual .+ lagrangian_pg_err
-            err_zt[:,2:T] += -true_pg_dual .+ lagrangian_pg_err - (algparams.ρ_t*(
-                                        x.Pg[:,1,1:(T-1)] .- x.Pg[:,1,2:T] .+ x.St[:,2:T] .+ x.Zt[:,2:T] .- β[:,2:T]
-                                    ))
-            err_zt[:,2:T] -= ((algparams.ρ_t/32.0)*(x.Zt[:,2:T] - xprev.Zt[:,2:T]))
         end
     end
 
@@ -679,39 +672,17 @@ function compute_dual_error(
 
             err_pg[:,1,:] += dropdims(sum(-true_pg_ctgs_dual .+ lagrangian_pg_ctgs_err .- penalty_pg_base_err; dims = 2); dims = 2)
             err_pg[:,2:K,:] += true_pg_ctgs_dual .- lagrangian_pg_ctgs_err .- penalty_pg_ctgs_err .- prox_pg_err
-            if modelinfo.ctgs_link_constr_type == :frequency_ctrl
-                for g=1:ngen
-                    err_ωt[2:K,:] += opfdata.generators[g].alpha*(
-                                        -true_pg_ctgs_dual[g,:,:].+lagrangian_pg_ctgs_err[g,:,:].-
-                                        (algparams.ρ_c*(
-                                            pg_base[g,2:K,:] .- x.Pg[g,2:K,:] .+ (opfdata.generators[g].alpha*x.ωt[2:K,:])
-                                        ))
-                                    )
-                end
-                err_ωt[2:K,:] -= (algparams.ρ_c/32.0)*(x.ωt[2:K,:] - xprev.ωt[2:K,:])
-            else
-                err_sk[:,2:K,:] += penalty_pg_ctgs_err
-            end
-            if modelinfo.time_link_constr_type ∈ [:preventive_equality, :preventive_penalty, :corrective_equality, :corrective_penalty]
-                err_sk[:,2:K,:] += -true_pg_ctgs_dual .+ lagrangian_pg_ctgs_err
-            end
-            if modelinfo.time_link_constr_type ∈ [:preventive_penalty, :corrective_penalty]
-                err_zk[:,2:K,:] += -true_pg_ctgs_dual .+ lagrangian_pg_ctgs_err - (algparams.ρ_c*(
-                                            pg_base .- x.Pg[:,2:K,:] .+ x.Sk[:,2:K,:] .+ x.Zk[:,2:K,:] .- β[:,2:K,:]
-                                        ))
-                err_zk[:,2:K,:] -= ((algparams.ρ_c/32.0)*(x.Zk[:,2:K,:] - xprev.Zk[:,2:K,:]))
+            if modelinfo.ctgs_link_constr_type != :frequency_ctrl
+                err_sk[:,2:K,:] += penalty_pg_ctgs_err - true_pg_ctgs_dual .+ lagrangian_pg_ctgs_err
             end
         end
     end
 
     err_pg_view = view(err_pg, :, :, :)
-    err_ωt_view = view(err_ωt, :, :)
     err_st_view = view(err_st, :, :)
-    err_zt_view = view(err_zt, :, :)
     err_sk_view = view(err_sk, :, :, :)
-    err_zk_view = view(err_zk, :, :, :)
 
-    dual_error = CatView(err_pg_view, err_ωt_view, err_st_view, err_zt_view, err_sk_view, err_zk_view)
+    dual_error = CatView(err_pg_view, err_st_view, err_sk_view)
 
     return norm(dual_error, lnorm)
 end
