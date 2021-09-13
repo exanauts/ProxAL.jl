@@ -1,7 +1,7 @@
-# FIX ME: A lot of the functions here are for the deprecated NonDecomposedModel
 function opf_model_add_variables(opfmodel::JuMP.Model, opfdata::OPFData,
                                  modelinfo::ModelInfo,
-                                 algparams::AlgParams)
+                                 algparams::AlgParams,
+                                 kIdx::Int = 0, tIdx::Int = 0)
     # shortcuts for compactness
     buses = opfdata.buses
     gens  = opfdata.generators
@@ -12,6 +12,9 @@ function opf_model_add_variables(opfmodel::JuMP.Model, opfdata::OPFData,
     K = modelinfo.num_ctgs + 1 # base case counted separately
     @assert T >= 1
     @assert K >= 1
+    @assert algparams.mode ∈ [:nondecomposed, :lyapunov_bound] || (tIdx >= 1 && kIdx >= 1)
+    @assert algparams.mode ∉ [:nondecomposed, :lyapunov_bound] || (tIdx == 0 && kIdx == 0)
+    @assert algparams.mode ∈ [:nondecomposed, :lyapunov_bound] || algparams.decompCtgs || kIdx == 1
 
 
     # Variables
@@ -78,30 +81,29 @@ function opf_model_add_variables(opfmodel::JuMP.Model, opfdata::OPFData,
         fix.(St[:,1], 0; force = true)
         fix.(Sk[:,1,:], 0; force = true)
     end
-    if !algparams.decompCtgs
+    if kIdx > 1
+        fix.(St[:,1], 0; force = true)
+    end
+    if !algparams.decompCtgs || kIdx == 1
         fix.(Sk[:,1,:], 0; force = true)
     end
-    if T > 1
-        if modelinfo.time_link_constr_type == :inequality && algparams.mode == :nondecomposed
-            fix.(St, 0; force = true)
-        end
-        if modelinfo.time_link_constr_type != :penalty
-            fix.(Zt, 0; force = true)
-        end
+    if modelinfo.time_link_constr_type == :inequality && algparams.mode == :nondecomposed
+        fix.(St, 0; force = true)
     end
-    if K > 1
-        if modelinfo.ctgs_link_constr_type == :frequency_ctrl
+    if modelinfo.time_link_constr_type != :penalty
+        fix.(Zt, 0; force = true)
+    end
+    if modelinfo.ctgs_link_constr_type == :frequency_ctrl
+        fix.(Sk, 0; force = true)
+        fix.(Zk, 0; force = true)
+    else
+        fix.(ωt, 0; force = true)
+        if modelinfo.ctgs_link_constr_type ∈ [:preventive_equality, :preventive_penalty] ||
+            (modelinfo.ctgs_link_constr_type == :corrective_inequality && (algparams.mode == :nondecomposed || !algparams.decompCtgs))
             fix.(Sk, 0; force = true)
+        end
+        if modelinfo.ctgs_link_constr_type ∉ [:preventive_penalty, :corrective_penalty]
             fix.(Zk, 0; force = true)
-        else
-            fix.(ωt, 0; force = true)
-            if modelinfo.ctgs_link_constr_type ∈ [:preventive_equality, :preventive_penalty] ||
-                (modelinfo.ctgs_link_constr_type == :corrective_inequality && (algparams.mode == :nondecomposed || !algparams.decompCtgs))
-                fix.(Sk, 0; force = true)
-            end
-            if modelinfo.ctgs_link_constr_type ∉ [:preventive_penalty, :corrective_penalty]
-                fix.(Zk, 0; force = true)
-            end
         end
     end
 end

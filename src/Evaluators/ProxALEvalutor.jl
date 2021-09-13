@@ -115,12 +115,19 @@ function optimize!(nlp::ProxALEvaluator; print_timings=false)
         @views opt_sol[fr:to, blk] .= solution.va[:]
         # wt
         fr = to +1  ; to = fr + k_per_block -1
-        if !algparams.decompCtgs
-            @views opt_sol[fr:to, blk] .= solution.ωt[:]
-        end
+        @views opt_sol[fr:to, blk] .= solution.ωt[:]
         # St
         fr = to +1  ; to = fr + ngen - 1
         @views opt_sol[fr:to, blk] .= solution.st[:]
+        # zt
+        fr = to +1  ; to = fr + ngen -1
+        @views opt_sol[fr:to, blk] .= solution.zt[:]
+        # sk
+        fr = to +1  ; to = fr + ngen * k_per_block - 1
+        @views opt_sol[fr:to, blk] .= solution.sk[:]
+        # zk
+        fr = to +1  ; to = fr + ngen * k_per_block - 1
+        @views opt_sol[fr:to, blk] .= solution.zk[:]
     end
     #------------------------------------------------------------------------------------
     function blocknlp_copy(blk, x_ref, λ_ref, alg_ref)
@@ -310,10 +317,10 @@ function optimize!(nlp::ProxALEvaluator; print_timings=false)
             if algparams.updateρ_t
                 if runinfo.maxviol_t[end] > 10.0*runinfo.maxviol_d[end] && algparams.ρ_t < 32.0*algparams.θ_t
                     algparams.ρ_t = min(2.0*algparams.ρ_t, 32.0*algparams.θ_t)
-                    algparams.τ = 2.0*algparams.ρ_t
+                    algparams.τ = algparams.decompCtgs ? 2.0*max(algparams.ρ_t, algparams.ρ_c) : 2.0*algparams.ρ_t
                 elseif runinfo.maxviol_d[end] > 10.0*runinfo.maxviol_t[end]
                     algparams.ρ_t *= 0.5
-                    algparams.τ = 2.0*algparams.ρ_t
+                    algparams.τ = algparams.decompCtgs ? 2.0*max(algparams.ρ_t, algparams.ρ_c) : 2.0*algparams.ρ_t
                 end
             end
 

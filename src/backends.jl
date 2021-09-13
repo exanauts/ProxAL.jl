@@ -244,6 +244,9 @@ function get_solution(block::JuMPBlockBackend)
         qg=JuMP.value.(opfmodel[:Qg]),
         ωt=JuMP.value.(opfmodel[:ωt]),
         st=JuMP.value.(opfmodel[:St]),
+        zt=JuMP.value.(opfmodel[:Zt]),
+        sk=JuMP.value.(opfmodel[:Sk]),
+        zk=JuMP.value.(opfmodel[:Zk]),
     )
     return solution
 end
@@ -262,7 +265,7 @@ end
 
 function add_variables!(block::JuMPBlockBackend, algparams::AlgParams)
     opf_model_add_variables(
-        block.model, block.data, block.params, algparams,
+        block.model, block.data, block.params, algparams, block.k, block.t
     )
 end
 

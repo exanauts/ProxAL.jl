@@ -94,7 +94,9 @@ function update_primal_nlpvars(x::AbstractPrimalSolution, opfBlockData::Abstract
 
     from = 1+to
     to = to + size(x.St, 1)
-    @views x.St[:,t] .= opfBlockData.colValue[from:to,blk]
+    if !algparams.decompCtgs || k == 1
+        @views x.St[:,t] .= opfBlockData.colValue[from:to,blk]
+    end
 
     # Zt will be updated in update_primal_penalty
     from = 1+to
@@ -234,8 +236,8 @@ function ProxALProblem(
     blkLinIndex = LinearIndices(blocks.blkIndex)
     for blk in blkLinIndex
         if ismywork(blk, comm)
-            model = blocks.blkModel[blk]
-            init!(model, algparams)
+            # model = blocks.blkModel[blk]
+            # init!(model, algparams)
             blocks.colValue[:,blk] .= get_block_view(x, blocks.blkIndex[blk], modelinfo, algparams)
         end
     end
