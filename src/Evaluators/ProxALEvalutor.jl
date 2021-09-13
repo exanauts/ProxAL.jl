@@ -48,9 +48,9 @@ function ProxALEvaluator(
         modelinfo.time_link_constr_type = :penalty
     end
     if modelinfo.num_ctgs > 1 && algparams.decompCtgs
-        if modelinfo.ctgs_link_constr_type ∉ [:frequency_ctrl, :preventive_penalty, :corrective_penalty]
+        if modelinfo.ctgs_link_constr_type ∉ [:frequency_penalty, :preventive_penalty, :corrective_penalty]
             str = "ProxAL is guaranteed to converge only when "*
-                  "ctgs_link_constr_type ∈ [:frequency_ctrl, :preventive_penalty, :corrective_penalty]\n"
+                  "ctgs_link_constr_type ∈ [:frequency_penalty, :preventive_penalty, :corrective_penalty]\n"
             if modelinfo.ctgs_link_constr_type == :preventive_equality
                 @warn(str * "         Forcing ctgs_link_constr_type = :preventive_penalty\n")
                 modelinfo.ctgs_link_constr_type = :preventive_penalty
@@ -58,8 +58,8 @@ function ProxALEvaluator(
                 @warn(str * "         Forcing ctgs_link_constr_type = :corrective_penalty\n")
                 modelinfo.ctgs_link_constr_type = :corrective_penalty
             else
-                @warn(str * "         Forcing ctgs_link_constr_type = :frequency_ctrl\n")
-                modelinfo.ctgs_link_constr_type = :frequency_ctrl
+                @warn(str * "         Forcing ctgs_link_constr_type = :frequency_penalty\n")
+                modelinfo.ctgs_link_constr_type = :frequency_penalty
             end
         end
     end
@@ -121,13 +121,19 @@ function optimize!(nlp::ProxALEvaluator; print_timings=false)
         @views opt_sol[fr:to, blk] .= solution.st[:]
         # zt
         fr = to +1  ; to = fr + ngen -1
-        @views opt_sol[fr:to, blk] .= solution.zt[:]
+        if haskey(solution, :zt)
+            @views opt_sol[fr:to, blk] .= solution.zt[:]
+        end
         # sk
         fr = to +1  ; to = fr + ngen * k_per_block - 1
-        @views opt_sol[fr:to, blk] .= solution.sk[:]
+        if haskey(solution, :sk)
+            @views opt_sol[fr:to, blk] .= solution.sk[:]
+        end
         # zk
         fr = to +1  ; to = fr + ngen * k_per_block - 1
-        @views opt_sol[fr:to, blk] .= solution.zk[:]
+        if haskey(solution, :zk)
+            @views opt_sol[fr:to, blk] .= solution.zk[:]
+        end
     end
     #------------------------------------------------------------------------------------
     function blocknlp_copy(blk, x_ref, λ_ref, alg_ref)

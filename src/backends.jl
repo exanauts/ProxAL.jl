@@ -170,27 +170,14 @@ function init!(block::JuMPBlockBackend, algparams::AlgParams)
 
     t, k = block.t, block.k
 
-    (t == 1) &&
-        fix.(opfmodel[:St][:,1], 0; force = true)
-    (k == 1 && algparams.decompCtgs) &&
-        fix.(opfmodel[:Sk][:,1,:], 0; force = true)
-
     # Fix penalty vars to 0
     fix.(opfmodel[:Zt], 0; force = true)
     if algparams.decompCtgs
         fix.(opfmodel[:Zk], 0; force = true)
-        if modelinfo.ctgs_link_constr_type == :frequency_ctrl
-            fix.(opfmodel[:ωt], 0; force = true)
-        end
     end
 
     # Add block constraints
-    if modelinfo.allow_constr_infeas
-        σ_re = opfmodel[:sigma_real][:,j,1]
-        σ_im = opfmodel[:sigma_imag][:,j,1]
-        σ_fr = opfmodel[:sigma_lineFr][:,j,1]
-        σ_to = opfmodel[:sigma_lineTo][:,j,1]
-    else
+    if !modelinfo.allow_constr_infeas
         zb = zeros(length(opfdata.buses))
         zl = zeros(length(opfdata.lines))
         σ_re = zb
@@ -198,8 +185,13 @@ function init!(block::JuMPBlockBackend, algparams::AlgParams)
         σ_fr = zl
         σ_to = zl
     end
-
     @views for j=1:Kblock
+        if modelinfo.allow_constr_infeas
+            σ_re = opfmodel[:sigma_real][:,j,1]
+            σ_im = opfmodel[:sigma_imag][:,j,1]
+            σ_fr = opfmodel[:sigma_lineFr][:,j,1]
+            σ_to = opfmodel[:sigma_lineTo][:,j,1]
+        end
         opfdata_c = (j == 1) ? opfdata :
             opf_loaddata(block.rawdata; lineOff = opfdata.lines[block.rawdata.ctgs_arr[j - 1]], time_horizon_start = t, time_horizon_end = t, load_scale = modelinfo.load_scale, ramp_scale = modelinfo.ramp_scale)
         opf_model_add_real_power_balance_constraints(opfmodel, opfdata_c, opfmodel[:Pg][:,j,1], opfdata_c.Pd[:,1], opfmodel[:Vm][:,j,1], opfmodel[:Va][:,j,1], σ_re)
@@ -252,7 +244,7 @@ function get_solution(block::JuMPBlockBackend)
 end
 
 function set_start_values!(block::JuMPBlockBackend, x0)
-    JuMP.set_start_value.(all_variables(block.model), x0)
+    JuMP.set_start_value.(all_variables(block.model)[1:length(x0)], x0)
 end
 
 function optimize!(block::JuMPBlockBackend, x0::AbstractArray, algparams::AlgParams)

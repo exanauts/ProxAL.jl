@@ -97,7 +97,7 @@ Specifies the ACOPF model structure.
 | `case_name::String` | name of case file | ""
 | `savefile::String` | name of save file | ""
 | `time_link_constr_type::Symbol` | `∈ [:penalty, :equality, :inequality]` see [Formulation](@ref) | `:penalty`
-| `ctgs_link_constr_type::Symbol` | `∈ [:frequency_ctrl, :preventive_penalty, :preventive_equality, :corrective_penalty, :corrective_equality, :corrective_inequality]`, see [Formulation](@ref) | `:frequency_ctrl`
+| `ctgs_link_constr_type::Symbol` | `∈ [:frequency_penalty, :frequency_equality, :preventive_penalty, :preventive_equality, :corrective_penalty, :corrective_equality, :corrective_inequality]`, see [Formulation](@ref) | `:frequency_penalty`
 """
 Base.@kwdef mutable struct ModelInfo
     num_time_periods::Int = 1
@@ -113,5 +113,5 @@ Base.@kwdef mutable struct ModelInfo
     case_name::String = ""
     savefile::String = ""
     time_link_constr_type::Symbol = :penalty # ∈ [:penalty, :equality, :inequality]
-    ctgs_link_constr_type::Symbol = :frequency_ctrl # ∈ [:frequency_ctrl, :preventive_penalty, :preventive_equality, :corrective_penalty, :corrective_equality, :corrective_inequality]
+    ctgs_link_constr_type::Symbol = :frequency_penalty # ∈ [:frequency_penalty, :frequency_equality, :preventive_penalty, :preventive_equality, :corrective_penalty, :corrective_equality, :corrective_inequality]
 end
