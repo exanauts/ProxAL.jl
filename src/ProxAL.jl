@@ -88,13 +88,13 @@ function update_primal_nlpvars(x::AbstractPrimalSolution, opfBlockData::Abstract
 
     from = 1+to
     to = to + length(range_k)
-    if !algparams.decompCtgs
-        @views x.ωt[range_k,t] .= opfBlockData.colValue[from:to,blk]
-    end
+    @views x.ωt[range_k,t] .= opfBlockData.colValue[from:to,blk]
 
     from = 1+to
     to = to + size(x.St, 1)
-    @views x.St[:,t] .= opfBlockData.colValue[from:to,blk]
+    if !algparams.decompCtgs || k == 1
+        @views x.St[:,t] .= opfBlockData.colValue[from:to,blk]
+    end
 
     # Zt will be updated in update_primal_penalty
     from = 1+to
@@ -104,7 +104,11 @@ function update_primal_nlpvars(x::AbstractPrimalSolution, opfBlockData::Abstract
     to = to + size(x.Sk, 1)*length(range_k)
     @views x.Sk[:,range_k,t][:] .= opfBlockData.colValue[from:to,blk]
 
-    # Zk will be updated in update_primal_penalty
+    from = 1+to
+    to = to + size(x.Zk, 1)*length(range_k)
+    if !algparams.decompCtgs
+        @views x.Zk[:,range_k,t][:] .= opfBlockData.colValue[from:to,blk]
+    end
 
     return nothing
 end
@@ -127,19 +131,12 @@ function update_primal_penalty(x::AbstractPrimalSolution, opfdata::OPFData,
                             ) ./  max(algparams.zero, (algparams.ρ_t/32.0) + algparams.ρ_t + (modelinfo.obj_scale*algparams.θ_t))
     end
     if k > 1 && algparams.decompCtgs
-        if modelinfo.ctgs_link_constr_type == :frequency_ctrl
-            x.ωt[k,t] = (( (algparams.ρ_c/32.0)*primal.ωt[k,t]) -
-                            sum(opfdata.generators[g].alpha *
-                                    (dual.ctgs[g,k,t] + (algparams.ρ_c * (x.Pg[g,1,t] - x.Pg[g,k,t])))
-                                for g=1:ngen)
-                        ) ./ max(algparams.zero, (algparams.ρ_c/32.0) + (modelinfo.obj_scale*modelinfo.weight_freq_ctrl) +
-                                sum(algparams.ρ_c*(opfdata.generators[g].alpha)^2
-                                    for g=1:ngen)
-                                )
-        end
-        if modelinfo.ctgs_link_constr_type ∈ [:preventive_penalty, :corrective_penalty]
+        if modelinfo.ctgs_link_constr_type ∈ [:frequency_penalty, :preventive_penalty, :corrective_penalty]
             if modelinfo.ctgs_link_constr_type == :corrective_penalty
                 β = [opfdata.generators[g].scen_agc for g=1:ngen]
+            elseif modelinfo.ctgs_link_constr_type == :frequency_penalty
+                β = [-opfdata.generators[g].alpha*x.ωt[k,t] for g=1:ngen]
+                @assert norm(x.Sk) <= algparams.zero
             else
                 β = zeros(ngen)
                 @assert norm(x.Sk) <= algparams.zero
@@ -180,7 +177,7 @@ function update_dual_vars(λ::AbstractDualSolution, opfdata::OPFData,
         maxviol_t = maximum(abs.(link_constr[:ramping][:]))
     end
     if k > 1 && algparams.decompCtgs
-        @assert modelinfo.ctgs_link_constr_type ∈ [:frequency_ctrl, :preventive_penalty, :corrective_penalty]
+        @assert modelinfo.ctgs_link_constr_type ∈ [:frequency_penalty, :preventive_penalty, :corrective_penalty]
         link_constr = compute_ctgs_linking_constraints(d, opfdata, modelinfo, k, t)
         λ.ctgs[:,k,t] += algparams.ρ_c*link_constr[:ctgs][:]
         maxviol_c = maximum(abs.(link_constr[:ctgs][:]))
@@ -234,8 +231,8 @@ function ProxALProblem(
     blkLinIndex = LinearIndices(blocks.blkIndex)
     for blk in blkLinIndex
         if ismywork(blk, comm)
-            model = blocks.blkModel[blk]
-            init!(model, algparams)
+            # model = blocks.blkModel[blk]
+            # init!(model, algparams)
             blocks.colValue[:,blk] .= get_block_view(x, blocks.blkIndex[blk], modelinfo, algparams)
         end
     end

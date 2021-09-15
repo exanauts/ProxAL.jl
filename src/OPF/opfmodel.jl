@@ -1,7 +1,7 @@
-# FIX ME: A lot of the functions here are for the deprecated NonDecomposedModel
 function opf_model_add_variables(opfmodel::JuMP.Model, opfdata::OPFData,
                                  modelinfo::ModelInfo,
-                                 algparams::AlgParams)
+                                 algparams::AlgParams,
+                                 kIdx::Int = 0, tIdx::Int = 0)
     # shortcuts for compactness
     buses = opfdata.buses
     gens  = opfdata.generators
@@ -12,6 +12,9 @@ function opf_model_add_variables(opfmodel::JuMP.Model, opfdata::OPFData,
     K = modelinfo.num_ctgs + 1 # base case counted separately
     @assert T >= 1
     @assert K >= 1
+    @assert algparams.mode ∈ [:nondecomposed, :lyapunov_bound] || (tIdx >= 1 && kIdx >= 1)
+    @assert algparams.mode ∉ [:nondecomposed, :lyapunov_bound] || (tIdx == 0 && kIdx == 0)
+    @assert algparams.mode ∈ [:nondecomposed, :lyapunov_bound] || algparams.decompCtgs || kIdx == 1
 
 
     # Variables
@@ -56,7 +59,6 @@ function opf_model_add_variables(opfmodel::JuMP.Model, opfdata::OPFData,
             end
         end
     end
-    fix.(ωt[1,:], 0)
     fix.(Zt[:,1], 0)
     fix.(Zk[:,1,:], 0)
     set_start_value.(Zt, 0)
@@ -75,34 +77,33 @@ function opf_model_add_variables(opfmodel::JuMP.Model, opfdata::OPFData,
         set_start_value.(Sk[i,:,:],  gens[i].scen_agc)
     end
     if algparams.mode ∈ [:nondecomposed, :lyapunov_bound]
+        fix.(ωt[1,:], 0)
         fix.(St[:,1], 0; force = true)
         fix.(Sk[:,1,:], 0; force = true)
-    end
-    if !algparams.decompCtgs
-        fix.(Sk[:,1,:], 0; force = true)
-    end
-    if T > 1
         if modelinfo.time_link_constr_type == :inequality && algparams.mode == :nondecomposed
             fix.(St, 0; force = true)
         end
-        if modelinfo.time_link_constr_type != :penalty
-            fix.(Zt, 0; force = true)
+    else
+        if kIdx > 1 || tIdx == 1
+            fix.(St[:,1], 0; force = true)
+        end
+        if !algparams.decompCtgs || kIdx == 1
+            fix.(ωt[1,:], 0)
+            fix.(Sk[:,1,:], 0; force = true)
         end
     end
-    if K > 1
-        if modelinfo.ctgs_link_constr_type == :frequency_ctrl
-            fix.(Sk, 0; force = true)
-            fix.(Zk, 0; force = true)
-        else
-            fix.(ωt, 0; force = true)
-            if modelinfo.ctgs_link_constr_type ∈ [:preventive_equality, :preventive_penalty] ||
-                (modelinfo.ctgs_link_constr_type == :corrective_inequality && (algparams.mode == :nondecomposed || !algparams.decompCtgs))
-                fix.(Sk, 0; force = true)
-            end
-            if modelinfo.ctgs_link_constr_type ∉ [:preventive_penalty, :corrective_penalty]
-                fix.(Zk, 0; force = true)
-            end
-        end
+    if modelinfo.ctgs_link_constr_type ∉ [:frequency_equality, :frequency_penalty]
+        fix.(ωt, 0; force = true)
+    end
+    if modelinfo.time_link_constr_type != :penalty
+        fix.(Zt, 0; force = true)
+    end
+    if modelinfo.ctgs_link_constr_type ∈ [:frequency_equality, :frequency_penalty, :preventive_equality, :preventive_penalty] ||
+        (modelinfo.ctgs_link_constr_type == :corrective_inequality && (algparams.mode == :nondecomposed || !algparams.decompCtgs))
+        fix.(Sk, 0; force = true)
+    end
+    if modelinfo.ctgs_link_constr_type ∉ [:frequency_penalty, :preventive_penalty, :corrective_penalty]
+        fix.(Zk, 0; force = true)
     end
 end
 
@@ -296,12 +297,12 @@ function compute_objective_function(
         nbus = size(sigma_real, 1)
         nline = size(sigma_lineFr, 1)
         obj_constr_infeas = 0.5*sum(sigma_real[b,k,t]^2 + sigma_imag[b,k,t]^2 for b=1:nbus) +
-                            0.5*sum(sigma_lineFrom[l,k,t]^2 + sigma_lineTo[l,k,t]^2 for l=1:nline)
+                            0.5*sum(sigma_lineFr[l,k,t]^2 + sigma_lineTo[l,k,t]^2 for l=1:nline)
         obj_constr_infeas = (kIdx > 1 ? modelinfo.weight_ctgs : 1.0)*obj_constr_infeas
     else
         obj_constr_infeas = 0
     end
-    if modelinfo.ctgs_link_constr_type == :frequency_ctrl
+    if modelinfo.ctgs_link_constr_type ∈ [:frequency_penalty, :frequency_equality]
         obj_freq_ctrl = 0.5*ωt[k,t]^2
     else
         obj_freq_ctrl = 0
@@ -311,7 +312,7 @@ function compute_objective_function(
     else
         obj_bigM_penalty_time = 0
     end
-    if modelinfo.ctgs_link_constr_type ∈ [:preventive_penalty, :corrective_penalty]
+    if modelinfo.ctgs_link_constr_type ∈ [:frequency_penalty, :preventive_penalty, :corrective_penalty]
         obj_bigM_penalty_ctgs = 0.5*sum(Zk[:,k,t].^2)
     else
         obj_bigM_penalty_ctgs = 0
@@ -382,8 +383,10 @@ function compute_ctgs_linking_constraints(
         link[:ctgs] = [(k > 1) ? (Pg[g,1,t] - Pg[g,k,t]) : 0.0 for g=1:ngen,k=Krange,t=Trange]
     elseif modelinfo.ctgs_link_constr_type == :preventive_penalty
         link[:ctgs] = [(k > 1) ? (Pg[g,1,t] - Pg[g,k,t] + Zk[g,k,t]) : 0.0 for g=1:ngen,k=Krange,t=Trange]
-    else
+    elseif modelinfo.ctgs_link_constr_type == :frequency_equality
         link[:ctgs] = [(k > 1) ? (Pg[g,1,t] - Pg[g,k,t] + (gens[g].alpha*ωt[k,t])) : 0.0 for g=1:ngen,k=Krange,t=Trange]
+    else
+        link[:ctgs] = [(k > 1) ? (Pg[g,1,t] - Pg[g,k,t] + (gens[g].alpha*ωt[k,t]) + Zk[g,k,t]) : 0.0 for g=1:ngen,k=Krange,t=Trange]
     end
 
     return link
@@ -518,11 +521,8 @@ function compute_proximal_function(
     end
 
     if k > 1 && algparams.decompCtgs
-        # Note: algparams.ρ_c/32.0 is the prox weight for the ωt and zk variables
-        if modelinfo.ctgs_link_constr_type == :frequency_ctrl
-            prox_penalty += (algparams.ρ_c/32.0)*(x1.ωt[k,t] - x2.ωt[k,t])^2
-        end
-        if modelinfo.ctgs_link_constr_type ∈ [:preventive_penalty, :corrective_penalty]
+        # Note: algparams.ρ_c/32.0 is the prox weight for the zk variables
+        if modelinfo.ctgs_link_constr_type ∈ [:frequency_penalty, :preventive_penalty, :corrective_penalty]
             prox_penalty += (algparams.ρ_c/32.0)*sum((x1.Zk[:,k,t] .- x2.Zk[:,k,t]).^2)
         end
     end
@@ -606,9 +606,7 @@ function compute_dual_error(
     err_pg = zeros(ngen, K, T)
     err_ωt = zeros(K, T)
     err_st = zeros(ngen, T)
-    err_zt = zeros(ngen, T)
     err_sk = zeros(ngen, K, T)
-    err_zk = zeros(ngen, K, T)
 
     if T > 1
         @assert modelinfo.time_link_constr_type == :penalty
@@ -637,15 +635,11 @@ function compute_dual_error(
             err_pg[:,1,1:T] -= prox_pg_err[:,1:T]
             err_st[:,2:T] += penalty_pg_forward_err
             err_st[:,2:T] += -true_pg_dual .+ lagrangian_pg_err
-            err_zt[:,2:T] += -true_pg_dual .+ lagrangian_pg_err - (algparams.ρ_t*(
-                                        x.Pg[:,1,1:(T-1)] .- x.Pg[:,1,2:T] .+ x.St[:,2:T] .+ x.Zt[:,2:T] .- β[:,2:T]
-                                    ))
-            err_zt[:,2:T] -= ((algparams.ρ_t/32.0)*(x.Zt[:,2:T] - xprev.Zt[:,2:T]))
         end
     end
 
     if K > 1 && algparams.decompCtgs
-        @assert modelinfo.ctgs_link_constr_type ∈ [:frequency_ctrl, :preventive_penalty, :corrective_penalty]
+        @assert modelinfo.ctgs_link_constr_type ∈ [:frequency_penalty, :preventive_penalty, :corrective_penalty]
         @views begin
             # for convenience
             β = zeros(ngen, K, T)
@@ -670,7 +664,7 @@ function compute_dual_error(
                                             x.Pg[:,2:K,:] .+     x.Sk[:,2:K,:] .+ xprev.Zk[:,2:K,:] .- β[:,2:K,:]
             prox_pg_err = algparams.τ*(x.Pg[:,2:K,:] .- xprev.Pg[:,2:K,:])
             for g=1:ngen
-                penalty_pg_ctgs_err[g,:,:] += opfdata.generators[g].alpha*xprev.ωt[2:K,:]
+                penalty_pg_ctgs_err[g,:,:] += opfdata.generators[g].alpha*x.ωt[2:K,:]
                 penalty_pg_base_err[g,:,:] += opfdata.generators[g].alpha*xprev.ωt[2:K,:]
             end
             penalty_pg_base_err .= algparams.ρ_c*penalty_pg_base_err
@@ -679,27 +673,11 @@ function compute_dual_error(
 
             err_pg[:,1,:] += dropdims(sum(-true_pg_ctgs_dual .+ lagrangian_pg_ctgs_err .- penalty_pg_base_err; dims = 2); dims = 2)
             err_pg[:,2:K,:] += true_pg_ctgs_dual .- lagrangian_pg_ctgs_err .- penalty_pg_ctgs_err .- prox_pg_err
-            if modelinfo.ctgs_link_constr_type == :frequency_ctrl
-                for g=1:ngen
-                    err_ωt[2:K,:] += opfdata.generators[g].alpha*(
-                                        -true_pg_ctgs_dual[g,:,:].+lagrangian_pg_ctgs_err[g,:,:].-
-                                        (algparams.ρ_c*(
-                                            pg_base[g,2:K,:] .- x.Pg[g,2:K,:] .+ (opfdata.generators[g].alpha*x.ωt[2:K,:])
-                                        ))
-                                    )
-                end
-                err_ωt[2:K,:] -= (algparams.ρ_c/32.0)*(x.ωt[2:K,:] - xprev.ωt[2:K,:])
-            else
-                err_sk[:,2:K,:] += penalty_pg_ctgs_err
+            if modelinfo.ctgs_link_constr_type ∈ [:corrective_penalty]
+                err_sk[:,2:K,:] += penalty_pg_ctgs_err - true_pg_ctgs_dual .+ lagrangian_pg_ctgs_err
             end
-            if modelinfo.time_link_constr_type ∈ [:preventive_equality, :preventive_penalty, :corrective_equality, :corrective_penalty]
-                err_sk[:,2:K,:] += -true_pg_ctgs_dual .+ lagrangian_pg_ctgs_err
-            end
-            if modelinfo.time_link_constr_type ∈ [:preventive_penalty, :corrective_penalty]
-                err_zk[:,2:K,:] += -true_pg_ctgs_dual .+ lagrangian_pg_ctgs_err - (algparams.ρ_c*(
-                                            pg_base .- x.Pg[:,2:K,:] .+ x.Sk[:,2:K,:] .+ x.Zk[:,2:K,:] .- β[:,2:K,:]
-                                        ))
-                err_zk[:,2:K,:] -= ((algparams.ρ_c/32.0)*(x.Zk[:,2:K,:] - xprev.Zk[:,2:K,:]))
+            if modelinfo.ctgs_link_constr_type ∈ [:frequency_penalty]
+                err_ωt[2:K,:] += sum(opfdata.generators[g].alpha * (-true_pg_ctgs_dual[g,:,:] .+ lagrangian_pg_ctgs_err[g,:,:] .+ penalty_pg_ctgs_err[g,:,:]) for g=1:ngen)
             end
         end
     end
@@ -707,11 +685,9 @@ function compute_dual_error(
     err_pg_view = view(err_pg, :, :, :)
     err_ωt_view = view(err_ωt, :, :)
     err_st_view = view(err_st, :, :)
-    err_zt_view = view(err_zt, :, :)
     err_sk_view = view(err_sk, :, :, :)
-    err_zk_view = view(err_zk, :, :, :)
 
-    dual_error = CatView(err_pg_view, err_ωt_view, err_st_view, err_zt_view, err_sk_view, err_zk_view)
+    dual_error = CatView(err_pg_view, err_ωt_view, err_st_view, err_sk_view)
 
     return norm(dual_error, lnorm)
 end
@@ -759,6 +735,9 @@ function compute_true_ctgs_error(
     end
     if true_ctgs_link_constr_type ∈ [:preventive_penalty]
         modelinfo.ctgs_link_constr_type = :preventive_equality
+    end
+    if true_ctgs_link_constr_type ∈ [:frequency_penalty]
+        modelinfo.ctgs_link_constr_type = :frequency_equality
     end
     link = compute_ctgs_linking_constraints(d, opfdata, modelinfo, kIdx, tIdx)
     modelinfo.ctgs_link_constr_type = true_ctgs_link_constr_type
@@ -856,6 +835,7 @@ function opf_block_get_auglag_penalty_expr(
 
     # get variables
     Pg = opfmodel[:Pg]
+    ωt = opfmodel[:ωt]
     St = opfmodel[:St]
     Sk = opfmodel[:Sk]
 
@@ -895,7 +875,7 @@ function opf_block_get_auglag_penalty_expr(
             ctgs_link_expr_prev =
                 @expression(opfmodel,
                     [g=1:ngen],
-                        primal.Pg[g,1,t] - Pg[g,1,1] + (gens[g].alpha*primal.ωt[k,t]) + Sk[g,1,1] + primal.Zk[g,k,t] - β[g]
+                        primal.Pg[g,1,t] - Pg[g,1,1] + (gens[g].alpha*ωt[1,1]) + Sk[g,1,1] + primal.Zk[g,k,t] - β[g]
                 )
             auglag_penalty += sum(    dual.ctgs[g,k,t]*(+ctgs_link_expr_prev[g]) +
                                     0.5*algparams.ρ_c*(+ctgs_link_expr_prev[g])^2

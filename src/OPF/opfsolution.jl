@@ -112,18 +112,8 @@ function get_block_view(x::OPFPrimalSolution, block::CartesianIndex,
     Zt = view(x.Zt, :, t)
     Sk = view(x.Sk, :, range_k, t)
     Zk = view(x.Sk, :, range_k, t)
-    if modelinfo.allow_constr_infeas
-        sigma_real = view(x.sigma_real, :, range_k, t)
-        sigma_imag = view(x.sigma_imag, :, range_k, t)
-        sigma_lineFr = view(x.sigma_lineFr, :, range_k, t)
-        sigma_lineTo = view(x.sigma_lineTo, :, range_k, t)
 
-        solution = CatView(Pg, Qg, Vm, Va, ωt, St, Zt, Sk, Zk, sigma_real, sigma_imag, sigma_lineFr, sigma_lineTo)
-    else
-        solution = CatView(Pg, Qg, Vm, Va, ωt, St, Zt, Sk, Zk)
-    end
-
-    return solution
+    return CatView(Pg, Qg, Vm, Va, ωt, St, Zt, Sk, Zk)
 end
 
 function get_coupling_view(x::OPFPrimalSolution,
@@ -131,37 +121,6 @@ function get_coupling_view(x::OPFPrimalSolution,
                            algparams::AlgParams)
     Pg = @view x.Pg[:]
     return Pg
-    #=
-    ωt = @view x.ωt[:]
-    Zt = @view x.Zt[:]
-    Zk = @view x.Sk[:]
-
-    if algparams.decompCtgs
-        if modelinfo.time_link_constr_type == :penalty
-            if modelinfo.ctgs_link_constr_type == :frequency_ctrl
-                return CatView(Pg, ωt, Zt)
-            elseif modelinfo.ctgs_link_constr_type ∈ [:preventive_penalty, :corrective_penalty]
-                return CatView(Pg, Zt, Zk)
-            else
-                return CatView(Pg, Zt)
-            end
-        else
-            if modelinfo.ctgs_link_constr_type == :frequency_ctrl
-                return CatView(Pg, ωt)
-            elseif modelinfo.ctgs_link_constr_type ∈ [:preventive_penalty, :corrective_penalty]
-                return CatView(Pg, Zk)
-            else
-                return CatView(Pg)
-            end
-        end
-    else
-        if modelinfo.time_link_constr_type == :penalty
-            return CatView(Pg, Zt)
-        else
-            return CatView(Pg)
-        end
-    end
-    =#
 end
 
 function get_coupling_view(λ::OPFDualSolution,

@@ -48,9 +48,9 @@ function ProxALEvaluator(
         modelinfo.time_link_constr_type = :penalty
     end
     if modelinfo.num_ctgs > 1 && algparams.decompCtgs
-        if modelinfo.ctgs_link_constr_type ∉ [:frequency_ctrl, :preventive_penalty, :corrective_penalty]
+        if modelinfo.ctgs_link_constr_type ∉ [:frequency_penalty, :preventive_penalty, :corrective_penalty]
             str = "ProxAL is guaranteed to converge only when "*
-                  "ctgs_link_constr_type ∈ [:frequency_ctrl, :preventive_penalty, :corrective_penalty]\n"
+                  "ctgs_link_constr_type ∈ [:frequency_penalty, :preventive_penalty, :corrective_penalty]\n"
             if modelinfo.ctgs_link_constr_type == :preventive_equality
                 @warn(str * "         Forcing ctgs_link_constr_type = :preventive_penalty\n")
                 modelinfo.ctgs_link_constr_type = :preventive_penalty
@@ -58,8 +58,8 @@ function ProxALEvaluator(
                 @warn(str * "         Forcing ctgs_link_constr_type = :corrective_penalty\n")
                 modelinfo.ctgs_link_constr_type = :corrective_penalty
             else
-                @warn(str * "         Forcing ctgs_link_constr_type = :frequency_ctrl\n")
-                modelinfo.ctgs_link_constr_type = :frequency_ctrl
+                @warn(str * "         Forcing ctgs_link_constr_type = :frequency_penalty\n")
+                modelinfo.ctgs_link_constr_type = :frequency_penalty
             end
         end
     end
@@ -115,12 +115,25 @@ function optimize!(nlp::ProxALEvaluator; print_timings=false)
         @views opt_sol[fr:to, blk] .= solution.va[:]
         # wt
         fr = to +1  ; to = fr + k_per_block -1
-        if !algparams.decompCtgs
-            @views opt_sol[fr:to, blk] .= solution.ωt[:]
-        end
+        @views opt_sol[fr:to, blk] .= solution.ωt[:]
         # St
         fr = to +1  ; to = fr + ngen - 1
         @views opt_sol[fr:to, blk] .= solution.st[:]
+        # zt
+        fr = to +1  ; to = fr + ngen -1
+        if haskey(solution, :zt)
+            @views opt_sol[fr:to, blk] .= solution.zt[:]
+        end
+        # sk
+        fr = to +1  ; to = fr + ngen * k_per_block - 1
+        if haskey(solution, :sk)
+            @views opt_sol[fr:to, blk] .= solution.sk[:]
+        end
+        # zk
+        fr = to +1  ; to = fr + ngen * k_per_block - 1
+        if haskey(solution, :zk)
+            @views opt_sol[fr:to, blk] .= solution.zk[:]
+        end
     end
     #------------------------------------------------------------------------------------
     function blocknlp_copy(blk, x_ref, λ_ref, alg_ref)
@@ -310,10 +323,10 @@ function optimize!(nlp::ProxALEvaluator; print_timings=false)
             if algparams.updateρ_t
                 if runinfo.maxviol_t[end] > 10.0*runinfo.maxviol_d[end] && algparams.ρ_t < 32.0*algparams.θ_t
                     algparams.ρ_t = min(2.0*algparams.ρ_t, 32.0*algparams.θ_t)
-                    algparams.τ = 2.0*algparams.ρ_t
+                    algparams.τ = algparams.decompCtgs ? 2.0*max(algparams.ρ_t, algparams.ρ_c) : 2.0*algparams.ρ_t
                 elseif runinfo.maxviol_d[end] > 10.0*runinfo.maxviol_t[end]
                     algparams.ρ_t *= 0.5
-                    algparams.τ = 2.0*algparams.ρ_t
+                    algparams.τ = algparams.decompCtgs ? 2.0*max(algparams.ρ_t, algparams.ρ_c) : 2.0*algparams.ρ_t
                 end
             end
 

@@ -28,7 +28,6 @@ modelinfo.ramp_scale = ramp_scale
 modelinfo.allow_obj_gencost = true
 modelinfo.allow_constr_infeas = false
 modelinfo.time_link_constr_type = :penalty
-modelinfo.ctgs_link_constr_type = :frequency_ctrl
 modelinfo.case_name = case
 modelinfo.num_ctgs = K
 
