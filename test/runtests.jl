@@ -26,4 +26,14 @@ end
         run(`$cmd -n 1 $(Base.julia_cmd()) --project=$testdir/.. $testdir/distributed.jl`)
     end
     @test true
+
+    mpiexec() do cmd
+        run(`$cmd -n 2 $(Base.julia_cmd()) --project=$testdir/.. $testdir/contingency.jl`)
+    end
+    @test true
+
+    mpiexec() do cmd
+        run(`$cmd -n 1 $(Base.julia_cmd()) --project=$testdir/.. $testdir/contingency.jl`)
+    end
+    @test true
 end

@@ -199,7 +199,11 @@ function optimize!(nlp::ProxALEvaluator; print_timings=false)
                             kn = blockn[1]
                             tn = blockn[2]
                             # Updating the received neighboring primal values
-                            if (tn == t-1 || tn == t+1) && !ismywork(blkn, comm)
+                            if ((tn == t-1 || tn == t+1) && kn == 1) && !ismywork(blkn, comm)
+                                opfBlockData.colValue[:,blkn] .= nlp_opt_sol[:,blkn]
+                                update_primal_nlpvars(x, opfBlockData, blkn, modelinfo, algparams)
+                            end
+                            if (tn == t) && !ismywork(blkn, comm)
                                 opfBlockData.colValue[:,blkn] .= nlp_opt_sol[:,blkn]
                                 update_primal_nlpvars(x, opfBlockData, blkn, modelinfo, algparams)
                             end
@@ -230,8 +234,10 @@ function optimize!(nlp::ProxALEvaluator; print_timings=false)
 
         print_timings && comm_barrier(comm)
         elapsed_t = @elapsed begin
-            requests = comm_neighbors!(x.Zt, opfBlockData, runinfo, CommPatternT(), comm)
-            comm_wait!(requests)
+            requests_zt = comm_neighbors!(x.Zt, opfBlockData, runinfo, CommPatternT(), comm)
+            requests_zk = comm_neighbors!(x.Zk, opfBlockData, runinfo, CommPatternK(), comm)
+            comm_wait!(requests_zt)
+            comm_wait!(requests_zk)
             print_timings && comm_barrier(comm)
         end
         if comm_rank(comm) == 0
@@ -260,12 +266,14 @@ function optimize!(nlp::ProxALEvaluator; print_timings=false)
           print_timings && println("update_dual_vars(): $elapsed_t")
         end
         elapsed_t = @elapsed begin
-            requests = comm_neighbors!(λ.ramping, opfBlockData, runinfo, CommPatternT(), comm)
+            requests_ramp = comm_neighbors!(λ.ramping, opfBlockData, runinfo, CommPatternT(), comm)
+            requests_ctgs = comm_neighbors!(λ.ctgs, opfBlockData, runinfo, CommPatternK(), comm)
+            comm_wait!(requests_ramp)
+            comm_wait!(requests_ctgs)
             maxviol_t = comm_max(maxviol_t, comm)
             maxviol_c = comm_max(maxviol_c, comm)
             push!(runinfo.maxviol_t, maxviol_t)
             push!(runinfo.maxviol_c, maxviol_c)
-            comm_wait!(requests)
             print_timings && comm_barrier(comm)
         end
         if comm_rank(comm) == 0

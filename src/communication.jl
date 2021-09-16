@@ -40,10 +40,10 @@ abstract type AbstractCommPattern end
 struct CommPatternTK <: AbstractCommPattern end
 struct CommPatternT <: AbstractCommPattern end
 struct CommPatternK <: AbstractCommPattern end
+struct CommPatternRK <: AbstractCommPattern end
 
-function comm_neighbors!(data::AbstractArray, blocks::AbstractBlocks, runinfo::ProxALProblem, pattern::AbstractCommPattern, comm::MPI.Comm)
+function comm_neighbors!(data::AbstractArray{T,2}, blocks::AbstractBlocks, runinfo::ProxALProblem, pattern::AbstractCommPattern, comm::MPI.Comm) where {T}
 	requests = MPI.Request[]
-    # For each period send to t-1 and t+1
     for blk in runinfo.par_order
         block = blocks.blkIndex[blk]
         k = block[1]
@@ -53,16 +53,13 @@ function comm_neighbors!(data::AbstractArray, blocks::AbstractBlocks, runinfo::P
                 blockn = blocks.blkIndex[blkn]
                 kn = blockn[1]
                 tn = blockn[2]
+                # Primals
                 if isa(pattern, CommPatternTK)
                     # Neighboring period needs my work if it's not local
-                    if (tn == t-1 || tn == t+1) && kn == 1 && k == 1 && !ismywork(blkn, comm)
+                    # Communicate contingencies in the same period
+                    if (((tn == t-1 || tn == t+1) && kn == 1 && k == 1) || tn == t) && !ismywork(blkn, comm)
                         remote = whoswork(blkn, comm)
                         push!(requests, MPI.Isend(data[:,blk], remote, t, comm))
-                    end
-                    # Communicate contingencies in the same period
-                    if tn == t && k != 1 && kn == 1 !ismywork(blkn, comm)
-                        remote = whoswork(blkn, comm)
-                        push!(requests, MPI.Isend(data[:,blk], remote, k, comm))
                     end
                 end
                 # Zt
@@ -72,16 +69,9 @@ function comm_neighbors!(data::AbstractArray, blocks::AbstractBlocks, runinfo::P
                         push!(requests, MPI.Isend(data[:,t], remote, t, comm))
                     end
                 end
-                if isa(pattern, CommPatternK)
-                    if tn == t && k != 1 && kn == 1 !ismywork(blkn, comm)
-                        remote = whoswork(blkn, comm)
-                        push!(requests, MPI.Isend(data[:,k], remote, k, comm))
-                    end
-                end
             end
         end
     end
-    # For each period receive from t-1 and t+1
     for blk in runinfo.par_order
         block = blocks.blkIndex[blk]
         k = block[1]
@@ -91,18 +81,14 @@ function comm_neighbors!(data::AbstractArray, blocks::AbstractBlocks, runinfo::P
                 blockn = blocks.blkIndex[blkn]
                 kn = blockn[1]
                 tn = blockn[2]
+                # Primals
                 if isa(pattern, CommPatternTK)
                     # Receive neighboring period if it's not local
-                    if (tn == t-1 || tn == t+1) && kn == 1 && k == 1 && !ismywork(blkn, comm)
+                    # Communicate contingencies in the same period
+                    if (((tn == t-1 || tn == t+1) && kn == 1 && k == 1) || tn == t) && !ismywork(blkn, comm)
                         remote = whoswork(blkn, comm)
                         buf = @view data[:,blkn]
                         push!(requests, MPI.Irecv!(buf, remote, tn, comm))
-                    end
-                    # Communicate contingencies in the same period
-                    if tn == t && k == 1 && kn != 1 !ismywork(blkn, comm)
-                        remote = whoswork(blkn, comm)
-                        buf = @view data[:,blkn]
-                        push!(requests, MPI.Irecv!(buf, remote, kn, comm))
                     end
                 end
                 # Zt
@@ -113,10 +99,47 @@ function comm_neighbors!(data::AbstractArray, blocks::AbstractBlocks, runinfo::P
                         push!(requests, MPI.Irecv!(buf, remote, tn, comm))
                     end
                 end
+            end
+        end
+    end
+    return requests
+end
+
+function comm_neighbors!(data::AbstractArray{T,3}, blocks::AbstractBlocks, runinfo::ProxALProblem, pattern::AbstractCommPattern, comm::MPI.Comm) where {T}
+	requests = MPI.Request[]
+    for blk in runinfo.par_order
+        block = blocks.blkIndex[blk]
+        k = block[1]
+        t = block[2]
+        if ismywork(blk, comm)
+            for blkn in runinfo.par_order
+                blockn = blocks.blkIndex[blkn]
+                kn = blockn[1]
+                tn = blockn[2]
+                # Zk
+                if isa(pattern, CommPatternK)
+                    if tn == t && k != 1 && kn == 1 !ismywork(blkn, comm)
+                        remote = whoswork(blkn, comm)
+                        push!(requests, MPI.Isend(data[:,k,t], remote, k, comm))
+                    end
+                end
+            end
+        end
+    end
+    for blk in runinfo.par_order
+        block = blocks.blkIndex[blk]
+        k = block[1]
+        t = block[2]
+        if ismywork(blk, comm)
+            for blkn in runinfo.par_order
+                blockn = blocks.blkIndex[blkn]
+                kn = blockn[1]
+                tn = blockn[2]
+                # Zk
                 if isa(pattern, CommPatternK)
                     if tn == t && k == 1 && kn != 1 !ismywork(blkn, comm)
                         remote = whoswork(blkn, comm)
-                        buf = @view data[:,kn]
+                        buf = @view data[:,kn,tn]
                         push!(requests, MPI.Irecv!(buf, remote, kn, comm))
                     end
                 end
