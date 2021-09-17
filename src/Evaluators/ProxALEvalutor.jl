@@ -161,7 +161,7 @@ function optimize!(nlp::ProxALEvaluator; print_timings=false)
             nlp_soltime .= 0.0
             nlp_soltime_local = 0.0
             for blk in runinfo.par_order
-                if ismywork(blk, comm)
+                if is_my_work(blk, comm)
                     nlp_opt_sol[:,blk] .= 0.0
                     # nlp_soltime[blk] = @elapsed blocknlp_copy(blk; x_ref = x, λ_ref = λ, alg_ref = algparams)
                     nlp_soltime[blk] = @elapsed blocknlp_recreate(blk, x, λ, algparams)
@@ -190,7 +190,7 @@ function optimize!(nlp::ProxALEvaluator; print_timings=false)
                     block = opfBlockData.blkIndex[blk]
                     k = block[1]
                     t = block[2]
-                    if ismywork(blk, comm)
+                    if is_my_work(blk, comm)
                         # Updating my own primal values
                         opfBlockData.colValue[:,blk] .= nlp_opt_sol[:,blk]
                         update_primal_nlpvars(x, opfBlockData, blk, modelinfo, algparams)
@@ -199,11 +199,7 @@ function optimize!(nlp::ProxALEvaluator; print_timings=false)
                             kn = blockn[1]
                             tn = blockn[2]
                             # Updating the received neighboring primal values
-                            if ((tn == t-1 || tn == t+1) && kn == 1) && !ismywork(blkn, comm)
-                                opfBlockData.colValue[:,blkn] .= nlp_opt_sol[:,blkn]
-                                update_primal_nlpvars(x, opfBlockData, blkn, modelinfo, algparams)
-                            end
-                            if (tn == t) && !ismywork(blkn, comm)
+                            if is_comm_pattern(t, tn, k, kn, CommPatternTK()) && !is_my_work(blkn, comm)
                                 opfBlockData.colValue[:,blkn] .= nlp_opt_sol[:,blkn]
                                 update_primal_nlpvars(x, opfBlockData, blkn, modelinfo, algparams)
                             end
@@ -221,7 +217,7 @@ function optimize!(nlp::ProxALEvaluator; print_timings=false)
             # Primal update of penalty vars
             elapsed_t = @elapsed begin
                 for blk in runinfo.par_order
-                    if ismywork(blk, comm)
+                    if is_my_work(blk, comm)
                         update_primal_penalty(x, opfdata, opfBlockData, blk, x, λ, modelinfo, algparams)
                     end
                 end
@@ -235,9 +231,11 @@ function optimize!(nlp::ProxALEvaluator; print_timings=false)
         print_timings && comm_barrier(comm)
         elapsed_t = @elapsed begin
             requests_zt = comm_neighbors!(x.Zt, opfBlockData, runinfo, CommPatternT(), comm)
-            requests_zk = comm_neighbors!(x.Zk, opfBlockData, runinfo, CommPatternK(), comm)
+            if algparams.decompCtgs
+                requests_zk = comm_neighbors!(x.Zk, opfBlockData, runinfo, CommPatternK(), comm)
+                comm_wait!(requests_zk)
+            end
             comm_wait!(requests_zt)
-            comm_wait!(requests_zk)
             print_timings && comm_barrier(comm)
         end
         if comm_rank(comm) == 0
@@ -254,7 +252,7 @@ function optimize!(nlp::ProxALEvaluator; print_timings=false)
                 block = opfBlockData.blkIndex[blk]
                 k = block[1]
                 t = block[2]
-                if ismywork(blk, comm)
+                if is_my_work(blk, comm)
                     lmaxviol_t, lmaxviol_c = update_dual_vars(λ, opfdata, opfBlockData, blk, x, modelinfo, algparams)
                     maxviol_t = max(maxviol_t, lmaxviol_t)
                     maxviol_c = max(maxviol_c, lmaxviol_c)
@@ -267,9 +265,11 @@ function optimize!(nlp::ProxALEvaluator; print_timings=false)
         end
         elapsed_t = @elapsed begin
             requests_ramp = comm_neighbors!(λ.ramping, opfBlockData, runinfo, CommPatternT(), comm)
-            requests_ctgs = comm_neighbors!(λ.ctgs, opfBlockData, runinfo, CommPatternK(), comm)
+            if algparams.decompCtgs
+                requests_ctgs = comm_neighbors!(λ.ctgs, opfBlockData, runinfo, CommPatternK(), comm)
+                comm_wait!(requests_ctgs)
+            end
             comm_wait!(requests_ramp)
-            comm_wait!(requests_ctgs)
             maxviol_t = comm_max(maxviol_t, comm)
             maxviol_c = comm_max(maxviol_c, comm)
             push!(runinfo.maxviol_t, maxviol_t)

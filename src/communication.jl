@@ -14,90 +14,88 @@ function whoswork(blk, comm::Nothing)
 end
 
 """
-    ismywork(blk, comm)
+    is_my_work(blk, comm)
 
 Returns a boolean whether the block `blk` is assigned to this rank.
 
 """
-function ismywork(blk, comm::MPI.Comm)
+function is_my_work(blk, comm::MPI.Comm)
     whoswork(blk, comm) == MPI.Comm_rank(comm)
 end
 
-function ismywork(blk, comm::Nothing)
+function is_my_work(blk, comm::Nothing)
     return true
 end
 
-"""
-    comm_neighbors!(data, blocks, runinfo, comm)
-
-Nearest neighbor communication where all periods t of this rank in the matrix data
-will be sent to the remote ranks who own period t-1 and t+1.
-
-This is nonblocking. An array of requests is returned.
-
-"""
 abstract type AbstractCommPattern end
+# Symmetric communication patterns
 struct CommPatternTK <: AbstractCommPattern end
 struct CommPatternT <: AbstractCommPattern end
 struct CommPatternK <: AbstractCommPattern end
-struct CommPatternRK <: AbstractCommPattern end
 
+"""
+    is_comm_pattern(t, tn, k, kn, pattern)
+
+    Do period t, tn and contingencies k, kn match the communication pattern?
+
+"""
+function is_comm_pattern(t, tn, k, kn, ::CommPatternTK)
+    return (
+        # Neighboring periods and base case (k == 1)
+        ((tn == t-1 || tn == t+1) && kn == 1 && k == 1) ||
+        # From base case to contingencies
+        (tn == t && k == 1 && kn != 1) ||
+        # From contingencies to base case
+        (tn == t && k != 1 && kn == 1)
+    )
+end
+
+function is_comm_pattern(t, tn, k, kn, ::CommPatternT)
+    return (
+        # Neighboring periods and base case (k == 1)
+        ((tn == t-1 || tn == t+1) && kn == 1 && k == 1)
+    )
+end
+
+function is_comm_pattern(t, tn, k, kn, ::CommPatternK)
+    return (
+        # From base case to contingencies
+        (tn == t && k == 1 && kn != 1) ||
+        # From contingencies to base case
+        (tn == t && k != 1 && kn == 1)
+    )
+end
+
+"""
+    comm_neighbors!(data, blocks, runinfo, pattern, comm)
+
+Nonblocking communication with a given pattern. An array of requests is returned.
+
+"""
 function comm_neighbors!(data::AbstractArray{T,2}, blocks::AbstractBlocks, runinfo::ProxALProblem, pattern::AbstractCommPattern, comm::MPI.Comm) where {T}
 	requests = MPI.Request[]
     for blk in runinfo.par_order
         block = blocks.blkIndex[blk]
         k = block[1]
         t = block[2]
-        if ismywork(blk, comm)
+        if is_my_work(blk, comm)
             for blkn in runinfo.par_order
                 blockn = blocks.blkIndex[blkn]
                 kn = blockn[1]
                 tn = blockn[2]
-                # Primals
-                if isa(pattern, CommPatternTK)
-                    # Neighboring period needs my work if it's not local
-                    # Communicate contingencies in the same period
-                    if (((tn == t-1 || tn == t+1) && kn == 1 && k == 1) || tn == t) && !ismywork(blkn, comm)
-                        remote = whoswork(blkn, comm)
-                        push!(requests, MPI.Isend(data[:,blk], remote, t, comm))
+                if is_comm_pattern(t, tn, k, kn, pattern) && !is_my_work(blkn, comm)
+                    remote = whoswork(blkn, comm)
+                    if isa(pattern, CommPatternTK)
+                        sbuf = @view data[:,blk]
+                        rbuf = @view data[:,blkn]
+                    elseif isa(pattern, CommPatternT)
+                        sbuf = @view data[:,t]
+                        rbuf = @view data[:,tn]
+                    else
+                        error("Invalid communication pattern")
                     end
-                end
-                # Zt
-                if isa(pattern, CommPatternT)
-                    if (tn == t-1 || tn == t+1) && kn == 1 && k == 1 && !ismywork(blkn, comm)
-                        remote = whoswork(blkn, comm)
-                        push!(requests, MPI.Isend(data[:,t], remote, t, comm))
-                    end
-                end
-            end
-        end
-    end
-    for blk in runinfo.par_order
-        block = blocks.blkIndex[blk]
-        k = block[1]
-        t = block[2]
-        if ismywork(blk, comm)
-            for blkn in runinfo.par_order
-                blockn = blocks.blkIndex[blkn]
-                kn = blockn[1]
-                tn = blockn[2]
-                # Primals
-                if isa(pattern, CommPatternTK)
-                    # Receive neighboring period if it's not local
-                    # Communicate contingencies in the same period
-                    if (((tn == t-1 || tn == t+1) && kn == 1 && k == 1) || tn == t) && !ismywork(blkn, comm)
-                        remote = whoswork(blkn, comm)
-                        buf = @view data[:,blkn]
-                        push!(requests, MPI.Irecv!(buf, remote, tn, comm))
-                    end
-                end
-                # Zt
-                if isa(pattern, CommPatternT)
-                    if (tn == t-1 || tn == t+1) && kn == 1 && k == 1 && !ismywork(blkn, comm)
-                        remote = whoswork(blkn, comm)
-                        buf = @view data[:,tn]
-                        push!(requests, MPI.Irecv!(buf, remote, tn, comm))
-                    end
+                    push!(requests, MPI.Isend(sbuf, remote, t, comm))
+                    push!(requests, MPI.Irecv!(rbuf, remote, tn, comm))
                 end
             end
         end
@@ -111,37 +109,21 @@ function comm_neighbors!(data::AbstractArray{T,3}, blocks::AbstractBlocks, runin
         block = blocks.blkIndex[blk]
         k = block[1]
         t = block[2]
-        if ismywork(blk, comm)
+        if is_my_work(blk, comm)
             for blkn in runinfo.par_order
                 blockn = blocks.blkIndex[blkn]
                 kn = blockn[1]
                 tn = blockn[2]
-                # Zk
-                if isa(pattern, CommPatternK)
-                    if tn == t && k != 1 && kn == 1 !ismywork(blkn, comm)
-                        remote = whoswork(blkn, comm)
-                        push!(requests, MPI.Isend(data[:,k,t], remote, k, comm))
+                if is_comm_pattern(t, tn, k, kn, pattern) && !is_my_work(blkn, comm)
+                    remote = whoswork(blkn, comm)
+                    if isa(pattern, CommPatternK)
+                        sbuf = @view data[:,k,t]
+                        rbuf = @view data[:,kn,tn]
+                    else
+                        error("Invalid communication pattern")
                     end
-                end
-            end
-        end
-    end
-    for blk in runinfo.par_order
-        block = blocks.blkIndex[blk]
-        k = block[1]
-        t = block[2]
-        if ismywork(blk, comm)
-            for blkn in runinfo.par_order
-                blockn = blocks.blkIndex[blkn]
-                kn = blockn[1]
-                tn = blockn[2]
-                # Zk
-                if isa(pattern, CommPatternK)
-                    if tn == t && k == 1 && kn != 1 !ismywork(blkn, comm)
-                        remote = whoswork(blkn, comm)
-                        buf = @view data[:,kn,tn]
-                        push!(requests, MPI.Irecv!(buf, remote, kn, comm))
-                    end
+                    push!(requests, MPI.Isend(sbuf, remote, k, comm))
+                    push!(requests, MPI.Irecv!(rbuf, remote, kn, comm))
                 end
             end
         end
@@ -149,7 +131,7 @@ function comm_neighbors!(data::AbstractArray{T,3}, blocks::AbstractBlocks, runin
     return requests
 end
 
-function comm_neighbors!(data::AbstractArray, blocks::AbstractBlocks, runinfo::ProxALProblem, pattern::AbstractCommPattern, omm::Nothing)
+function comm_neighbors!(data::AbstractArray, blocks::AbstractBlocks, runinfo::ProxALProblem, pattern::AbstractCommPattern, comm::Nothing)
     return nothing
 end
 
