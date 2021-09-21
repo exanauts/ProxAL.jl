@@ -18,10 +18,10 @@ MPI.Init()
 # (case, T, ramp_scale, load_scale, maxρ, quad_penalty) = ("case_ACTIVSg2000_Corrected", 20, 0.3, 1.0, 0.1, 1e5) # 290 iterations
 # (case, T, ramp_scale, load_scale, maxρ, quad_penalty) = ("case_ACTIVSg2000_Corrected", 20, 0.3, 1.0, 0.01, 1e3) # 449 iterations
 # (case, T, ramp_scale, load_scale, maxρ, quad_penalty) = ("case_ACTIVSg2000_Corrected", 20, 0.3, 1.0, 0.01, 1e5) # 521 iterations
-(case, T, ramp_scale, load_scale, maxρ, quad_penalty) = ("case_ACTIVSg2000_Corrected", 20, 0.3, 1.0, 0.1, 1e3) # 225 iterations
+# (case, T, ramp_scale, load_scale, maxρ, quad_penalty) = ("case_ACTIVSg2000_Corrected", 20, 0.3, 1.0, 0.1, 1e3) # 225 iterations
 # (case, T, ramp_scale, load_scale, maxρ, quad_penalty) = ("case9241pegase", 2, 0.3, 0.8, 0.01, 1e3)
 # (case, T, ramp_scale, load_scale, maxρ, quad_penalty) = ("case118", 168, 0.2, 1.0, 0.1, 1e5)
-# (case, T, ramp_scale, load_scale, maxρ, quad_penalty) = ("case9", 6, 0.04, 1.0, 0.1, 0.1)
+(case, T, ramp_scale, load_scale, maxρ, quad_penalty) = ("case9", 6, 0.04, 1.0, 0.1, 0.1)
 
 T = parse(Int, ARGS[1])
 if MPI.Comm_rank(MPI.COMM_WORLD) == 0
@@ -34,8 +34,8 @@ K = 0
 # Load case
 DATA_DIR = joinpath(dirname(@__FILE__), "..", "data")
 case_file = joinpath(DATA_DIR, "$(case).m")
-# load_file = joinpath(DATA_DIR, "mp_demand", "$(case)_oneweek_168")
-load_file = joinpath(DATA_DIR, "mp_demand", "$(case)_3600")
+load_file = joinpath(DATA_DIR, "mp_demand", "$(case)_oneweek_168")
+# load_file = joinpath(DATA_DIR, "mp_demand", "$(case)_3600")
 
 # Model/formulation settings
 modelinfo = ModelInfo()
@@ -56,7 +56,7 @@ algparams.verbose = 1
 algparams.tol = 1e-3
 algparams.decompCtgs = true
 algparams.iterlim = 100
-algparams.device = ProxAL.CUDADevice
+algparams.device = ProxAL.ROCDevice
 algparams.optimizer = optimizer_with_attributes(Ipopt.Optimizer, "print_level" => 0)
 algparams.tron_rho_pq=5*1e4
 algparams.tron_rho_pa=5*1e5

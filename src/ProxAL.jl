@@ -10,6 +10,11 @@ using ExaTron
 using LinearAlgebra
 using SparseArrays
 using MPI
+using KernelAbstractions
+using ROCKernels
+using CUDAKernels
+
+const KA = KernelAbstractions
 
 abstract type AbstractPrimalSolution end
 abstract type AbstractDualSolution end
