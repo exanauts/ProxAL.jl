@@ -91,6 +91,7 @@ Specifies the ACOPF model structure.
 | `obj_scale::Float64` | objective multiplication factor | 1.0e-3
 | `allow_obj_gencost::Bool` | model generator cost | true
 | `allow_constr_infeas::Bool` | allow constraint infeasibility | false
+| `allow_line_limits::Bool` | allow line flow limits | true
 | `weight_constr_infeas::Float64` | quadratic penalty weight for constraint infeasibilities | 1.0
 | `weight_freq_ctrl::Float64` | quadratic penalty weight for frequency violations | 1.0
 | `weight_ctgs::Float64` | linear weight of contingency objective function | 1.0
@@ -107,6 +108,7 @@ Base.@kwdef mutable struct ModelInfo
     obj_scale::Float64 = 1e-3
     allow_obj_gencost::Bool = true
     allow_constr_infeas::Bool = false
+    allow_line_limits::Bool = true
     weight_constr_infeas::Float64 = 1.0
     weight_freq_ctrl::Float64 = 1.0
     weight_ctgs::Float64 = 1.0
