@@ -68,9 +68,9 @@ algparams.tol = 1e-3
 algparams.decompCtgs = (K > 0)
 algparams.iterlim = 100
 if isa(backend, ProxAL.ExaTronBackend)
-    algparams.device = ProxAL.CUDADevice
+  algparams.device = ProxAL.ROCDevice
 end
-algparams.optimizer = optimizer_with_attributes(Ipopt.Optimizer, "print_level" => 0) #,  "tol" => 1e-1*algparams.tol)
+algparams.optimizer = optimizer_with_attributes(Ipopt.Optimizer, "print_level" => 0)
 algparams.tron_rho_pq=5*1e4
 algparams.tron_rho_pa=5*1e5
 algparams.tron_outer_iterlim=30
