@@ -76,7 +76,15 @@ Solve problem using the `nlp` evaluator
 of the decomposition algorithm.
 
 """
-function optimize!(nlp::ProxALEvaluator; print_timings=false)
+function optimize!(
+    nlp::ProxALEvaluator;
+    print_timings::Bool=false,
+    θ_t_initial::Union{Float64,Nothing}=nothing,
+    θ_c_initial::Union{Float64,Nothing}=nothing,
+    ρ_t_initial::Union{Float64,Nothing}=nothing,
+    ρ_c_initial::Union{Float64,Nothing}=nothing,
+    τ_initial::Union{Float64,Nothing}=nothing
+)
     algparams = nlp.algparams
     modelinfo = nlp.modelinfo
     runinfo   = nlp.problem
@@ -86,6 +94,14 @@ function optimize!(nlp::ProxALEvaluator; print_timings=false)
     algparams.θ_t = algparams.θ_c = (1/algparams.tol^2)
     algparams.ρ_t = algparams.ρ_c = modelinfo.obj_scale
     algparams.τ = 2.0*max(algparams.ρ_t, algparams.ρ_c)
+    !isnothing(θ_t_initial) && (algparams.θ_t = θ_t_initial)
+    !isnothing(θ_c_initial) && (algparams.θ_c = θ_c_initial)
+    !isnothing(ρ_t_initial) && (algparams.ρ_t = ρ_t_initial)
+    !isnothing(ρ_c_initial) && (algparams.ρ_c = ρ_c_initial)
+    !isnothing(τ_initial) && (algparams.τ = τ_initial)
+    if (!isnothing(ρ_t_initial) || !isnothing(ρ_c_initial)) && isnothing(τ_initial)
+        algparams.τ = 2.0*max(algparams.ρ_t, algparams.ρ_c)
+    end
     runinfo.initial_solve &&
         (algparams_copy = deepcopy(algparams))
     opfBlockData = runinfo.opfBlockData
