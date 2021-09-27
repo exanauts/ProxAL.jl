@@ -86,6 +86,7 @@ function OPFBlocks(
             time_horizon_end=t,
             load_scale=modelinfo.load_scale,
             ramp_scale=modelinfo.ramp_scale,
+            corr_scale=modelinfo.corr_scale,
             lineOff=lineOff,
         )
         return data

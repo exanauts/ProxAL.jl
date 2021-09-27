@@ -193,7 +193,13 @@ function init!(block::JuMPBlockBackend, algparams::AlgParams)
             σ_to = opfmodel[:sigma_lineTo][:,j,1]
         end
         opfdata_c = (j == 1) ? opfdata :
-            opf_loaddata(block.rawdata; lineOff = opfdata.lines[block.rawdata.ctgs_arr[j - 1]], time_horizon_start = t, time_horizon_end = t, load_scale = modelinfo.load_scale, ramp_scale = modelinfo.ramp_scale)
+            opf_loaddata(block.rawdata;
+            lineOff = opfdata.lines[block.rawdata.ctgs_arr[j - 1]],
+            time_horizon_start = t,
+            time_horizon_end = t,
+            load_scale = modelinfo.load_scale,
+            ramp_scale = modelinfo.ramp_scale,
+            corr_scale = modelinfo.corr_scale)
         opf_model_add_real_power_balance_constraints(opfmodel, opfdata_c, opfmodel[:Pg][:,j,1], opfdata_c.Pd[:,1], opfmodel[:Vm][:,j,1], opfmodel[:Va][:,j,1], σ_re)
         opf_model_add_imag_power_balance_constraints(opfmodel, opfdata_c, opfmodel[:Qg][:,j,1], opfdata_c.Qd[:,1], opfmodel[:Vm][:,j,1], opfmodel[:Va][:,j,1], σ_im)
         if modelinfo.allow_line_limits

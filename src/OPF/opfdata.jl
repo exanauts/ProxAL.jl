@@ -181,6 +181,7 @@ end
                  time_horizon_end::Int=0,
                  load_scale::Float64=1.0,
                  ramp_scale::Float64=0.0,
+                 corr_scale::Float64=0.1,
                  lineOff=Line())
 
 Loads the multi-period ACOPF instance data from `raw`
@@ -192,6 +193,8 @@ as possible (the number of columns in `raw.pd_arr`).
 All loads in all time periods will be multiplied by `load_scale`.
 The `ramp_scale` is the factor which multiplies ``p_{g}^{max}``
 to get generator ramping ``r_g``.
+The `corr_scale` is the factor which multiplies ``r_g``
+to get generator ramping for corrective control.
 These are set in `ModelInfo`.  See [Model parameters](@ref).
 
 `lineOff` is a transmission line that can be deleted to
@@ -202,6 +205,7 @@ function opf_loaddata(raw::RawData;
                       time_horizon_end::Int=0,
                       load_scale::Float64=1.0,
                       ramp_scale::Float64=0.0,
+                      corr_scale::Float64=0.1,
                       lineOff=Line())
     #
     # load buses
@@ -254,7 +258,7 @@ function opf_loaddata(raw::RawData;
 
     end
     @assert lit == num_on
-    (has_voltage_angle_bounds) && println("Bounds of voltage angles are still to be implemented.")
+    (has_voltage_angle_bounds) && @warn("Bounds of voltage angles are still to be implemented.", maxlog=1)
 
     #
     # load generators
@@ -266,8 +270,9 @@ function opf_loaddata(raw::RawData;
 
 
     gens_on = findall(gen_arr[:, 8].!=0); num_on = length(gens_on)
-    if num_gens-num_on > 0
-        println("loaddata: ", num_gens-num_on, " generators are off and will be discarded (out of ", num_gens, ")")
+    num_off = num_gens-num_on
+    if num_off > 0
+        @warn("loaddata: $(num_off) generators are off and will be discarded (out of $(num_gens))", maxlog=1)
     end
 
     baseMVA = raw.baseMVA
@@ -295,7 +300,7 @@ function opf_loaddata(raw::RawData;
         generators[i].Qc2min   = gen_arr[git,15]
         generators[i].Qc2max   = gen_arr[git,16]
         generators[i].ramp_agc = gen_arr[git,9] * ramp_scale  / baseMVA
-        generators[i].scen_agc = gen_arr[git,9] * ramp_scale * 0.1 / baseMVA
+        generators[i].scen_agc = gen_arr[git,9] * ramp_scale * corr_scale / baseMVA
         generators[i].gentype  = costgen_arr[git,1]
         generators[i].startup  = costgen_arr[git,2]
         generators[i].shutdown = costgen_arr[git,3]
@@ -332,7 +337,7 @@ function opf_loaddata(raw::RawData;
     pd_ref = raw.bus_arr[:, 3]
     qd_ref = raw.bus_arr[:, 4]
     if !check_loads(pd_scen, pd_ref) || !check_loads(qd_scen, qd_ref)
-        @warn("Large discrepancy observed between scenarios and MATPOWER's data")
+        @warn("Large discrepancy observed between scenarios and MATPOWER's data", maxlog=1)
     end
 
     if time_horizon_end > 0

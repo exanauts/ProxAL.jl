@@ -40,7 +40,8 @@ function ProxALEvaluator(
         time_horizon_start = 1,
         time_horizon_end = modelinfo.num_time_periods,
         load_scale = modelinfo.load_scale,
-        ramp_scale = modelinfo.ramp_scale
+        ramp_scale = modelinfo.ramp_scale,
+        corr_scale = modelinfo.corr_scale
     )
     if modelinfo.time_link_constr_type != :penalty
         @warn("ProxAL is guaranteed to converge only when time_link_constr_type = :penalty\n"*

@@ -113,7 +113,13 @@ function opf_model_add_block_constraints(opfmodel::JuMP.Model, opfdata::OPFData,
     if modelinfo.allow_constr_infeas
         @views for t=1:T, k=1:K
             opfdata_c = (k == 1) ? opfdata :
-                opf_loaddata(rawdata; lineOff = opfdata.lines[rawdata.ctgs_arr[k - 1]], time_horizon_start = t, time_horizon_end = t, load_scale = modelinfo.load_scale, ramp_scale = modelinfo.ramp_scale)
+                opf_loaddata(rawdata;
+                    lineOff = opfdata.lines[rawdata.ctgs_arr[k - 1]],
+                    time_horizon_start = t,
+                    time_horizon_end = t,
+                    load_scale = modelinfo.load_scale,
+                    ramp_scale = modelinfo.ramp_scale,
+                    corr_scale = modelinfo.corr_scale)
             opf_model_add_real_power_balance_constraints(opfmodel, opfdata_c, opfmodel[:Pg][:,k,t], opfdata.Pd[:,t], opfmodel[:Vm][:,k,t], opfmodel[:Va][:,k,t], opfmodel[:sigma_real][:,k,t])
             opf_model_add_imag_power_balance_constraints(opfmodel, opfdata_c, opfmodel[:Qg][:,k,t], opfdata.Qd[:,t], opfmodel[:Vm][:,k,t], opfmodel[:Va][:,k,t], opfmodel[:sigma_imag][:,k,t])
             if modelinfo.allow_line_limits
@@ -125,7 +131,13 @@ function opf_model_add_block_constraints(opfmodel::JuMP.Model, opfdata::OPFData,
         zl = zeros(length(opfdata.lines))
         @views for t=1:T, k=1:K
             opfdata_c = (k == 1) ? opfdata :
-                opf_loaddata(rawdata; lineOff = opfdata.lines[rawdata.ctgs_arr[k - 1]], time_horizon_start = t, time_horizon_end = t, load_scale = modelinfo.load_scale, ramp_scale = modelinfo.ramp_scale)
+                opf_loaddata(rawdata;
+                    lineOff = opfdata.lines[rawdata.ctgs_arr[k - 1]],
+                    time_horizon_start = t,
+                    time_horizon_end = t,
+                    load_scale = modelinfo.load_scale,
+                    ramp_scale = modelinfo.ramp_scale,
+                    corr_scale = modelinfo.corr_scale)
             opf_model_add_real_power_balance_constraints(opfmodel, opfdata_c, opfmodel[:Pg][:,k,t], opfdata.Pd[:,t], opfmodel[:Vm][:,k,t], opfmodel[:Va][:,k,t], zb)
             opf_model_add_imag_power_balance_constraints(opfmodel, opfdata_c, opfmodel[:Qg][:,k,t], opfdata.Qd[:,t], opfmodel[:Vm][:,k,t], opfmodel[:Va][:,k,t], zb)
             if modelinfo.allow_line_limits
