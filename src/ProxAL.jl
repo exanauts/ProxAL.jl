@@ -232,7 +232,7 @@ function ProxALProblem(
     )
     blkLinIndex = LinearIndices(blocks.blkIndex)
     for blk in blkLinIndex
-        if ismywork(blk, comm)
+        if is_my_work(blk, comm)
             # model = blocks.blkModel[blk]
             # init!(model, algparams)
             blocks.colValue[:,blk] .= get_block_view(x, blocks.blkIndex[blk], modelinfo, algparams)
@@ -302,7 +302,7 @@ function runinfo_update(
     iter = runinfo.iter
     obj = 0.0
     for blk in runinfo.par_order
-        if ismywork(blk, comm)
+        if is_my_work(blk, comm)
             obj += compute_objective_function(runinfo.x, opfdata, opfBlockData, blk, modelinfo, algparams)
         end
     end
@@ -312,7 +312,7 @@ function runinfo_update(
     iter = runinfo.iter
     lyapunov = 0.0
     for blk in runinfo.par_order
-        if ismywork(blk, comm)
+        if is_my_work(blk, comm)
             lyapunov += compute_lyapunov_function(runinfo.x, runinfo.λ, opfdata, opfBlockData, blk, runinfo.xprev, modelinfo, algparams)
         end
     end
@@ -321,7 +321,7 @@ function runinfo_update(
 
     maxviol_t_actual = 0.0
     for blk in runinfo.par_order
-        if ismywork(blk, comm)
+        if is_my_work(blk, comm)
             lmaxviol_t_actual = compute_true_ramp_error(runinfo.x, opfdata, opfBlockData, blk, modelinfo)
             maxviol_t_actual = max(maxviol_t_actual, lmaxviol_t_actual)
         end
@@ -331,7 +331,7 @@ function runinfo_update(
 
     maxviol_c_actual = 0.0
     for blk in runinfo.par_order
-        if ismywork(blk, comm)
+        if is_my_work(blk, comm)
             lmaxviol_c_actual = compute_true_ctgs_error(runinfo.x, opfdata, opfBlockData, blk, modelinfo)
             maxviol_c_actual = max(maxviol_c_actual, lmaxviol_c_actual)
         end
@@ -346,7 +346,7 @@ function runinfo_update(
     # @show smaxviol_d
     # maxviol_d = zeros(Float64, smaxviol_d)
     # for blk in runinfo.par_order
-    #     if ismywork(blk, comm)
+    #     if is_my_work(blk, comm)
     #         maxviol_d .+= compute_dual_error(runinfo.x, runinfo.xprev, runinfo.λ, runinfo.λprev, opfdata, opfBlockData, blk, modelinfo, algparams)
     #         # compute_dual_error(runinfo.x, runinfo.xprev, runinfo.λ, runinfo.λprev, opfdata, opfBlockData, blk, modelinfo, algparams)
     #     end
