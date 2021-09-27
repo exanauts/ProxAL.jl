@@ -811,6 +811,13 @@ function set_objective!(block::NewTronBlockBackend, algparams::AlgParams,
     # NOTE: ExaTron is solving the unscaled problem.
     # Need to prescale the penalty and the multipliers
     σ = block.objective_scaling
+    # Set ExaTron's internal penalties to 0
+    # (we are defining the penalties manually)
+    examodel.model.gen_mod.rho = 0.0
+    examodel.model.gen_mod.tau = 0.0
+    # Reset Q_ref and c_ref
+    examodel.model.gen_mod.Q_ref .= 0.0
+    examodel.model.gen_mod.c_ref .= 0.0
 
     # new interface
     pg_ref = primal.Pg[:, k, t]
