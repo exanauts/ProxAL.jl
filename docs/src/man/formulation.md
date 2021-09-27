@@ -44,30 +44,37 @@ The contingencies in each time period are linked together via their active power
   p_{gt}^k = p_{gt}^0 + z_{gkt} \qquad \forall g \in G, \; \forall k \in K, \; \forall t \in T.
   ```
 
-* _Corrective mode:_ active power generation is allowed to deviate from base case by up to 10% of its ramping capacity. This constraint has one of two forms:   
+* _Corrective mode:_ active power generation is allowed to deviate from base case by up to ``\Delta`` fraction of its ramping capacity. The parameter ``\Delta`` can be set using the `corr_scale` field of `ProxAL.ModelParams` in [Model parameters](@ref). This constraint has one of two forms:   
 
     * _Corrective inequality:_ This is the original form of the constraint. For numerical convergence reasons, `ProxAL` does not allow using this form whenever the `decompCtgs` field of `ProxAL.AlgParams` is set to `true`, see [Algorithm parameters](@ref).
   ```math
-  0.1\, r_g \leq p_{gt}^k - p_{gt}^0 \leq 0.1 \, r_g \qquad \forall g \in G, \; \forall k \in K, \; \forall t \in T
+  0.1\, r_g \leq p_{gt}^k - p_{gt}^0 \leq \Delta \, r_g \qquad \forall g \in G, \; \forall k \in K, \; \forall t \in T
   ```   
 
     * _Corrective equality:_ In this form, `ProxAL` introduces additional continuous variables ``s_{g,k,t}`` along with the following constraints. As before, `ProxAL` does not allow using this form whenever the `decompCtgs` field of `ProxAL.AlgParams` is set to `true`.
   ```math
   \left.\begin{aligned}
-    0 \leq s_{gkt} \leq 0.2\, r_g  \\
-    p_{gt}^0 - p_{gt}^k + s_{gkt} = 0.1 \, r_g 
+    0 \leq s_{gkt} \leq 2 \Delta \, r_g  \\
+    p_{gt}^0 - p_{gt}^k + s_{gkt} = \Delta \, r_g 
     \end{aligned}\right\} \qquad \forall g \in G, \; \forall k \in K, \; \forall t \in T
   ```   
 
     * _Corrective penalty:_ In this form, `ProxAL` introduces additional continuous variables ``s_{g,k,t}`` and ``z_{g,k,t}`` along with the following constraints. A penalty term ``θ_c \|z_k  \|^2`` is also added to the objective function, where the parameter ``θ_c`` is controlled within `ProxAL` whenever the `decompCtgs` field of `ProxAL.AlgParams` is set to `true`. Otherwise, its value can be set using the `θ_c` field of `ProxAL.AlgParams` in [Algorithm parameters](@ref).
   ```math
   \left.\begin{aligned}
-      0 \leq s_{gkt} \leq 0.2\, r_g  \\
-      p_{gt}^0 - p_{gt}^k + s_{gkt} + z_{gkt} = 0.1 \, r_g
+      0 \leq s_{gkt} \leq 2 \Delta \, r_g  \\
+      p_{gt}^0 - p_{gt}^k + s_{gkt} + z_{gkt} = \Delta \, r_g
   \end{aligned}\right\} \qquad \forall g \in G, \; \forall k \in K, \; \forall t \in T
   ```
 
-* _Frequency control mode:_ In this case, `ProxAL` defines new continuous variables ``\omega_{kt}`` which is the (deviation from nominal) system frequency in contingency ``k`` of time period ``t``, and ``\alpha_g`` is the droop control parameter of generator ``g``. There is only one form of representing this constraint. The objective functions includes an additional term ``w_\omega \| \omega \|^2``, where the parameter ``w_\omega`` must be set using the `weight_freq_ctrl` field of `ProxAL.ModelParams` in [Model parameters](@ref).
-```math
-p_{gt}^k = p_{gt}^0 + \alpha_g \omega_{kt} \qquad \forall g \in G, \; \forall k \in K, \; \forall t \in T.
-```
+* _Frequency control mode:_ In this case, `ProxAL` defines new continuous variables ``\omega_{kt}`` which is the (deviation from nominal) system frequency in contingency ``k`` of time period ``t``, and ``\alpha_g`` is the droop control parameter of generator ``g``. The objective functions includes an additional term ``w_\omega \| \omega \|^2``, where the parameter ``w_\omega`` must be set using the `weight_freq_ctrl` field of `ProxAL.ModelParams` in [Model parameters](@ref). This constraint has one of two forms:  
+
+    * _Frequency equality:_ This is the original form of the constraint. For numerical convergence reasons, `ProxAL` does not allow using this form whenever the `decompCtgs` field of `ProxAL.AlgParams` is set to `true`,  see [Algorithm parameters](@ref).
+  ```math
+  p_{gt}^k = p_{gt}^0 + \alpha_g \omega_{kt} \qquad \forall g \in G, \; \forall k \in K, \; \forall t \in T.
+  ```
+  
+    * _Frequency penalty:_ In this form, `ProxAL` introduces additional continuous variables ``z_{g,k,t}`` along with the following constraints. Note that a penalty term ``θ_c \|z_k \|^2`` is also added to the objective function, where the parameter ``θ_c`` is controlled within `ProxAL` whenever the `decompCtgs` field of `ProxAL.AlgParams` is set to `true`. Otherwise, its value can be set using the `θ_c` field of `ProxAL.AlgParams` in [Algorithm parameters](@ref).
+  ```math
+  p_{gt}^k = p_{gt}^0 + \alpha_g \omega_{kt} + z_{gkt} \qquad \forall g \in G, \; \forall k \in K, \; \forall t \in T.
+  ```
