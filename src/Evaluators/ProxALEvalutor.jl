@@ -294,7 +294,7 @@ function optimize!(
     function proximal_parameter_update()
         elapsed_t = @elapsed begin
             if algparams.updateτ && runinfo.iter > 1
-                maxθ = algparams.decompCtgs  ? max(algparams.θ_t, algparams.θ_c) : algparams.θ_t
+                maxθ = (algparams.decompCtgs && modelinfo.num_ctgs > 0)  ? max(algparams.θ_t, algparams.θ_c) : algparams.θ_t
                 delta = (runinfo.lyapunov[end-1] - runinfo.lyapunov[end])/abs(runinfo.lyapunov[end])
                 if delta < -1e-4 && algparams.τ < 320.0*maxθ
                     algparams.τ *= 2.0
@@ -339,10 +339,10 @@ function optimize!(
             if algparams.updateρ_t
                 if runinfo.maxviol_t[end] > 10.0*runinfo.maxviol_d[end] && algparams.ρ_t < 32.0*algparams.θ_t
                     algparams.ρ_t = min(2.0*algparams.ρ_t, 32.0*algparams.θ_t)
-                    algparams.τ = algparams.decompCtgs ? 2.0*max(algparams.ρ_t, algparams.ρ_c) : 2.0*algparams.ρ_t
+                    algparams.τ = (algparams.decompCtgs && modelinfo.num_ctgs > 0) ? 2.0*max(algparams.ρ_t, algparams.ρ_c) : 2.0*algparams.ρ_t
                 elseif runinfo.maxviol_d[end] > 10.0*runinfo.maxviol_t[end]
                     algparams.ρ_t *= 0.5
-                    algparams.τ = algparams.decompCtgs ? 2.0*max(algparams.ρ_t, algparams.ρ_c) : 2.0*algparams.ρ_t
+                    algparams.τ = (algparams.decompCtgs && modelinfo.num_ctgs > 0) ? 2.0*max(algparams.ρ_t, algparams.ρ_c) : 2.0*algparams.ρ_t
                 end
             end
 
