@@ -60,7 +60,7 @@ include("Evaluators/NonDecomposedModel.jl")
 export ModelInfo, AlgParams
 export ProxALEvaluator, NonDecomposedModel
 export optimize!
-export JuMPBackend, ExaPFBackend, ExaTronBackend, NewExaTronBackend
+export JuMPBackend, ExaPFBackend, ExaTronBackend
 
 function update_primal_nlpvars(x::AbstractPrimalSolution, opfBlockData::AbstractBlocks, blk::Int,
                                modelinfo::ModelInfo,
@@ -221,8 +221,6 @@ function ProxALProblem(
         ExaBlockBackend
     elseif isa(backend, ExaTronBackend)
         TronBlockBackend
-    elseif isa(backend, NewExaTronBackend)
-        NewTronBlockBackend
     end
     # NLP blocks
     blocks = OPFBlocks(
