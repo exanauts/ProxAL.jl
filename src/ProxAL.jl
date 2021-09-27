@@ -102,7 +102,9 @@ function update_primal_nlpvars(x::AbstractPrimalSolution, opfBlockData::Abstract
 
     from = 1+to
     to = to + size(x.Sk, 1)*length(range_k)
-    @views x.Sk[:,range_k,t][:] .= opfBlockData.colValue[from:to,blk]
+    if !algparams.decompCtgs || k > 1
+        @views x.Sk[:,range_k,t][:] .= opfBlockData.colValue[from:to,blk]
+    end
 
     from = 1+to
     to = to + size(x.Zk, 1)*length(range_k)

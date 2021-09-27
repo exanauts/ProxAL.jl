@@ -36,7 +36,8 @@ function NonDecomposedModel(
         time_horizon_start = time_horizon_start,
         time_horizon_end = modelinfo.num_time_periods,
         load_scale = modelinfo.load_scale,
-        ramp_scale = modelinfo.ramp_scale
+        ramp_scale = modelinfo.ramp_scale,
+        corr_scale = modelinfo.corr_scale
     )
 
     # ctgs_arr = deepcopy(rawdata.ctgs_arr)

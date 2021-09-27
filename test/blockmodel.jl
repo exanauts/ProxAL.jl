@@ -60,7 +60,8 @@ load_file = joinpath(DATA_DIR, "mp_demand", "$(case)_oneweek_168")
                             time_horizon_start = t,
                             time_horizon_end = t,
                             load_scale = load_scale,
-                            ramp_scale = ramp_scale)
+                            ramp_scale = ramp_scale,
+                            corr_scale = modelinfo.corr_scale)
 
         local solution, n
         @testset "JuMP Block backend" begin

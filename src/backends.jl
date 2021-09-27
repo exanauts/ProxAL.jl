@@ -193,10 +193,18 @@ function init!(block::JuMPBlockBackend, algparams::AlgParams)
             σ_to = opfmodel[:sigma_lineTo][:,j,1]
         end
         opfdata_c = (j == 1) ? opfdata :
-            opf_loaddata(block.rawdata; lineOff = opfdata.lines[block.rawdata.ctgs_arr[j - 1]], time_horizon_start = t, time_horizon_end = t, load_scale = modelinfo.load_scale, ramp_scale = modelinfo.ramp_scale)
+            opf_loaddata(block.rawdata;
+            lineOff = opfdata.lines[block.rawdata.ctgs_arr[j - 1]],
+            time_horizon_start = t,
+            time_horizon_end = t,
+            load_scale = modelinfo.load_scale,
+            ramp_scale = modelinfo.ramp_scale,
+            corr_scale = modelinfo.corr_scale)
         opf_model_add_real_power_balance_constraints(opfmodel, opfdata_c, opfmodel[:Pg][:,j,1], opfdata_c.Pd[:,1], opfmodel[:Vm][:,j,1], opfmodel[:Va][:,j,1], σ_re)
         opf_model_add_imag_power_balance_constraints(opfmodel, opfdata_c, opfmodel[:Qg][:,j,1], opfdata_c.Qd[:,1], opfmodel[:Vm][:,j,1], opfmodel[:Va][:,j,1], σ_im)
-        opf_model_add_line_power_constraints(opfmodel, opfdata_c, opfmodel[:Vm][:,j,1], opfmodel[:Va][:,j,1], σ_fr, σ_to)
+        if modelinfo.allow_line_limits
+            opf_model_add_line_power_constraints(opfmodel, opfdata_c, opfmodel[:Vm][:,j,1], opfmodel[:Va][:,j,1], σ_fr, σ_to)
+        end
     end
     return opfmodel
 end
@@ -524,7 +532,6 @@ struct TronBlockBackend <: AbstractBlockModel
     T::Int
     data::OPFData
     params::ModelInfo
-    iterlim::Int
     tron_scale::Float64
     objective_scaling::Float64
 end
@@ -566,13 +573,13 @@ function TronBlockBackend(
 )
     scale = 1e-4
     use_gpu = (algparams.device == CUDADevice)
-    iterlim = 800
     trondata = ExaTron.OPFData(opfdata)
     env = ExaTron.ProxALAdmmEnv(
         trondata, use_gpu, t, T, algparams.tron_rho_pq, algparams.tron_rho_pa;
+        allow_infeas=modelinfo.allow_constr_infeas, rho_sigma=modelinfo.weight_constr_infeas,
         verbose=algparams.verbose_inner, use_twolevel=true, outer_eps=algparams.tron_outer_eps,
     )
-    return TronBlockBackend(env, blk, k, t, T, opfdata, modelinfo, iterlim, scale, modelinfo.obj_scale)
+    return TronBlockBackend(env, blk, k, t, T, opfdata, modelinfo, scale, modelinfo.obj_scale)
 end
 
 function init!(block::TronBlockBackend, algparams::AlgParams)
@@ -586,7 +593,6 @@ function init!(block::TronBlockBackend, algparams::AlgParams)
     t, k = block.t, block.k
     # Generators
     gens = block.data.generators
-    ramp_agc = [g.ramp_agc for g in gens]
 
     # Sanity check
     @assert modelinfo.num_time_periods == 1
@@ -601,7 +607,11 @@ function init!(block::TronBlockBackend, algparams::AlgParams)
     ExaTron.set_reactive_load!(opfmodel, qd)
 
     # Set bounds on slack variables s
-    ExaTron.set_upper_bound_slack!(opfmodel, 2 .* ramp_agc)
+    if algparams.decompCtgs && modelinfo.ctgs_link_constr_type == :corrective_penalty && k > 1
+        ExaTron.set_upper_bound_slack!(opfmodel, 2 .* [g.scen_agc for g in gens])
+    else
+        ExaTron.set_upper_bound_slack!(opfmodel, 2 .* [g.ramp_agc for g in gens])
+    end
 
     return opfmodel
 end
@@ -613,6 +623,7 @@ function set_objective!(block::TronBlockBackend, algparams::AlgParams,
     modelinfo = block.params
     # Generators
     gens = block.data.generators
+    ngen = length(gens)
 
     t, k = block.t, block.k
     ramp_agc = [g.ramp_agc for g in gens]
@@ -621,6 +632,8 @@ function set_objective!(block::TronBlockBackend, algparams::AlgParams,
     # Need to prescale the penalty and the multipliers
     σ = block.objective_scaling
 
+    #=
+    # Old interface: this dead code block will be removed eventually
     # Update current values
     pgc = primal.Pg[:, k, t]
     ExaTron.set_proximal_ref!(examodel, pgc)
@@ -641,6 +654,74 @@ function set_objective!(block::TronBlockBackend, algparams::AlgParams,
         pgt = primal.Pg[:, 1, t+1] .- primal.St[:, t+1] .- primal.Zt[:, t+1] .+ ramp_agc
         ExaTron.set_multiplier_next!(examodel, λt)
         ExaTron.set_proximal_next!(examodel, pgt)
+    end
+    =#
+
+    # Set ExaTron's internal penalties to 0
+    # (we are defining the penalties manually)
+    examodel.model.gen_mod.rho = 0.0
+    examodel.model.gen_mod.tau = 0.0
+    # Reset Q_ref and c_ref
+    examodel.model.gen_mod.Q_ref .= 0.0
+    examodel.model.gen_mod.c_ref .= 0.0
+
+    index_geners_Q = 1:4:4*ngen
+    index_geners_c = 1:2:2*ngen
+    index_slacks_c = 2:2:2*ngen
+
+    # proximal terms
+    pg_ref = primal.Pg[:, k, t]
+    examodel.model.gen_mod.Q_ref[index_geners_Q] .+= algparams.τ / σ
+    examodel.model.gen_mod.c_ref[index_geners_c] .-= algparams.τ .* pg_ref ./ σ
+
+    # remove generation cost
+    if (k == 1 && !modelinfo.allow_obj_gencost) ||
+        (algparams.decompCtgs && modelinfo.ctgs_link_constr_type == :corrective_penalty && k > 1)
+        alpha = [g.coeff[g.n-2]*opfdata.baseMVA^2 for g in gens]
+        beta = [g.coeff[g.n-1]*opfdata.baseMVA for g in gens]
+        examodel.model.gen_mod.Q_ref[index_geners_Q] .-= 2.0 * alpha
+        examodel.model.gen_mod.c_ref[index_geners_c] .-= beta
+    end
+
+    # Ramping constraints (t-1, t)
+    if t > 1 && k == 1
+        λf = dual.ramping[:, t] ./ σ
+        pgf = primal.Pg[:, 1, t-1] .+ primal.Zt[:, t] .- ramp_agc
+        examodel.model.gen_mod.Q_ref .+= algparams.ρ_t*repeat([1., -1., -1., 1.], ngen)/σ
+        examodel.model.gen_mod.c_ref[index_geners_c] .-= (pgf .* algparams.ρ_t ./ σ) .+ λf
+        examodel.model.gen_mod.c_ref[index_slacks_c] .+= (pgf .* algparams.ρ_t ./ σ) .+ λf
+    end
+
+    # Ramping constraints (t, t+1)
+    if t < block.T && k == 1
+        λt = dual.ramping[:, t+1] ./ σ
+        pgt = primal.Pg[:, 1, t+1] .- primal.St[:, t+1] .- primal.Zt[:, t+1] .+ ramp_agc
+        examodel.model.gen_mod.Q_ref[index_geners_Q] .+= algparams.ρ_t / σ
+        examodel.model.gen_mod.c_ref[index_geners_c] .+= -(pgt .*algparams.ρ_t ./ σ) .+ λt
+    end
+
+    # Contingency linking constraints
+    if algparams.decompCtgs && modelinfo.ctgs_link_constr_type == :corrective_penalty
+        scen_agc = [g.scen_agc for g in gens]
+        K = size(primal.Pg, 2)
+
+        # base case
+        if k == 1 && K > 1
+            λc = dropdims(sum(dual.ctgs[:, 2:K, t] ./ σ; dims = 2); dims=2)
+            pgc = dropdims(sum(primal.Pg[:, 2:K, t] .- primal.Sk[:, 2:K, t] .- primal.Zk[:, 2:K, t] .+ scen_agc; dims = 2); dims=2)
+
+            examodel.model.gen_mod.Q_ref[index_geners_Q] .+= (K - 1)*algparams.ρ_c / σ
+            examodel.model.gen_mod.c_ref[index_geners_c] .+= -(pgc .* algparams.ρ_c ./ σ) .+ λc
+        end
+
+        # contingencies
+        if k > 1
+            λf = dual.ctgs[:, k, t] ./ σ
+            pgf = primal.Pg[:, 1, t] .+ primal.Zk[:, k, t] .- scen_agc
+            examodel.model.gen_mod.Q_ref .+= algparams.ρ_c .* repeat([1., -1., -1., 1.], ngen) ./ σ
+            examodel.model.gen_mod.c_ref[index_geners_c] .-= (pgf .* algparams.ρ_c ./ σ) .+ λf
+            examodel.model.gen_mod.c_ref[index_slacks_c] .+= (pgf .* algparams.ρ_c ./ σ) .+ λf
+        end
     end
 end
 
@@ -669,6 +750,7 @@ function get_solution(block::TronBlockBackend, output)
         va=ExaTron.voltage_angle(model, output) |> Array,
         ωt=[0.0], # At the moment, no frequency variable in ExaTron
         st=s |> Array,
+        sk=s |> Array,
     )
     return solution
 end
@@ -704,4 +786,3 @@ function optimize!(block::TronBlockBackend, x0::Union{Nothing, AbstractArray}, a
 
     return solution
 end
-

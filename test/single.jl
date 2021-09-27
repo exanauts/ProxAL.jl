@@ -15,7 +15,6 @@ rtol = 1e-4
 # Load case
 case_file = joinpath(DATA_DIR, "$(case).m")
 load_file = joinpath(DATA_DIR, "mp_demand", "$(case)_oneweek_168")
-# ctgs_arr = deepcopy(rawdata.ctgs_arr)
 
 # Model/formulation settings
 modelinfo = ModelInfo()
@@ -31,7 +30,7 @@ modelinfo.time_link_constr_type = :penalty
 algparams = AlgParams()
 algparams.verbose = 0
 
-solver_list = ["Ipopt"]
+solver_list = ["Ipopt", "ExaTron"]
 # TODO: MadNLP broken currently
 # solver_list = ["Ipopt", "MadNLP"]
 # if CUDA.has_cuda_gpu()
@@ -47,14 +46,20 @@ end
     modelinfo.case_name = case
 
     for solver in solver_list
-    solver = "Ipopt"
     @testset "$(solver)" begin
         println("Testing using $(solver)")
         if solver == "Ipopt"
             using Ipopt
+            backend = JuMPBackend()
             algparams.optimizer =
                 optimizer_with_attributes(Ipopt.Optimizer,
                     "print_level" => Int64(algparams.verbose > 0)*5)
+        end
+        if solver == "ExaTron"
+            using ExaTron
+            backend = ExaTronBackend()
+            algparams.tron_outer_iterlim=2000
+            algparams.tron_outer_eps=1e-6
         end
 
 
@@ -67,19 +72,21 @@ end
                 OPTIMAL_OBJVALUE = round(11258.316096599736*modelinfo.obj_scale, digits = 6)
                 OPTIMAL_PG = round.([0.8979870694509675, 1.3432060120295906, 0.9418738103137331, 0.9840203268625166, 1.448040098924617, 1.0149638876964715], digits = 5)
 
-                @testset "Non-decomposed formulation" begin
-                    algparams.mode = :nondecomposed
-                    algparams.θ_t = algparams.θ_c = (1/algparams.tol)^2
-                    nlp = NonDecomposedModel(case_file, load_file, modelinfo, algparams)
-                    result = ProxAL.optimize!(nlp)
-                    @test isapprox(result["objective_value_nondecomposed"], OPTIMAL_OBJVALUE, rtol = rtol)
-                    @test isapprox(result["primal"].Pg[:], OPTIMAL_PG, rtol = rtol)
-                    @test norm(result["primal"].Zt[:], Inf) <= algparams.tol
+                if solver == "Ipopt"
+                    @testset "Non-decomposed formulation" begin
+                        algparams.mode = :nondecomposed
+                        algparams.θ_t = algparams.θ_c = (1/algparams.tol)^2
+                        nlp = NonDecomposedModel(case_file, load_file, modelinfo, algparams)
+                        result = ProxAL.optimize!(nlp)
+                        @test isapprox(result["objective_value_nondecomposed"], OPTIMAL_OBJVALUE, rtol = rtol)
+                        @test isapprox(result["primal"].Pg[:], OPTIMAL_PG, rtol = rtol)
+                        @test norm(result["primal"].Zt[:], Inf) <= algparams.tol
+                    end
                 end
 
                 @testset "ProxAL" begin
                     algparams.mode = :coldstart
-                    nlp = ProxALEvaluator(case_file, load_file, modelinfo, algparams, JuMPBackend(), Dict(), Dict(), nothing)
+                    nlp = ProxALEvaluator(case_file, load_file, modelinfo, algparams, backend, Dict(), Dict(), nothing)
                     runinfo = ProxAL.optimize!(nlp)
                     @test isapprox(runinfo.objvalue[end], OPTIMAL_OBJVALUE, rtol = rtol)
                     @test isapprox(runinfo.x.Pg[:], OPTIMAL_PG, rtol = rtol)
@@ -113,34 +120,39 @@ end
                     OPTIMAL_WT = [0.0, 0.0, 0.0, 0.0]
                     proxal_ctgs_link = :corrective_penalty
                 end
+                if solver == "ExaTron" && proxal_ctgs_link != :corrective_penalty
+                    continue
+                end
 
                 algparams.decompCtgs = false
                 modelinfo.ctgs_link_constr_type = ctgs_link
-                @testset "$T-period, $K-ctgs, time_link=$(modelinfo.time_link_constr_type), ctgs_link=$(ctgs_link)" begin
-                    @testset "Non-decomposed formulation" begin
-                        algparams.mode = :nondecomposed
-                        algparams.θ_t = algparams.θ_c = (1/algparams.tol)^2
-                        nlp = NonDecomposedModel(case_file, load_file, modelinfo, algparams)
-                        result = ProxAL.optimize!(nlp)
-                        @test isapprox(result["objective_value_nondecomposed"], OPTIMAL_OBJVALUE, rtol = rtol)
-                        @test isapprox(result["primal"].Pg[:,1,:][:], OPTIMAL_PG, rtol = rtol)
-                        @test norm(result["primal"].Zt[:], Inf) <= algparams.tol
-                        @test isapprox(result["primal"].ωt[:], OPTIMAL_WT, rtol = 1e-1)
-                    end
+                if solver == "Ipopt"
+                    @testset "$T-period, $K-ctgs, time_link=$(modelinfo.time_link_constr_type), ctgs_link=$(ctgs_link)" begin
+                        @testset "Non-decomposed formulation" begin
+                            algparams.mode = :nondecomposed
+                            algparams.θ_t = algparams.θ_c = (1/algparams.tol)^2
+                            nlp = NonDecomposedModel(case_file, load_file, modelinfo, algparams)
+                            result = ProxAL.optimize!(nlp)
+                            @test isapprox(result["objective_value_nondecomposed"], OPTIMAL_OBJVALUE, rtol = rtol)
+                            @test isapprox(result["primal"].Pg[:,1,:][:], OPTIMAL_PG, rtol = rtol)
+                            @test norm(result["primal"].Zt[:], Inf) <= algparams.tol
+                            @test isapprox(result["primal"].ωt[:], OPTIMAL_WT, rtol = 1e-1)
+                        end
 
-                    @testset "ProxAL" begin
-                        algparams.mode = :coldstart
-                        nlp = ProxALEvaluator(case_file, load_file, modelinfo, algparams, JuMPBackend(), Dict(), Dict(), nothing)
-                        runinfo = ProxAL.optimize!(nlp)
-                        @test isapprox(runinfo.objvalue[end], OPTIMAL_OBJVALUE, rtol = rtol)
-                        @test isapprox(runinfo.x.Pg[:,1,:][:], OPTIMAL_PG, rtol = rtol)
-                        @test isapprox(runinfo.x.ωt[:], OPTIMAL_WT, rtol = 1e-1)
-                        @test isapprox(runinfo.maxviol_c[end], 0.0)
-                        @test isapprox(runinfo.maxviol_c_actual[end], 0.0)
-                        @test runinfo.maxviol_t[end] <= algparams.tol
-                        @test runinfo.maxviol_t_actual[end] <= algparams.tol
-                        @test runinfo.maxviol_d[end] <= algparams.tol
-                        @test runinfo.iter <= algparams.iterlim
+                        @testset "ProxAL" begin
+                            algparams.mode = :coldstart
+                            nlp = ProxALEvaluator(case_file, load_file, modelinfo, algparams, backend, Dict(), Dict(), nothing)
+                            runinfo = ProxAL.optimize!(nlp)
+                            @test isapprox(runinfo.objvalue[end], OPTIMAL_OBJVALUE, rtol = rtol)
+                            @test isapprox(runinfo.x.Pg[:,1,:][:], OPTIMAL_PG, rtol = rtol)
+                            @test isapprox(runinfo.x.ωt[:], OPTIMAL_WT, rtol = 1e-1)
+                            @test isapprox(runinfo.maxviol_c[end], 0.0)
+                            @test isapprox(runinfo.maxviol_c_actual[end], 0.0)
+                            @test runinfo.maxviol_t[end] <= algparams.tol
+                            @test runinfo.maxviol_t_actual[end] <= algparams.tol
+                            @test runinfo.maxviol_d[end] <= algparams.tol
+                            @test runinfo.iter <= algparams.iterlim
+                        end
                     end
                 end
 
@@ -149,21 +161,23 @@ end
                 algparams.decompCtgs = true
                 modelinfo.ctgs_link_constr_type = proxal_ctgs_link
                 @testset "$T-period, $K-ctgs, time_link=$(modelinfo.time_link_constr_type), ctgs_link=$(proxal_ctgs_link), decompCtgs" begin
-                    @testset "Non-decomposed formulation" begin
-                        algparams.mode = :nondecomposed
-                        algparams.θ_t = algparams.θ_c = (10/algparams.tol)^2
-                        nlp = NonDecomposedModel(case_file, load_file, modelinfo, algparams)
-                        result = ProxAL.optimize!(nlp)
-                        @test isapprox(result["objective_value_nondecomposed"], OPTIMAL_OBJVALUE, rtol = rtol)
-                        @test isapprox(result["primal"].Pg[:,1,:][:], OPTIMAL_PG, rtol = rtol)
-                        @test norm(result["primal"].Zt[:], Inf) <= algparams.tol
-                        @test norm(result["primal"].Zk[:], Inf) <= algparams.tol
+                    if solver == "Ipopt"
+                        @testset "Non-decomposed formulation" begin
+                            algparams.mode = :nondecomposed
+                            algparams.θ_t = algparams.θ_c = (10/algparams.tol)^2
+                            nlp = NonDecomposedModel(case_file, load_file, modelinfo, algparams)
+                            result = ProxAL.optimize!(nlp)
+                            @test isapprox(result["objective_value_nondecomposed"], OPTIMAL_OBJVALUE, rtol = rtol)
+                            @test isapprox(result["primal"].Pg[:,1,:][:], OPTIMAL_PG, rtol = rtol)
+                            @test norm(result["primal"].Zt[:], Inf) <= algparams.tol
+                            @test norm(result["primal"].Zk[:], Inf) <= algparams.tol
+                        end
                     end
 
                     @testset "ProxAL" begin
                         algparams.mode = :coldstart
                         algparams.iterlim = 300
-                        nlp = ProxALEvaluator(case_file, load_file, modelinfo, algparams, JuMPBackend(), Dict(), Dict(), nothing)
+                        nlp = ProxALEvaluator(case_file, load_file, modelinfo, algparams, backend, Dict(), Dict(), nothing)
                         runinfo = ProxAL.optimize!(nlp)
                         @test isapprox(runinfo.objvalue[end], OPTIMAL_OBJVALUE, rtol = 1e-2)
                         @test isapprox(runinfo.x.Pg[:,1,:][:], OPTIMAL_PG, rtol = 1e-2)
