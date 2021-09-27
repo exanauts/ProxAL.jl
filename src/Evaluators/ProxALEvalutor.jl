@@ -79,11 +79,11 @@ of the decomposition algorithm.
 function optimize!(
     nlp::ProxALEvaluator;
     print_timings::Bool=false,
-    θ_t_initial::Union{Float64,Nothing}=nothing,
-    θ_c_initial::Union{Float64,Nothing}=nothing,
-    ρ_t_initial::Union{Float64,Nothing}=nothing,
-    ρ_c_initial::Union{Float64,Nothing}=nothing,
-    τ_initial::Union{Float64,Nothing}=nothing
+    θ_t_initial::Union{Real,Nothing}=nothing,
+    θ_c_initial::Union{Real,Nothing}=nothing,
+    ρ_t_initial::Union{Real,Nothing}=nothing,
+    ρ_c_initial::Union{Real,Nothing}=nothing,
+    τ_initial::Union{Real,Nothing}=nothing
 )
     algparams = nlp.algparams
     modelinfo = nlp.modelinfo
@@ -91,16 +91,20 @@ function optimize!(
     opfdata   = nlp.opfdata
     comm      = nlp.comm
 
+    has_ctgs(modelinfo, algparams) = (algparams.decompCtgs && modelinfo.num_ctgs > 0)
+    τ_default(modelinfo, algparams) = has_ctgs(modelinfo, algparams) ? 2.0*max(algparams.ρ_t, algparams.ρ_c) : 2.0*algparams.ρ_t
+    maxθ(modelinfo, algparams) = has_ctgs(modelinfo, algparams) ? max(algparams.θ_t, algparams.θ_c) : algparams.θ_t
+
     algparams.θ_t = algparams.θ_c = (1/algparams.tol^2)
     algparams.ρ_t = algparams.ρ_c = modelinfo.obj_scale
-    algparams.τ = 2.0*max(algparams.ρ_t, algparams.ρ_c)
+    algparams.τ = τ_default(modelinfo, algparams)
     !isnothing(θ_t_initial) && (algparams.θ_t = θ_t_initial)
     !isnothing(θ_c_initial) && (algparams.θ_c = θ_c_initial)
     !isnothing(ρ_t_initial) && (algparams.ρ_t = ρ_t_initial)
     !isnothing(ρ_c_initial) && (algparams.ρ_c = ρ_c_initial)
     !isnothing(τ_initial) && (algparams.τ = τ_initial)
     if (!isnothing(ρ_t_initial) || !isnothing(ρ_c_initial)) && isnothing(τ_initial)
-        algparams.τ = 2.0*max(algparams.ρ_t, algparams.ρ_c)
+        algparams.τ = τ_default(modelinfo, algparams)
     end
     runinfo.initial_solve &&
         (algparams_copy = deepcopy(algparams))
@@ -294,9 +298,8 @@ function optimize!(
     function proximal_parameter_update()
         elapsed_t = @elapsed begin
             if algparams.updateτ && runinfo.iter > 1
-                maxθ = (algparams.decompCtgs && modelinfo.num_ctgs > 0)  ? max(algparams.θ_t, algparams.θ_c) : algparams.θ_t
                 delta = (runinfo.lyapunov[end-1] - runinfo.lyapunov[end])/abs(runinfo.lyapunov[end])
-                if delta < -1e-4 && algparams.τ < 320.0*maxθ
+                if delta < -1e-4 && algparams.τ < 320.0*maxθ(modelinfo, algparams)
                     algparams.τ *= 2.0
                 end
             end
@@ -339,10 +342,10 @@ function optimize!(
             if algparams.updateρ_t
                 if runinfo.maxviol_t[end] > 10.0*runinfo.maxviol_d[end] && algparams.ρ_t < 32.0*algparams.θ_t
                     algparams.ρ_t = min(2.0*algparams.ρ_t, 32.0*algparams.θ_t)
-                    algparams.τ = (algparams.decompCtgs && modelinfo.num_ctgs > 0) ? 2.0*max(algparams.ρ_t, algparams.ρ_c) : 2.0*algparams.ρ_t
+                    algparams.τ = τ_default(modelinfo, algparams)
                 elseif runinfo.maxviol_d[end] > 10.0*runinfo.maxviol_t[end]
                     algparams.ρ_t *= 0.5
-                    algparams.τ = (algparams.decompCtgs && modelinfo.num_ctgs > 0) ? 2.0*max(algparams.ρ_t, algparams.ρ_c) : 2.0*algparams.ρ_t
+                    algparams.τ = τ_default(modelinfo, algparams)
                 end
             end
 
