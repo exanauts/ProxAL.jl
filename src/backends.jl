@@ -664,6 +664,8 @@ function set_objective!(block::TronBlockBackend, algparams::AlgParams,
     # Reset Q_ref and c_ref
     examodel.model.gen_mod.Q_ref .= 0.0
     examodel.model.gen_mod.c_ref .= 0.0
+    # Get the GPU data type
+    T = typeof(examodel.model.gen_mod.Q_ref)
 
     index_geners_Q = 1:4:4*ngen
     index_geners_c = 1:2:2*ngen
@@ -672,24 +674,25 @@ function set_objective!(block::TronBlockBackend, algparams::AlgParams,
     # proximal terms
     pg_ref = primal.Pg[:, k, t]
     examodel.model.gen_mod.Q_ref[index_geners_Q] .+= algparams.τ / σ
-    examodel.model.gen_mod.c_ref[index_geners_c] .-= algparams.τ .* pg_ref ./ σ
+    # Move to the GPU
+    examodel.model.gen_mod.c_ref[index_geners_c] .-= convert(T, algparams.τ .* pg_ref ./ σ)
 
     # remove generation cost
     if (k == 1 && !modelinfo.allow_obj_gencost) ||
         (algparams.decompCtgs && modelinfo.ctgs_link_constr_type == :corrective_penalty && k > 1)
         alpha = [g.coeff[g.n-2]*opfdata.baseMVA^2 for g in gens]
         beta = [g.coeff[g.n-1]*opfdata.baseMVA for g in gens]
-        examodel.model.gen_mod.Q_ref[index_geners_Q] .-= 2.0 * alpha
-        examodel.model.gen_mod.c_ref[index_geners_c] .-= beta
+        examodel.model.gen_mod.Q_ref[index_geners_Q] .-= convert(T, 2.0 * alpha)
+        examodel.model.gen_mod.c_ref[index_geners_c] .-= convert(T, beta)
     end
 
     # Ramping constraints (t-1, t)
     if t > 1 && k == 1
         λf = dual.ramping[:, t] ./ σ
         pgf = primal.Pg[:, 1, t-1] .+ primal.Zt[:, t] .- ramp_agc
-        examodel.model.gen_mod.Q_ref .+= algparams.ρ_t*repeat([1., -1., -1., 1.], ngen)/σ
-        examodel.model.gen_mod.c_ref[index_geners_c] .-= (pgf .* algparams.ρ_t ./ σ) .+ λf
-        examodel.model.gen_mod.c_ref[index_slacks_c] .+= (pgf .* algparams.ρ_t ./ σ) .+ λf
+        examodel.model.gen_mod.Q_ref .+= convert(T, algparams.ρ_t*repeat([1., -1., -1., 1.], ngen)/σ)
+        examodel.model.gen_mod.c_ref[index_geners_c] .-= convert(T, (pgf .* algparams.ρ_t ./ σ) .+ λf)
+        examodel.model.gen_mod.c_ref[index_slacks_c] .+= convert(T, (pgf .* algparams.ρ_t ./ σ) .+ λf)
     end
 
     # Ramping constraints (t, t+1)
@@ -697,7 +700,7 @@ function set_objective!(block::TronBlockBackend, algparams::AlgParams,
         λt = dual.ramping[:, t+1] ./ σ
         pgt = primal.Pg[:, 1, t+1] .- primal.St[:, t+1] .- primal.Zt[:, t+1] .+ ramp_agc
         examodel.model.gen_mod.Q_ref[index_geners_Q] .+= algparams.ρ_t / σ
-        examodel.model.gen_mod.c_ref[index_geners_c] .+= -(pgt .*algparams.ρ_t ./ σ) .+ λt
+        examodel.model.gen_mod.c_ref[index_geners_c] .+= convert(T, -(pgt .*algparams.ρ_t ./ σ) .+ λt)
     end
 
     # Contingency linking constraints
@@ -711,16 +714,16 @@ function set_objective!(block::TronBlockBackend, algparams::AlgParams,
             pgc = dropdims(sum(primal.Pg[:, 2:K, t] .- primal.Sk[:, 2:K, t] .- primal.Zk[:, 2:K, t] .+ scen_agc; dims = 2); dims=2)
 
             examodel.model.gen_mod.Q_ref[index_geners_Q] .+= (K - 1)*algparams.ρ_c / σ
-            examodel.model.gen_mod.c_ref[index_geners_c] .+= -(pgc .* algparams.ρ_c ./ σ) .+ λc
+            examodel.model.gen_mod.c_ref[index_geners_c] .+= convert(T, -(pgc .* algparams.ρ_c ./ σ) .+ λc)
         end
 
         # contingencies
         if k > 1
             λf = dual.ctgs[:, k, t] ./ σ
             pgf = primal.Pg[:, 1, t] .+ primal.Zk[:, k, t] .- scen_agc
-            examodel.model.gen_mod.Q_ref .+= algparams.ρ_c .* repeat([1., -1., -1., 1.], ngen) ./ σ
-            examodel.model.gen_mod.c_ref[index_geners_c] .-= (pgf .* algparams.ρ_c ./ σ) .+ λf
-            examodel.model.gen_mod.c_ref[index_slacks_c] .+= (pgf .* algparams.ρ_c ./ σ) .+ λf
+            examodel.model.gen_mod.Q_ref .+= convert(T, algparams.ρ_c .* repeat([1., -1., -1., 1.], ngen) ./ σ)
+            examodel.model.gen_mod.c_ref[index_geners_c] .-= convert(T, (pgf .* algparams.ρ_c ./ σ) .+ λf)
+            examodel.model.gen_mod.c_ref[index_slacks_c] .+= convert(T, (pgf .* algparams.ρ_c ./ σ) .+ λf)
         end
     end
 end

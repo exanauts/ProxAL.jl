@@ -14,11 +14,13 @@ using Logging
 
 MPI.Init()
 
-case = "case_ACTIVSg2000"
+case = "case9"
+# case = "case_ACTIVSg2000"
 
 # choose one of the following (K*T subproblems in each case)
 if length(ARGS) == 0
-    (K, T) = (0, 10)
+    (K, T) = (1, 2)
+    # (K, T) = (1, 10)
     # (K, T) = (10, 10)
     # (K, T) = (10, 100)
     # (K, T) = (100, 10)
@@ -35,7 +37,7 @@ end
 
 # choose backend
 # backend = ProxAL.JuMPBackend()
-# With ExaTronBackend(), CUDADevice will used
+# # With ExaTronBackend(), CUDADevice will used
 backend = ProxAL.ExaTronBackend()
 
 
@@ -63,7 +65,7 @@ modelinfo.num_ctgs = K
 algparams = AlgParams()
 algparams.verbose = 1
 algparams.tol = 1e-3
-algparams.decompCtgs = (K > 1)
+algparams.decompCtgs = (K > 0)
 algparams.iterlim = 100
 if isa(backend, ProxAL.ExaTronBackend)
     algparams.device = ProxAL.CUDADevice
