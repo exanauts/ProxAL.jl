@@ -17,21 +17,32 @@ MPI.Init()
 case = "case_ACTIVSg2000"
 
 # choose one of the following (K*T subproblems in each case)
-(K, T) = (0, 10)
-# (K, T) = (10, 10)
-# (K, T) = (10, 100)
-# (K, T) = (100, 10)
-# (K, T) = (100, 100)
+if length(ARGS) == 0
+    (K, T) = (0, 10)
+    # (K, T) = (10, 10)
+    # (K, T) = (10, 100)
+    # (K, T) = (100, 10)
+    # (K, T) = (100, 100)
+elseif length(ARGS) == 2
+    T = parse(Int, ARGS[1])
+    K = parse(Int, ARGS[2])
+else
+    println("Usage: [mpiexec -n nprocs] julia --project examples/exatron.jl [T K]")
+    println("")
+    println("       (K,T) defaults to (0,10)")
+    exit()
+end
 
 # choose backend
 # backend = ProxAL.JuMPBackend()
+# With ExaTronBackend(), CUDADevice will used
 backend = ProxAL.ExaTronBackend()
 
 
 # Load case
-DATA_DIR = joinpath(dirname(@__FILE__), "..", "data")
+DATA_DIR = joinpath(dirname(@__FILE__), "..", "ExaData")
 case_file = joinpath(DATA_DIR, "$(case).m")
-load_file = joinpath(DATA_DIR, "mp_demand", "$(case)")
+load_file = joinpath(DATA_DIR, "$(case)")
 
 # Model/formulation settings
 modelinfo = ModelInfo()
@@ -54,7 +65,9 @@ algparams.verbose = 1
 algparams.tol = 1e-3
 algparams.decompCtgs = (K > 1)
 algparams.iterlim = 100
-# algparams.device = ProxAL.CUDADevice
+if isa(backend, ProxAL.ExaTronBackend)
+    algparams.device = ProxAL.CUDADevice
+end
 algparams.optimizer = optimizer_with_attributes(Ipopt.Optimizer, "print_level" => 0) #,  "tol" => 1e-1*algparams.tol)
 algparams.tron_rho_pq=5*1e4
 algparams.tron_rho_pa=5*1e5
