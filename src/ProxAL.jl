@@ -339,22 +339,15 @@ function runinfo_update(
     maxviol_c_actual = comm_max(maxviol_c_actual, comm)
     push!(runinfo.maxviol_c_actual, maxviol_c_actual)
 
-    # FIX ME: Frigging bug in the parallel implementation of the dual error
-    # FIX ME: Re-implement parallel implementation of the dual error
-    # (ngen, K, T) = size(runinfo.x.Pg)
-    # smaxviol_d = 3*ngen*K + 2*ngen + K
-    # @show smaxviol_d
-    # maxviol_d = zeros(Float64, smaxviol_d)
-    # for blk in runinfo.par_order
-    #     if is_my_work(blk, comm)
-    #         maxviol_d .+= compute_dual_error(runinfo.x, runinfo.xprev, runinfo.λ, runinfo.λprev, opfdata, opfBlockData, blk, modelinfo, algparams)
-    #         # compute_dual_error(runinfo.x, runinfo.xprev, runinfo.λ, runinfo.λprev, opfdata, opfBlockData, blk, modelinfo, algparams)
-    #     end
-    # end
-    # maxviol_d = MPI.Allreduce(maxviol_d, MPI.SUM, comm)
-    # maxviol_d = norm(maxviol_d, Inf)
-    # push!(runinfo.maxviol_d, maxviol_d)
-    maxviol_d = compute_dual_error(runinfo.x, runinfo.xprev, runinfo.λ, runinfo.λprev, opfdata, modelinfo, algparams)
+    # maxviol_d = compute_dual_error(runinfo.x, runinfo.xprev, runinfo.λ, runinfo.λprev, opfdata, modelinfo, algparams)
+    # maxviol_d = comm_max(maxviol_d, comm)
+    maxviol_d = 0.0
+    for blk in runinfo.par_order
+        if is_my_work(blk, comm)
+            lmaxviol_d = compute_dual_error(runinfo.x, runinfo.xprev, runinfo.λ, runinfo.λprev, opfdata, opfBlockData, blk, modelinfo, algparams)
+            maxviol_d = max(maxviol_d, lmaxviol_d)
+        end
+    end
     maxviol_d = comm_max(maxviol_d, comm)
     push!(runinfo.maxviol_d, maxviol_d)
 
