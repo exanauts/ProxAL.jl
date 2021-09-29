@@ -739,7 +739,7 @@ function get_solution(block::TronBlockBackend, output)
         @warn("Block $(block.id) subproblem not solved to optimality. status: $status")
     end
 
-    s = ExaTron.slack_values(block.env)
+    s = ExaTron.slack_values(block.env) |> Array
     model = block.env.model
     solution = (
         status=status,
@@ -749,8 +749,8 @@ function get_solution(block::TronBlockBackend, output)
         vm=ExaTron.voltage_magnitude(model, output) |> Array,
         va=ExaTron.voltage_angle(model, output) |> Array,
         ωt=[0.0], # At the moment, no frequency variable in ExaTron
-        st=s |> Array,
-        sk=s |> Array,
+        st=(block.k > 1) ? (s .* 0) : s,
+        sk=(block.k > 1) ? s : (s .* 0),
     )
     return solution
 end
