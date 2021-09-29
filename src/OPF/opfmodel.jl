@@ -683,7 +683,7 @@ function compute_dual_error(
                 err_sk .+= -temp_arr
             end
             if modelinfo.ctgs_link_constr_type ∈ [:frequency_penalty]
-                err_ωt += -sum(g.alpha * temp_arr[g] for g in opfdata.generators)
+                err_ωt += -sum(opfdata.generators[g].alpha * temp_arr[g] for g in 1:ngen)
             end
         end
     end

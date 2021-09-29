@@ -138,10 +138,10 @@ function update_primal_penalty(x::AbstractPrimalSolution, opfdata::OPFData,
                 β = [opfdata.generators[g].scen_agc for g=1:ngen]
             elseif modelinfo.ctgs_link_constr_type == :frequency_penalty
                 β = [-opfdata.generators[g].alpha*x.ωt[k,t] for g=1:ngen]
-                @assert norm(x.Sk) <= algparams.zero
+                @assert norm(x.Sk[:,k,t]) <= algparams.zero
             else
                 β = zeros(ngen)
-                @assert norm(x.Sk) <= algparams.zero
+                @assert norm(x.Sk[:,k,t]) <= algparams.zero
             end
             @views x.Zk[:,k,t] .=   (((algparams.ρ_c/32.0)*primal.Zk[:,k,t]) .- dual.ctgs[:,k,t] .-
                                         (algparams.ρ_c*(x.Pg[:,1,t] .- x.Pg[:,k,t] .+ x.Sk[:,k,t] .- β))
