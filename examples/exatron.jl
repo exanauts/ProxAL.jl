@@ -14,8 +14,8 @@ using Logging
 
 MPI.Init()
 
-case = "case9"
-# case = "case_ACTIVSg2000"
+# case = "case9"
+case = "case_ACTIVSg2000"
 
 # choose one of the following (K*T subproblems in each case)
 if length(ARGS) == 0

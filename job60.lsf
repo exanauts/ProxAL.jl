@@ -1,0 +1,17 @@
+#!/bin/bash
+# Begin LSF Directives
+#BSUB -P CSC359
+#BSUB -W 1:00
+#BSUB -nnodes 60
+#BSUB -J proxal-tests
+ 
+cd $MEMBERWORK/csc359/michel/summit/git/ProxAL.jl
+date
+module load cuda
+RANKS=360
+export JULIA_CUDA_VERBOSE=1
+export JULIA_DEPOT_PATH=$PROJWORK/csc359/michel/julia_depot
+export JULIA_MPI_BINARY=system
+export JULIA_EXEC=/ccs/proj/csc359/michel/julia-1.7.0-rc1/bin/julia
+jsrun -n $RANKS -r 6 -c 1 -a 1 -g 1 julia --color=no --project ./examples/exatron.jl 6 600
+
