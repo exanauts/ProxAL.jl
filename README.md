@@ -1,3 +1,9 @@
+# ECP Milestone 5
+
+This is a special branch of `ProxAL` that completes the milepost 5 of the ECP ExaSGD project. The document [milestone5.md](milestone5.md) describes the setup used. You can create a pdf of the markdown file using pandoc:
+```bash
+pandoc milestone5.md -t pdf -o milestone5.pdf
+```
 
 # ProxAL.jl
 
