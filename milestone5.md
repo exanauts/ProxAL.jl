@@ -1,10 +1,10 @@
-# ECP ExaSGD Milestone 5
-This documents describes the completion of the project ExaSGD milestone 5 as stated by:
+# ECP ExaSGD Milepost 5
+This documents describes the completion of the project ExaSGD milepost 5 as stated by:
 
 > Run formulation 4 using full ExaSGD software stack on Tulip and/or Summit. Use 1,000 bus grid model with 5+ scenarios and 100-500 contingencies and 2 periods. All computations inside optimization loops run on GPU.
 
 ## Preliminary notes
-"Tulip" was an early access AMD system provided by Cray. In the meantime, we moved our code base to the superseding AMD system "Spock" at OLCF. The milestone was completed on "Spock" and "Summit", while only executing a small job on Spock to demonstrate our portability strategy.
+"Tulip" was an early access AMD system provided by Cray. In the meantime, we moved our code base to the superseding AMD system "Spock" at OLCF. The milepost was completed on "Spock" and "Summit", while only executing a small job on Spock to demonstrate our portability strategy.
 
 ## Prerequisites
 
@@ -45,7 +45,7 @@ Checkout ProxAL and switch to the develop branch.
 
 ```bash
 git clone git@github.com:exanauts/ProxAL.jl.git
-git checkout ecp/milestone5
+git checkout ecp/milepost5
 ```
 
 In the ProxAL folder instantiate the environment as defined by the Manifest.toml file.
@@ -102,18 +102,24 @@ Disable the download of ROCm binaries through the Julia artifacts infrastructure
 export JULIA_AMDGPU_DISABLE_ARTIFACTS=1
 ```
 
-Checkout ProxAL and switch to the `ecp/milestone5` branch.
+
+Checkout ProxAL and switch to the `ecp/milepost5` branch.
 
 ```bash
 git clone git@github.com:exanauts/ProxAL.jl.git
-git checkout ecp/milestone5-spock
+git checkout ecp/milepost5-spock
 ```
 
-In the ProxAL folder instantiate the environment as defined by the Manifest.toml file.
+Our runs were done using ROCm 4.2.
 
 ```bash
-julia --project
-(ProxAL) pkg> instantiate
+module load ROCm/4.2
+```
+
+In the ProxAL folder instantiate the environment as defined in the `deps/deps.jl` file.
+
+```bash
+julia --project deps/deps.jl
 ```
 
 Verify that AMDGPU.jl can be successfully loaded
