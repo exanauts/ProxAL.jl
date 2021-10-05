@@ -8,4 +8,6 @@ end
 using Pkg
 exapfspec = PackageSpec(url="https://github.com/exanauts/ExaPF.jl.git", rev="proxal")
 exatronspec = PackageSpec(url="https://github.com/exanauts/ExaTron.jl.git", rev="ms/ka")
-Pkg.add([exapfspec, exatronspec])
+amdgpuspec = PackageSpec(url="https://github.com/exanauts/AMDGPU.jl.git", rev="milepost5")
+kaspec = PackageSpec(url="https://github.com/exanauts/KernelAbstractions.jl.git", rev="milepost5")
+Pkg.add([exapfspec, exatronspec, amdgpuspec, kaspec])
