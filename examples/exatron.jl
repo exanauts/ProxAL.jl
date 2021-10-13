@@ -19,7 +19,8 @@ case = "case_ACTIVSg2000"
 
 # choose one of the following (K*T subproblems in each case)
 if length(ARGS) == 0
-    (K, T) = (39, 4)
+    # (K, T) = (1, 4)
+    (K, T) = (19, 2)
     # (K, T) = (1, 10)
     # (K, T) = (10, 10)
     # (K, T) = (10, 100)
@@ -79,7 +80,7 @@ algparams.tron_inner_iterlim=2000
 algparams.tron_scale=1e-5
 algparams.mode = :coldstart
 algparams.init_opf = false
-tron_outer_eps = 1e-6
+algparams.tron_outer_eps = 1e-3
 
 
 ranks = MPI.Comm_size(MPI.COMM_WORLD)
