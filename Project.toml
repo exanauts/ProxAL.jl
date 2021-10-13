@@ -21,7 +21,7 @@ ROCKernels = "7eb9e9f0-4bd3-4c4c-8bef-26bd9629d9b9"
 SparseArrays = "2f01184e-e22b-5df5-ae63-d93ebab69eaf"
 
 [compat]
-CUDA = "~3.4"
+CUDA = "~3.3"
 CatViews = "1"
 ExaPF = "0.5"
 Ipopt = "0.6"

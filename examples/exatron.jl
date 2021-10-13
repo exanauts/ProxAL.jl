@@ -14,12 +14,12 @@ using Logging
 
 MPI.Init()
 
-case = "case9"
-# case = "case_ACTIVSg2000"
+# case = "case9"
+case = "case_ACTIVSg2000"
 
 # choose one of the following (K*T subproblems in each case)
 if length(ARGS) == 0
-    (K, T) = (1, 2)
+    (K, T) = (39, 4)
     # (K, T) = (1, 10)
     # (K, T) = (10, 10)
     # (K, T) = (10, 100)
@@ -64,6 +64,7 @@ modelinfo.num_ctgs = K
 # Algorithm settings
 algparams = AlgParams()
 algparams.verbose = 1
+algparams.verbose_inner = 0
 algparams.tol = 1e-3
 algparams.decompCtgs = (K > 0)
 algparams.iterlim = 100
