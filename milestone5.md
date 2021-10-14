@@ -35,7 +35,8 @@ into the `ProxAL` folder that you will checkout later.
 
 ## Summit
 
-Disable the download of ROCm binaries through the Julia artifacts infrastructure.
+Disable the download of ROCm binaries through the Julia artifacts infrastructure. Although Summit does not use AMDGPU, we still have to set this.
+Additionally, we have to load various modules and set environment variables.
 
 ```bash
 export JULIA_AMDGPU_DISABLE_ARTIFACTS=1
@@ -69,7 +70,7 @@ Before job submission, compile the Julia MPI package `MPI.jl` with the system MP
 julia --project -e 'ENV["JULIA_MPI_BINARY"]="system"; using Pkg; Pkg.build("MPI"; verbose=true)'
 ```
 
-Our job submission script for the TAMU2k case with `K=600` contingencies and `T=6` periods is
+Our job submission script for the ERCOT 2000 bus case with `K=600` contingencies and `T=6` periods is
 
 ```
 #!/bin/bash
@@ -90,7 +91,7 @@ export JULIA_EXEC=/ccs/proj/csc359/michel/julia-1.7.0-rc1/bin/julia
 jsrun -n $RANKS -r 6 -c 1 -a 1 -g 1 julia --color=no --project ./examples/exatron.jl 6 600
 ```
 
-This executes the Julia code in `examples/exatron.jl` which loads the TAMU 2000 case file per default.
+This executes the Julia code in `examples/exatron.jl` which loads the ERCOT 2000 bus case file per default.
 
 ## Spock
 
@@ -100,10 +101,20 @@ Disable the download of ROCm binaries through the Julia artifacts infrastructure
 
 ```bash
 export JULIA_AMDGPU_DISABLE_ARTIFACTS=1
+module load craype-accel-amd-gfx908
+module load PrgEnv-cray
+module load rocm/4.2
+export JULIA_MPI_PATH=$MPICH_DIR
+```
+
+Again, before any job run, compile the Julia MPI package `MPI.jl` with the system MPI library via the following command.
+
+```bash
+julia --project -e 'ENV["JULIA_MPI_BINARY"]="system"; using Pkg; Pkg.build("MPI"; verbose=true)'
 ```
 
 
-Checkout ProxAL and switch to the `ecp/milepost5` branch.
+Checkout ProxAL and switch to the `ecp/milepost5-spock` branch.
 
 ```bash
 git clone git@github.com:exanauts/ProxAL.jl.git
@@ -113,7 +124,7 @@ git checkout ecp/milepost5-spock
 Our runs were done using ROCm 4.2.
 
 ```bash
-module load ROCm/4.2
+module load rocm/4.2
 ```
 
 In the ProxAL folder instantiate the environment as defined in the `deps/deps.jl` file.
@@ -132,9 +143,11 @@ julia> x .= 2.0
 
 ### Execution
 
-julia --project examples/exatron.jl 2
+```bash
+julia --project examples/exatron.jl
+```
 
-This loads a IEEE 9-bus case and runs the problem with `T=2` periods. The version of [ExaTron](https://github.com/exanauts/ExaTron.jl/) used as a backend here relies on [KernelAbstractions.jl](https://github.com/JuliaGPU/KernelAbstractions.jl) to run both on CUDA and ROCm architectures.
+This loads the ERCOT 2000 case and runs the problem with `T=2` periods and `K=19` contingencies. We used `4` Spock notes (the maximum possible). The version of [ExaTron](https://github.com/exanauts/ExaTron.jl/) used as a backend here relies on [KernelAbstractions.jl](https://github.com/JuliaGPU/KernelAbstractions.jl) to run both on CUDA and ROCm architectures.
 
 
 
