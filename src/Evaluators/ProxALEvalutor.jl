@@ -93,8 +93,8 @@ function optimize!(
     comm      = nlp.comm
 
     has_ctgs(modelinfo, algparams) = (algparams.decompCtgs && modelinfo.num_ctgs > 0)
-    τ_default(modelinfo, algparams) = has_ctgs(modelinfo, algparams) ? 2.0*max(algparams.ρ_t, algparams.ρ_c) : 2.0*algparams.ρ_t
-    maxθ(modelinfo, algparams) = has_ctgs(modelinfo, algparams) ? max(algparams.θ_t, algparams.θ_c) : algparams.θ_t
+    maxρ(modelinfo, algparams) = has_ctgs(modelinfo, algparams) ? max(algparams.ρ_t, algparams.ρ_c) : algparams.ρ_t
+    τ_default(modelinfo, algparams) = 2.0*maxρ(modelinfo, algparams)
 
     algparams.θ_t = algparams.θ_c = (1/algparams.tol^2)
     algparams.ρ_t = algparams.ρ_c = modelinfo.obj_scale
@@ -308,7 +308,7 @@ function optimize!(
         elapsed_t = @elapsed begin
             if algparams.updateτ && runinfo.iter > 1
                 delta = (runinfo.lyapunov[end-1] - runinfo.lyapunov[end])/abs(runinfo.lyapunov[end])
-                if delta < -1e-4 && algparams.τ < 320.0*maxθ(modelinfo, algparams)
+                if delta < -1e-4 && algparams.τ < ((2*k_per_block*T) - 1)*maxρ(modelinfo, algparams)
                     algparams.τ *= 2.0
                 end
             end
@@ -363,10 +363,10 @@ function optimize!(
                 @info "tau-update not finalized when decompCtgs = true" maxlog=1
                 if runinfo.maxviol_c[end] > 10.0*runinfo.maxviol_d[end] && algparams.ρ_c < 32.0*algparams.θ_c
                     algparams.ρ_c = min(2.0*algparams.ρ_c, 32.0*algparams.θ_c)
-                    algparams.τ = 2.0*max(algparams.ρ_t, algparams.ρ_c)
+                    algparams.τ = τ_default(modelinfo, algparams)
                 elseif runinfo.maxviol_d[end] > 10*runinfo.maxviol_c[end]
                     algparams.ρ_c *= 0.5
-                    algparams.τ = 2.0*max(algparams.ρ_t, algparams.ρ_c)
+                    algparams.τ = τ_default(modelinfo, algparams)
                 end
             end
         end
