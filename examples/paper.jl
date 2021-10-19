@@ -12,13 +12,14 @@ using Logging
 MPI.Init()
 ranks = MPI.Comm_size(MPI.COMM_WORLD)
 
-if length(ARGS) == 2
+if length(ARGS) == 3
     case = ARGS[1]
     T = parse(Int, ARGS[2])
+    τ_factor = parse(Float64, ARGS[3])
 end
 
 test_cases = ["case9", "case118", "case1354pegase", "case2383wp", "case9241pegase", "case_ACTIVSg2000"]
-if length(ARGS) != 2 || case ∉ test_cases
+if length(ARGS) != 3 || case ∉ test_cases
     println("Usage: [mpiexec -n nprocs] julia --project examples/paper.jl case T")
     println("")
     println("       case must be one of $(test_cases)")
@@ -115,7 +116,7 @@ if MPI.Comm_rank(MPI.COMM_WORLD) == 0
     println("Benchmark Start")
     np = MPI.Comm_size(MPI.COMM_WORLD)
     elapsed_t = @elapsed begin
-        info = ProxAL.optimize!(nlp; ρ_t_initial = rho0)
+        info = ProxAL.optimize!(nlp; ρ_t_initial = rho0, τ_factor = τ_factor)
     end
     println("AugLag iterations: $(info.iter) with $np ranks in $elapsed_t seconds")
     @show(info.maxviol_t)
@@ -124,7 +125,7 @@ if MPI.Comm_rank(MPI.COMM_WORLD) == 0
     @show(info.objvalue/modelinfo.obj_scale)
     @show(info.lyapunov/modelinfo.obj_scale)
 else
-    info = ProxAL.optimize!(nlp; ρ_t_initial = rho0)
+    info = ProxAL.optimize!(nlp; ρ_t_initial = rho0, τ_factor = τ_factor)
 end
 
 MPI.Finalize()

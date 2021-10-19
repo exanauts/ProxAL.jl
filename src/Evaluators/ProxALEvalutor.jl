@@ -84,7 +84,8 @@ function optimize!(
     θ_c_initial::Union{Real,Nothing}=nothing,
     ρ_t_initial::Union{Real,Nothing}=nothing,
     ρ_c_initial::Union{Real,Nothing}=nothing,
-    τ_initial::Union{Real,Nothing}=nothing
+    τ_initial::Union{Real,Nothing}=nothing,
+    τ_factor::Float64 = 2.0
 )
     algparams = nlp.algparams
     modelinfo = nlp.modelinfo
@@ -94,7 +95,7 @@ function optimize!(
 
     has_ctgs(modelinfo, algparams) = (algparams.decompCtgs && modelinfo.num_ctgs > 0)
     maxρ(modelinfo, algparams) = has_ctgs(modelinfo, algparams) ? max(algparams.ρ_t, algparams.ρ_c) : algparams.ρ_t
-    τ_default(modelinfo, algparams) = 2.0*maxρ(modelinfo, algparams)
+    τ_default(modelinfo, algparams) = τ_factor*maxρ(modelinfo, algparams)
 
     algparams.θ_t = algparams.θ_c = (1/algparams.tol^2)
     algparams.ρ_t = algparams.ρ_c = modelinfo.obj_scale
