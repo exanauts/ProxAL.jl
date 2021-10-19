@@ -50,14 +50,6 @@ function opf_model_add_variables(opfmodel::JuMP.Model, opfdata::OPFData,
         set_upper_bound.(Vm[i,:,:], buses[i].Vmax)
         set_start_value.(Vm[i,:,:], 0.5*(buses[i].Vmax + buses[i].Vmin))
         set_start_value.(Va[i,:,:], buses[opfdata.bus_ref].Va)
-        if modelinfo.allow_constr_infeas
-            for k=1:K
-                set_lower_bound.(sigma_real[i,k,:],-opfdata.Pd[i,:])
-                set_upper_bound.(sigma_real[i,k,:], opfdata.Pd[i,:])
-                set_lower_bound.(sigma_imag[i,k,:],-opfdata.Qd[i,:])
-                set_upper_bound.(sigma_imag[i,k,:], opfdata.Qd[i,:])
-            end
-        end
     end
     fix.(Zt[:,1], 0)
     fix.(Zk[:,1,:], 0)
