@@ -254,9 +254,9 @@ function optimize!(
 
         print_timings && comm_barrier(comm)
         elapsed_t = @elapsed begin
-            requests_zt = comm_neighbors!(x.Zt, opfBlockData, runinfo, CommPatternT2(), comm)
+            requests_zt = comm_neighbors!(x.Zt, opfBlockData, runinfo, CommPatternT(), comm)
             if algparams.decompCtgs
-                requests_zk = comm_neighbors!(x.Zk, opfBlockData, runinfo, CommPatternK2(), comm)
+                requests_zk = comm_neighbors!(x.Zk, opfBlockData, runinfo, CommPatternK(), comm)
                 comm_wait!(requests_zk)
             end
             comm_wait!(requests_zt)
