@@ -1,0 +1,14 @@
+bsub case118-ramp0.2.lsf
+bsub case118-ramp0.3.lsf
+bsub case1354pegase-ramp0.2.lsf
+bsub case1354pegase-ramp0.3.lsf
+bsub case9241pegase-ramp0.2.lsf
+bsub case9241pegase-ramp0.3.lsf
+bsub strong-scaling-1.lsf
+bsub strong-scaling-10.lsf
+bsub strong-scaling-168.lsf
+bsub strong-scaling-2.lsf
+bsub strong-scaling-21.lsf
+bsub strong-scaling-42.lsf
+bsub strong-scaling-5.lsf
+bsub strong-scaling-84.lsf

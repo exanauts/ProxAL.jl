@@ -1,0 +1,16 @@
+#!/bin/bash
+# Begin LSF Directives
+#BSUB -P CSC359
+#BSUB -W 0:15
+#BSUB -nnodes 8
+#BSUB -J strong-scaling-168
+ 
+# Point to your JULIA_DEPOT_PATH.
+cd $PROJWORK/csc359/anirudh/ProxAL.jl
+date
+module load cuda
+export JULIA_CUDA_VERBOSE=1
+export JULIA_DEPOT_PATH=$PROJWORK/csc359/anirudh/julia_depot
+export JULIA_MPI_BINARY=system
+# Look up these parameters in the Summit documentation
+jsrun -n 8 -r 1 -c 21 -a 21 -g 1 julia --color=no --project ./examples/paper.jl case118 0.2 1e-3 2.5
