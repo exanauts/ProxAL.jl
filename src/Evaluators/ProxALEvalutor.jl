@@ -293,7 +293,7 @@ function optimize!(
         elapsed_t = @elapsed begin
             requests_ramp = comm_neighbors!(λ.ramping, opfBlockData, runinfo, CommPatternT(), comm)
             if algparams.decompCtgs
-                requests_ctgs = comm_neighbors!(λ.ctgs, opfBlockData, runinfo, CommPatternK2(), comm)
+                requests_ctgs = comm_neighbors!(λ.ctgs, opfBlockData, runinfo, CommPatternK(), comm)
                 comm_wait!(requests_ctgs)
             end
             comm_wait!(requests_ramp)
