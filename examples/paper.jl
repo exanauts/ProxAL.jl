@@ -12,18 +12,15 @@ using Logging
 MPI.Init()
 ranks = MPI.Comm_size(MPI.COMM_WORLD)
 
-if length(ARGS) == 3
+if length(ARGS) == 4
     case = ARGS[1]
-    T = parse(Int, ARGS[2])
-    τ_factor = parse(Float64, ARGS[3])
+    ramp_scale = parse(Float64, ARGS[2])
+    ρ_t_initial = parse(Float64, ARGS[3])
+    τ_factor = parse(Float64, ARGS[4])
 end
 
-test_cases = ["case9", "case118", "case1354pegase", "case2383wp", "case9241pegase", "case_ACTIVSg2000"]
-if length(ARGS) != 3 || case ∉ test_cases
-    println("Usage: [mpiexec -n nprocs] julia --project examples/paper.jl case T")
-    println("")
-    println("       case must be one of $(test_cases)")
-    println("")
+if length(ARGS) != 4 || case ∉ ["case118", "case1354pegase", "case9241pegase"]
+    println("Usage: [mpiexec -n nprocs] julia --project examples/paper.jl case ramp_scale rho_initial tau_factor")
     println("")
     exit()
 end
@@ -35,54 +32,23 @@ backend = ProxAL.JuMPBackend()
 DATA_DIR = joinpath(dirname(@__FILE__), "..", "data")
 case_file = joinpath(DATA_DIR, "$(case).m")
 load_file = joinpath(DATA_DIR, "mp_demand", "$(case)_oneweek_168")
-if case == "case_ACTIVSg2000"
-    DATA_DIR = joinpath(dirname(@__FILE__), "..", "ExaData")
-    case_file = joinpath(DATA_DIR, "$(case).m")
-    load_file = joinpath(DATA_DIR, "$(case)")
-end
-
-# set parameters
-if case == "case9"
-    load_scale = 1.0
-    ramp_scale = 0.05
-    rho0 = nothing
-elseif case == "case118"
-    load_scale = 1.0
-    ramp_scale = 0.2
-    rho0 = nothing
-elseif case == "case1354pegase"
-    load_scale = 1.0
-    ramp_scale = 0.3
-    rho0 = 1e-2
-elseif case == "case2383wp"
-    load_scale = 1.0
-    ramp_scale = 0.3
-    rho0 = 1e-2
-elseif case == "case9241pegase"
-    load_scale = 0.8
-    ramp_scale = 0.6
-    rho0 = 1e-4
-else
-    load_scale = 1.0
-    ramp_scale = 0.05
-    rho0 = nothing
-end
 
 # Model/formulation settings
 modelinfo = ModelInfo()
-modelinfo.num_time_periods = T
+modelinfo.num_time_periods = 168
 modelinfo.num_ctgs = 0
-modelinfo.load_scale = load_scale
+modelinfo.load_scale = (case == "case9241pegase") ? 0.8 : 1.0
 modelinfo.ramp_scale = ramp_scale
 modelinfo.allow_obj_gencost = true
 modelinfo.allow_constr_infeas = false
 modelinfo.time_link_constr_type = :penalty
 modelinfo.allow_line_limits = false
 modelinfo.case_name = case
+modelinfo.obj_scale = 1e-3
 
 # Algorithm settings
 algparams = AlgParams()
-algparams.optimizer = optimizer_with_attributes(Ipopt.Optimizer, "print_level" => 0) #,  "tol" => 1e-1*algparams.tol)
+algparams.optimizer = optimizer_with_attributes(Ipopt.Optimizer, "print_level" => 0)
 
 cur_logger = global_logger(NullLogger())
 
@@ -101,6 +67,7 @@ end
 # the actual run
 algparams.verbose = 1
 algparams.iterlim = 100
+algparams.tol = 1e-3
 elapsed_t = @elapsed begin
     redirect_stdout(devnull) do
         global nlp = ProxALEvaluator(case_file, load_file, modelinfo, algparams, backend, Dict(), Dict())
@@ -110,13 +77,13 @@ end
 
 if MPI.Comm_rank(MPI.COMM_WORLD) == 0
     global_logger(cur_logger)
-    println("ProxAL $case, $ranks ranks, $T periods")
+    println("ProxAL $case, $ranks ranks, $(modelinfo.num_time_periods) periods")
     println("Dry run (create problem + optimize): $elapsed_t_dry_run_create_problem + $elapsed_t_dry_run_optimize")
     println("Creating problem: $elapsed_t")
     println("Benchmark Start")
     np = MPI.Comm_size(MPI.COMM_WORLD)
     elapsed_t = @elapsed begin
-        info = ProxAL.optimize!(nlp; ρ_t_initial = rho0, τ_factor = τ_factor)
+        info = ProxAL.optimize!(nlp; ρ_t_initial = ρ_t_initial, τ_factor = τ_factor)
     end
     println("AugLag iterations: $(info.iter) with $np ranks in $elapsed_t seconds")
     @show(info.maxviol_t)
@@ -125,7 +92,7 @@ if MPI.Comm_rank(MPI.COMM_WORLD) == 0
     @show(info.objvalue/modelinfo.obj_scale)
     @show(info.lyapunov/modelinfo.obj_scale)
 else
-    info = ProxAL.optimize!(nlp; ρ_t_initial = rho0, τ_factor = τ_factor)
+    info = ProxAL.optimize!(nlp; ρ_t_initial = ρ_t_initial, τ_factor = τ_factor)
 end
 
 MPI.Finalize()
