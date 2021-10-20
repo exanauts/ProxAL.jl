@@ -223,10 +223,10 @@ function optimize!(
                             kn = blockn[1]
                             tn = blockn[2]
                             # Updating the received neighboring primal values
-                            # if is_comm_pattern(t, tn, k, kn, CommPatternTK()) && !is_my_work(blkn, comm)
+                            if is_comm_pattern(t, tn, k, kn, CommPatternTK()) && !is_my_work(blkn, comm)
                                 opfBlockData.colValue[:,blkn] .= nlp_opt_sol[:,blkn]
                                 update_primal_nlpvars(x, opfBlockData, blkn, modelinfo, algparams)
-                            # end
+                            end
                         end
                     end
                 end
@@ -243,6 +243,12 @@ function optimize!(
                 for blk in runinfo.par_order
                     if is_my_work(blk, comm)
                         update_primal_penalty(x, opfdata, opfBlockData, blk, x, λ, modelinfo, algparams)
+                    else
+                        block = opfBlockData.blkIndex[blk]
+                        k = block[1]
+                        t = block[2]
+                        x.Zt[:,t] .= 0
+                        x.Zk[:,k,t] .= 0
                     end
                 end
                 print_timings && comm_barrier(comm)
@@ -305,6 +311,17 @@ function optimize!(
         end
         λ.ramping .+= λ2.ramping
         λ.ctgs .+= λ2.ctgs
+        for blk in runinfo.par_order
+            if is_my_work(blk, comm)
+                block = opfBlockData.blkIndex[blk]
+                k = block[1]
+                t = block[2]
+                if k == 1
+                    @show λ.ramping[:,t]
+                end
+            end
+            MPI.Barrier(comm)
+        end
         if comm_rank(comm) == 0
             print_timings && println("Comm duals: $elapsed_t")
         end
