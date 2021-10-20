@@ -119,6 +119,8 @@ function optimize!(
     K = modelinfo.num_ctgs + 1 # base case counted separately
     x = runinfo.x
     λ = runinfo.λ
+    fill!(λ.ramping, 0)
+    fill!(λ.ctgs, 0)
     # number of contingency per blocks
     k_per_block = (algparams.decompCtgs) ? 1 : K
 
@@ -221,10 +223,10 @@ function optimize!(
                             kn = blockn[1]
                             tn = blockn[2]
                             # Updating the received neighboring primal values
-                            if is_comm_pattern(t, tn, k, kn, CommPatternTK()) && !is_my_work(blkn, comm)
+                            # if is_comm_pattern(t, tn, k, kn, CommPatternTK()) && !is_my_work(blkn, comm)
                                 opfBlockData.colValue[:,blkn] .= nlp_opt_sol[:,blkn]
                                 update_primal_nlpvars(x, opfBlockData, blkn, modelinfo, algparams)
-                            end
+                            # end
                         end
                     end
                 end
@@ -252,9 +254,9 @@ function optimize!(
 
         print_timings && comm_barrier(comm)
         elapsed_t = @elapsed begin
-            requests_zt = comm_neighbors!(x.Zt, opfBlockData, runinfo, CommPatternT(), comm)
+            requests_zt = comm_neighbors!(x.Zt, opfBlockData, runinfo, CommPatternT2(), comm)
             if algparams.decompCtgs
-                requests_zk = comm_neighbors!(x.Zk, opfBlockData, runinfo, CommPatternK(), comm)
+                requests_zk = comm_neighbors!(x.Zk, opfBlockData, runinfo, CommPatternK2(), comm)
                 comm_wait!(requests_zk)
             end
             comm_wait!(requests_zt)
@@ -268,6 +270,9 @@ function optimize!(
     end
     #------------------------------------------------------------------------------------
     function dual_update()
+        λ2 = deepcopy(λ)
+        fill!(λ.ramping, 0)
+        fill!(λ.ctgs, 0)
         elapsed_t = @elapsed begin
             maxviol_t = 0.0; maxviol_c = 0.0
             for blk in runinfo.par_order
@@ -288,7 +293,7 @@ function optimize!(
         elapsed_t = @elapsed begin
             requests_ramp = comm_neighbors!(λ.ramping, opfBlockData, runinfo, CommPatternT(), comm)
             if algparams.decompCtgs
-                requests_ctgs = comm_neighbors!(λ.ctgs, opfBlockData, runinfo, CommPatternK(), comm)
+                requests_ctgs = comm_neighbors!(λ.ctgs, opfBlockData, runinfo, CommPatternK2(), comm)
                 comm_wait!(requests_ctgs)
             end
             comm_wait!(requests_ramp)
@@ -298,6 +303,8 @@ function optimize!(
             push!(runinfo.maxviol_c, maxviol_c)
             print_timings && comm_barrier(comm)
         end
+        λ.ramping .+= λ2.ramping
+        λ.ctgs .+= λ2.ctgs
         if comm_rank(comm) == 0
             print_timings && println("Comm duals: $elapsed_t")
         end

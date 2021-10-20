@@ -32,6 +32,8 @@ abstract type AbstractCommPattern end
 struct CommPatternTK <: AbstractCommPattern end
 struct CommPatternT <: AbstractCommPattern end
 struct CommPatternK <: AbstractCommPattern end
+struct CommPatternT2 <: AbstractCommPattern end
+struct CommPatternK2 <: AbstractCommPattern end
 
 """
     is_comm_pattern(t, tn, k, kn, pattern)
@@ -40,6 +42,7 @@ struct CommPatternK <: AbstractCommPattern end
 
 """
 function is_comm_pattern(t, tn, k, kn, ::CommPatternTK)
+    return true
     return (
         # Neighboring periods and base case (k == 1)
         ((tn == t-1 || tn == t+1) && kn == 1 && k == 1) ||
@@ -58,6 +61,24 @@ function is_comm_pattern(t, tn, k, kn, ::CommPatternT)
 end
 
 function is_comm_pattern(t, tn, k, kn, ::CommPatternK)
+    return (
+        # From base case to contingencies
+        (tn == t && k == 1 && kn != 1) ||
+        # From contingencies to base case
+        (tn == t && k != 1 && kn == 1)
+    )
+end
+
+function is_comm_pattern(t, tn, k, kn, ::CommPatternT2)
+    return true
+    return (
+        # Neighboring periods and base case (k == 1)
+        ((tn == t-1 || tn == t+1) && kn == 1 && k == 1)
+    )
+end
+
+function is_comm_pattern(t, tn, k, kn, ::CommPatternK2)
+    return true
     return (
         # From base case to contingencies
         (tn == t && k == 1 && kn != 1) ||
@@ -86,10 +107,10 @@ function comm_neighbors!(data::AbstractArray{T,2}, blocks::AbstractBlocks, runin
                 if is_comm_pattern(t, tn, k, kn, pattern) && !is_my_work(blkn, comm)
                     remote = whoswork(blkn, comm)
                     if isa(pattern, CommPatternTK)
-                        sbuf = @view data[:,blk]
+                        sbuf = data[:,blk]
                         rbuf = @view data[:,blkn]
-                    elseif isa(pattern, CommPatternT)
-                        sbuf = @view data[:,t]
+                    elseif isa(pattern, CommPatternT) || isa(pattern, CommPatternT2)
+                        sbuf = data[:,t]
                         rbuf = @view data[:,tn]
                     else
                         error("Invalid communication pattern")
@@ -116,8 +137,8 @@ function comm_neighbors!(data::AbstractArray{T,3}, blocks::AbstractBlocks, runin
                 tn = blockn[2]
                 if is_comm_pattern(t, tn, k, kn, pattern) && !is_my_work(blkn, comm)
                     remote = whoswork(blkn, comm)
-                    if isa(pattern, CommPatternK)
-                        sbuf = @view data[:,k,t]
+                    if isa(pattern, CommPatternK) || isa(pattern, CommPatternK2)
+                        sbuf = data[:,k,t]
                         rbuf = @view data[:,kn,tn]
                     else
                         error("Invalid communication pattern")
