@@ -399,6 +399,7 @@ function runinfo_update(
         @printf("%8.2e ", algparams.τ)
         @printf("\n")
     end
+    MPI.Barrier(comm)
 end
 
 end # module

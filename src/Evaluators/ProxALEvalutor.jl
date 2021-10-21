@@ -173,6 +173,8 @@ function optimize!(
         model = opfBlockData.blkModel[blk]
         init!(model, alg_ref)
         # Update objective
+        @show x_ref
+        @show λ_ref
         set_objective!(model, alg_ref, x_ref, λ_ref)
         x0 = @view opfBlockData.colValue[:, blk]
         solution = optimize!(model, x0, alg_ref)
@@ -184,12 +186,24 @@ function optimize!(
             # Primal update except penalty vars
             nlp_soltime .= 0.0
             nlp_soltime_local = 0.0
-            for blk in runinfo.par_order
+            nlp_opt_sol .= 0.0
+            fill!(opfBlockData.colValue, 0)
+            nblocks = length(runinfo.par_order)
+            stop = false
+            c = nblocks
+            while(!stop)
+                blk = runinfo.par_order[c]
                 if is_my_work(blk, comm)
                     nlp_opt_sol[:,blk] .= 0.0
                     # nlp_soltime[blk] = @elapsed blocknlp_copy(blk; x_ref = x, λ_ref = λ, alg_ref = algparams)
                     nlp_soltime[blk] = @elapsed blocknlp_recreate(blk, x, λ, algparams)
                     nlp_soltime_local += nlp_soltime[blk]
+                end
+                MPI.Barrier(comm)
+                c -= 1
+                if c < 1
+                    stop = true
+                    break
                 end
             end
             if comm_rank(comm) == 0
@@ -210,7 +224,11 @@ function optimize!(
 
             # Update primal values
             elapsed_t = @elapsed begin
-                for blk in runinfo.par_order
+                # for blk in runinfo.par_order
+                stop = false
+                c = nblocks
+                while(!stop)
+                    blk = runinfo.par_order[c]
                     block = opfBlockData.blkIndex[blk]
                     k = block[1]
                     t = block[2]
@@ -229,12 +247,23 @@ function optimize!(
                             end
                         end
                     end
+                    c -= 1
+                    if c < 1
+                        stop = true
+                        break
+                    end
                 end
                 print_timings && comm_barrier(comm)
             end
 
             if comm_rank(comm) == 0
               print_timings && println("update_primal_nlpvars(): $elapsed_t")
+            end
+            for blk in runinfo.par_order
+                if is_my_work(blk, comm)
+                    @show nlp_opt_sol[:,blk]
+                end
+                MPI.Barrier(comm)
             end
 
 
@@ -255,6 +284,18 @@ function optimize!(
             end
             if comm_rank(comm) == 0
               print_timings && println("update_primal_penalty(): $elapsed_t")
+            end
+            for blk in runinfo.par_order
+                if is_my_work(blk, comm)
+                    block = opfBlockData.blkIndex[blk]
+                    k = block[1]
+                    t = block[2]
+                    if k == 1
+                        @show x.Zt[:,t]
+                    end
+                    @show x.Zk[:,k,t]
+                end
+                MPI.Barrier(comm)
             end
         end
 
@@ -289,6 +330,9 @@ function optimize!(
                     lmaxviol_t, lmaxviol_c = update_dual_vars(λ, opfdata, opfBlockData, blk, x, modelinfo, algparams)
                     maxviol_t = max(maxviol_t, lmaxviol_t)
                     maxviol_c = max(maxviol_c, lmaxviol_c)
+                else
+                    λ.ctgs[:,k,t] .= 0.0
+                    λ.ramping[:,t] .= 0.0
                 end
             end
             print_timings && comm_barrier(comm)

@@ -13,7 +13,7 @@ DATA_DIR = joinpath(dirname(@__FILE__), "..", "data")
 rtol = 1e-4
 
 #(case, T, K, ramp_scale, load_scale, corr_scale) = ("case9241pegase", 96, 0, 0.3, 0.8, 0.5)
-(case, T, K, ramp_scale, load_scale, corr_scale) = ("case118", 10, 3, 0.2, 1.0, 0.5)
+(case, T, K, ramp_scale, load_scale, corr_scale) = ("case118", 2, 0, 0.2, 1.0, 0.5)
 #(case, T, K, ramp_scale, load_scale, corr_scale) = ("case30", 10, 5, 0.2, 1.0, 0.5)
 
 # Load case
@@ -65,6 +65,11 @@ algparams.mode = :coldstart
 algparams.decompCtgs = true
 algparams.iterlim = 10
 algparams.nlpiterlim = 1000
+backend = ProxAL.ExaTronBackend()
+# backend = ProxAL.JuMPBackend()
+if isa(backend, ProxAL.ExaTronBackend)
+    algparams.device = ProxAL.CUDADevice
+end
 
 
 #=
@@ -82,8 +87,8 @@ runinfo = ProxAL.optimize!(nlp);
 # algparams.updateρ_t = false
 # algparams.updateτ = false
 
-nlp = use_MPI ? ProxALEvaluator(case_file, load_file, modelinfo, algparams, ProxAL.JuMPBackend(), Dict(), Dict()) :
-                ProxALEvaluator(case_file, load_file, modelinfo, algparams, ProxAL.JuMPBackend(), Dict(), Dict(), nothing)
+nlp = use_MPI ? ProxALEvaluator(case_file, load_file, modelinfo, algparams, backend, Dict(), Dict()) :
+                ProxALEvaluator(case_file, load_file, modelinfo, algparams, backend, Dict(), Dict(), nothing)
 if use_MPI && MPI.Comm_rank(MPI.COMM_WORLD) == 0
     np = MPI.Comm_size(MPI.COMM_WORLD)
     elapsed_t = @elapsed begin

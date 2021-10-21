@@ -164,9 +164,9 @@ function init!(block::JuMPBlockBackend, algparams::AlgParams)
     @assert !algparams.decompCtgs || Kblock == 1
 
     add_variables!(block, algparams)
-    if !algparams.decompCtgs
-        add_ctgs_linking_constraints!(block, algparams)
-    end
+    # if !algparams.decompCtgs
+    #     add_ctgs_linking_constraints!(block, algparams)
+    # end
 
     t, k = block.t, block.k
 
