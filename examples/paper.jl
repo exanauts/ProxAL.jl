@@ -68,6 +68,9 @@ end
 algparams.verbose = 1
 algparams.iterlim = 100
 algparams.tol = 1e-3
+# algparams.tol = 1e-8          # uncomment to reproduce the "comparison figure"
+# algparams.updateτ = false     # uncomment to reproduce the "lyapunov v/s tau" figure
+# algparams.updateρ_t = false   # uncomment to reproduce the "lyapunov v/s tau" figure
 elapsed_t = @elapsed begin
     redirect_stdout(devnull) do
         global nlp = ProxALEvaluator(case_file, load_file, modelinfo, algparams, backend, Dict(), Dict())
