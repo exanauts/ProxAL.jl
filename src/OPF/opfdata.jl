@@ -216,10 +216,20 @@ function opf_loaddata(raw::RawData;
     buses = Array{Bus}(undef, num_buses)
     bus_ref = -1
     for i in 1:num_buses
-        @assert bus_arr[i,1] > 0  #don't support nonpositive bus ids
-        bus_arr[i,9] *= pi / 180.0 # ANIRUDH: Bus is an immutable struct. Modify bus_arr itself
-        buses[i] = Bus(bus_arr[i, 1:ncols_bus]...)
-        # buses[i].Va *= pi/180 # ANIRUDH: See previous comment
+        @assert bus_arr[i,1] > 0
+        buses[i] = Bus(bus_arr[i,1],
+                       bus_arr[i,2],
+                       bus_arr[i,3],
+                       bus_arr[i,4],
+                       bus_arr[i,5],
+                       bus_arr[i,6],
+                       bus_arr[i,7],
+                       bus_arr[i,8],
+                       bus_arr[i,9]*pi/180.0,
+                       bus_arr[i,10],
+                       bus_arr[i,11],
+                       bus_arr[i,12],
+                       bus_arr[i,13])
         if buses[i].bustype == PS.REF_BUS_TYPE
             if bus_ref > 0
                 error("More than one reference bus present in the data")
