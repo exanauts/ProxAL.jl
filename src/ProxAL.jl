@@ -37,7 +37,7 @@ mutable struct ProxALProblem
     iter
 
     #---- other/static information ----
-    par_order
+    blkLinIndex
 end
 
 include("Evaluators/Evaluators.jl")
@@ -227,12 +227,6 @@ function ProxALProblem(
         end
     end
 
-    par_order = []
-    if algparams.jacobi
-        par_order = blkLinIndex
-    elseif algparams.decompCtgs
-        par_order = @view blkLinIndex[2:end,:]
-    end
     iter = 0
     objvalue = []
     lyapunov = []
@@ -267,7 +261,7 @@ function ProxALProblem(
         wall_time_elapsed_actual,
         wall_time_elapsed_ideal,
         iter,
-        par_order,
+        blkLinIndex,
     )
 end
 
@@ -281,7 +275,7 @@ function runinfo_update(
 )
     iter = runinfo.iter
     obj = 0.0
-    for blk in runinfo.par_order
+    for blk in runinfo.blkLinIndex
         if is_my_work(blk, comm)
             obj += compute_objective_function(runinfo.x, opfdata, opfBlockData, blk, modelinfo, algparams)
         end
@@ -291,7 +285,7 @@ function runinfo_update(
 
     iter = runinfo.iter
     lyapunov = 0.0
-    for blk in runinfo.par_order
+    for blk in runinfo.blkLinIndex
         if is_my_work(blk, comm)
             lyapunov += compute_lyapunov_function(runinfo.x, runinfo.λ, opfdata, opfBlockData, blk, runinfo.xprev, modelinfo, algparams)
         end
@@ -300,7 +294,7 @@ function runinfo_update(
     push!(runinfo.lyapunov, lyapunov)
 
     maxviol_t_actual = 0.0
-    for blk in runinfo.par_order
+    for blk in runinfo.blkLinIndex
         if is_my_work(blk, comm)
             lmaxviol_t_actual = compute_true_ramp_error(runinfo.x, opfdata, opfBlockData, blk, modelinfo)
             maxviol_t_actual = max(maxviol_t_actual, lmaxviol_t_actual)
@@ -310,7 +304,7 @@ function runinfo_update(
     push!(runinfo.maxviol_t_actual, maxviol_t_actual)
 
     maxviol_c_actual = 0.0
-    for blk in runinfo.par_order
+    for blk in runinfo.blkLinIndex
         if is_my_work(blk, comm)
             lmaxviol_c_actual = compute_true_ctgs_error(runinfo.x, opfdata, opfBlockData, blk, modelinfo)
             maxviol_c_actual = max(maxviol_c_actual, lmaxviol_c_actual)
@@ -320,7 +314,7 @@ function runinfo_update(
     push!(runinfo.maxviol_c_actual, maxviol_c_actual)
 
     maxviol_d = 0.0
-    for blk in runinfo.par_order
+    for blk in runinfo.blkLinIndex
         if is_my_work(blk, comm)
             lmaxviol_d = compute_dual_error(runinfo.x, runinfo.xprev, runinfo.λ, runinfo.λprev, opfdata, opfBlockData, blk, modelinfo, algparams)
             maxviol_d = max(maxviol_d, lmaxviol_d)

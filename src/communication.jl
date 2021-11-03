@@ -74,12 +74,12 @@ Nonblocking communication with a given pattern. An array of requests is returned
 """
 function comm_neighbors!(data::AbstractArray{T,2}, blocks::AbstractBlocks, runinfo::ProxALProblem, pattern::AbstractCommPattern, comm::MPI.Comm) where {T}
 	requests = MPI.Request[]
-    for blk in runinfo.par_order
+    for blk in runinfo.blkLinIndex
         block = blocks.blkIndex[blk]
         k = block[1]
         t = block[2]
         if is_my_work(blk, comm)
-            for blkn in runinfo.par_order
+            for blkn in runinfo.blkLinIndex
                 blockn = blocks.blkIndex[blkn]
                 kn = blockn[1]
                 tn = blockn[2]
@@ -105,12 +105,12 @@ end
 
 function comm_neighbors!(data::AbstractArray{T,3}, blocks::AbstractBlocks, runinfo::ProxALProblem, pattern::AbstractCommPattern, comm::MPI.Comm) where {T}
 	requests = MPI.Request[]
-    for blk in runinfo.par_order
+    for blk in runinfo.blkLinIndex
         block = blocks.blkIndex[blk]
         k = block[1]
         t = block[2]
         if is_my_work(blk, comm)
-            for blkn in runinfo.par_order
+            for blkn in runinfo.blkLinIndex
                 blockn = blocks.blkIndex[blkn]
                 kn = blockn[1]
                 tn = blockn[2]

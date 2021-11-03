@@ -179,7 +179,7 @@ function optimize!(
             # Primal update except penalty vars
             nlp_soltime .= 0.0
             nlp_soltime_local = 0.0
-            for blk in runinfo.par_order
+            for blk in runinfo.blkLinIndex
                 if is_my_work(blk, comm)
                     nlp_opt_sol[:,blk] .= 0.0
                     # nlp_soltime[blk] = @elapsed blocknlp_copy(blk; x_ref = x, λ_ref = λ, alg_ref = algparams)
@@ -205,7 +205,7 @@ function optimize!(
 
             # Update primal values
             elapsed_t = @elapsed begin
-                for blk in runinfo.par_order
+                for blk in runinfo.blkLinIndex
                     block = opfBlockData.blkIndex[blk]
                     k = block[1]
                     t = block[2]
@@ -213,7 +213,7 @@ function optimize!(
                         # Updating my own primal values
                         opfBlockData.colValue[:,blk] .= nlp_opt_sol[:,blk]
                         update_primal_nlpvars(x, opfBlockData, blk, modelinfo, algparams)
-                        for blkn in runinfo.par_order
+                        for blkn in runinfo.blkLinIndex
                             blockn = opfBlockData.blkIndex[blkn]
                             kn = blockn[1]
                             tn = blockn[2]
@@ -235,7 +235,7 @@ function optimize!(
 
             # Primal update of penalty vars
             elapsed_t = @elapsed begin
-                for blk in runinfo.par_order
+                for blk in runinfo.blkLinIndex
                     if is_my_work(blk, comm)
                         update_primal_penalty(x, opfdata, opfBlockData, blk, x, λ, modelinfo, algparams)
                     end
@@ -260,14 +260,14 @@ function optimize!(
         if comm_rank(comm) == 0
             print_timings && println("Comm penalty: $elapsed_t")
         end
-        runinfo.wall_time_elapsed_ideal += isempty(runinfo.par_order) ? 0.0 : maximum([nlp_soltime[blk] for blk in runinfo.par_order])
+        runinfo.wall_time_elapsed_ideal += isempty(runinfo.blkLinIndex) ? 0.0 : maximum([nlp_soltime[blk] for blk in runinfo.blkLinIndex])
         runinfo.wall_time_elapsed_ideal += elapsed_t
     end
     #------------------------------------------------------------------------------------
     function dual_update()
         elapsed_t = @elapsed begin
             maxviol_t = 0.0; maxviol_c = 0.0
-            for blk in runinfo.par_order
+            for blk in runinfo.blkLinIndex
                 block = opfBlockData.blkIndex[blk]
                 k = block[1]
                 t = block[2]
