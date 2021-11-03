@@ -155,7 +155,7 @@ function optimize!(
         end
     end
     #------------------------------------------------------------------------------------
-    function blocknlp_copy(blk, x_ref, λ_ref, alg_ref)
+    function blocknlp_optimize(blk, x_ref, λ_ref, alg_ref)
         model = opfBlockData.blkModel[blk]
         # Update objective
         set_objective!(model, alg_ref, x_ref, λ_ref)
@@ -164,7 +164,7 @@ function optimize!(
         transfer!(blk, nlp_opt_sol, solution)
     end
     #------------------------------------------------------------------------------------
-    function blocknlp_recreate(blk, x_ref, λ_ref, alg_ref)
+    function blocknlp_init_and_optimize(blk, x_ref, λ_ref, alg_ref)
         model = opfBlockData.blkModel[blk]
         init!(model, alg_ref)
         # Update objective
@@ -182,8 +182,8 @@ function optimize!(
             for blk in runinfo.blkLinIndex
                 if is_my_work(blk, comm)
                     nlp_opt_sol[:,blk] .= 0.0
-                    # nlp_soltime[blk] = @elapsed blocknlp_copy(blk; x_ref = x, λ_ref = λ, alg_ref = algparams)
-                    nlp_soltime[blk] = @elapsed blocknlp_recreate(blk, x, λ, algparams)
+                    nlp_soltime[blk] = @elapsed blocknlp_optimize(blk, x, λ, algparams)
+                    # nlp_soltime[blk] = @elapsed blocknlp_init_and_optimize(blk, x, λ, algparams)
                     nlp_soltime_local += nlp_soltime[blk]
                 end
             end

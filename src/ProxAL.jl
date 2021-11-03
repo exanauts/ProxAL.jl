@@ -222,7 +222,9 @@ function ProxALProblem(
     blkLinIndex = LinearIndices(blocks.blkIndex)
     for blk in blkLinIndex
         if is_my_work(blk, comm)
-            # init!(blocks.blkModel[blk], algparams)
+            if algparams.mode ∉ [:nondecomposed, :lyapunov_bound]
+                init!(blocks.blkModel[blk], algparams)
+            end
             blocks.colValue[:,blk] .= get_block_view(x, blocks.blkIndex[blk], modelinfo, algparams)
         end
     end
