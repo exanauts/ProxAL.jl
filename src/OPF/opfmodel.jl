@@ -50,14 +50,6 @@ function opf_model_add_variables(opfmodel::JuMP.Model, opfdata::OPFData,
         set_upper_bound.(Vm[i,:,:], buses[i].Vmax)
         set_start_value.(Vm[i,:,:], 0.5*(buses[i].Vmax + buses[i].Vmin))
         set_start_value.(Va[i,:,:], buses[opfdata.bus_ref].Va)
-        if modelinfo.allow_constr_infeas
-            for k=1:K
-                set_lower_bound.(sigma_real[i,k,:],-opfdata.Pd[i,:])
-                set_upper_bound.(sigma_real[i,k,:], opfdata.Pd[i,:])
-                set_lower_bound.(sigma_imag[i,k,:],-opfdata.Qd[i,:])
-                set_upper_bound.(sigma_imag[i,k,:], opfdata.Qd[i,:])
-            end
-        end
     end
     fix.(Zt[:,1], 0)
     fix.(Zk[:,1,:], 0)
@@ -608,6 +600,87 @@ function compute_lyapunov_function(
     proximal = compute_proximal_function(x, xref, opfBlockData, blk, modelinfo, algparams)
 
     return lagrangian + quadratic_penalty + (0.5*proximal)
+end
+
+function compute_dual_error(
+    x::OPFPrimalSolution, xprev::OPFPrimalSolution,
+    λ::OPFDualSolution, λprev::OPFDualSolution,
+    opfdata::OPFData,
+    opfBlockData::OPFBlocks, blk::Int,
+    modelinfo::ModelInfo, algparams::AlgParams;
+    lnorm = Inf
+)
+    (ngen, K, T) = size(x.Pg)
+    k = opfBlockData.blkIndex[blk][1]
+    t = opfBlockData.blkIndex[blk][2]
+
+    err_pg = zeros(ngen)
+    err_ωt = 0.0
+    err_st = zeros(ngen)
+    err_sk = zeros(ngen)
+
+    # prox errors
+    err_pg .-= algparams.τ*(x.Pg[:,k,t] .- xprev.Pg[:,k,t])
+
+    # time linking errors
+    if k == 1
+        # for convenience
+        β = [g.ramp_agc for g in opfdata.generators]
+        if t > 1
+            temp_arr = -λ.ramping[:,t] .+ λprev.ramping[:,t] .+
+                        algparams.ρ_t*(
+                            (algparams.jacobi ? xprev.Pg[:,1,t-1] : x.Pg[:,1,t-1]) .-
+                            x.Pg[:,1,t] .+ x.St[:,t] .+ xprev.Zt[:,t] .- β
+                        )
+            err_pg .+= temp_arr
+            err_st .+= -temp_arr
+        end
+        if t < T
+            err_pg .+= λ.ramping[:,t+1] .- λprev.ramping[:,t+1] .-
+                        algparams.ρ_t*(
+                            x.Pg[:,1,t] .- xprev.Pg[:,1,t+1] .+ xprev.St[:,t+1] .+ xprev.Zt[:,t+1] .- β
+                        )
+        end
+    end
+
+    # ctgs linking errors
+    if K > 1 && algparams.decompCtgs
+        # for convenience
+        β = zeros(ngen)
+        if modelinfo.ctgs_link_constr_type ∈ [:corrective_inequality, :corrective_equality, :corrective_penalty]
+            for g in 1:ngen
+                β[g] = opfdata.generators[g].scen_agc
+            end
+        end
+
+        if k == 1
+            err_pg .+= dropdims(sum(
+                            λ.ctgs[:,2:K,t] - λprev.ctgs[:,2:K,t] .-
+                            algparams.ρ_c*(
+                                -xprev.Pg[:,2:K,t] .+ xprev.Sk[:,2:K,t] .+ xprev.Zk[:,2:K,t]
+                            ); dims = 2); dims = 2) .+
+                        (algparams.ρ_c*(K-1)*(-x.Pg[:,1,t] .+ β)) .-
+                        [algparams.ρ_c*g.alpha*sum(xprev.ωt[2:K,t]) for g in opfdata.generators]
+        end
+
+        if k > 1
+            temp_arr = -λ.ctgs[:,k,t] .+ λprev.ctgs[:,k,t] .+
+                        algparams.ρ_c*(
+                            (algparams.jacobi ? xprev.Pg[:,1,t] : x.Pg[:,1,t]) .-
+                            x.Pg[:,k,t] .+ x.Sk[:,k,t] .+ xprev.Zk[:,k,t] .- β .+
+                            [g.alpha*x.ωt[k,t] for g in opfdata.generators]
+                        )
+            err_pg .+= temp_arr
+            if modelinfo.ctgs_link_constr_type ∈ [:corrective_penalty]
+                err_sk .+= -temp_arr
+            end
+            if modelinfo.ctgs_link_constr_type ∈ [:frequency_penalty]
+                err_ωt += -sum(opfdata.generators[g].alpha * temp_arr[g] for g in 1:ngen)
+            end
+        end
+    end
+
+    return norm([err_pg; err_ωt; err_st; err_sk], lnorm)
 end
 
 function compute_dual_error(

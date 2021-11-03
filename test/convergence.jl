@@ -4,7 +4,10 @@ using DelimitedFiles, Printf
 using LinearAlgebra, JuMP
 using CatViews
 using CUDA
+using MPI
 
+use_MPI = !isempty(ARGS) && (parse(Bool, ARGS[1]) == true)
+use_MPI && MPI.Init()
 DATA_DIR = joinpath(dirname(@__FILE__), "..", "data")
 case = "case9"
 T = 2
@@ -86,7 +89,7 @@ end
 
                 @testset "ProxAL" begin
                     algparams.mode = :coldstart
-                    nlp = ProxALEvaluator(case_file, load_file, modelinfo, algparams, backend, Dict(), Dict(), nothing)
+                    nlp = ProxALEvaluator(case_file, load_file, modelinfo, algparams, backend, use_MPI ? MPI.COMM_WORLD : nothing)
                     runinfo = ProxAL.optimize!(nlp)
                     @test isapprox(runinfo.objvalue[end], OPTIMAL_OBJVALUE, rtol = rtol)
                     @test isapprox(runinfo.x.Pg[:], OPTIMAL_PG, rtol = rtol)
@@ -141,7 +144,7 @@ end
 
                         @testset "ProxAL" begin
                             algparams.mode = :coldstart
-                            nlp = ProxALEvaluator(case_file, load_file, modelinfo, algparams, backend, Dict(), Dict(), nothing)
+                            nlp = ProxALEvaluator(case_file, load_file, modelinfo, algparams, backend, use_MPI ? MPI.COMM_WORLD : nothing)
                             runinfo = ProxAL.optimize!(nlp)
                             @test isapprox(runinfo.objvalue[end], OPTIMAL_OBJVALUE, rtol = rtol)
                             @test isapprox(runinfo.x.Pg[:,1,:][:], OPTIMAL_PG, rtol = rtol)
@@ -177,7 +180,7 @@ end
                     @testset "ProxAL" begin
                         algparams.mode = :coldstart
                         algparams.iterlim = 300
-                        nlp = ProxALEvaluator(case_file, load_file, modelinfo, algparams, backend, Dict(), Dict(), nothing)
+                        nlp = ProxALEvaluator(case_file, load_file, modelinfo, algparams, backend, use_MPI ? MPI.COMM_WORLD : nothing)
                         runinfo = ProxAL.optimize!(nlp)
                         @test isapprox(runinfo.objvalue[end], OPTIMAL_OBJVALUE, rtol = 1e-2)
                         @test isapprox(runinfo.x.Pg[:,1,:][:], OPTIMAL_PG, rtol = 1e-2)
@@ -194,3 +197,5 @@ end
     end # solver testset
     end
 end
+
+use_MPI && MPI.Finalize()

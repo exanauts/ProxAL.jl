@@ -14,39 +14,50 @@ using Logging
 
 MPI.Init()
 
-# Select one of the following
-# (case, T, ramp_scale, load_scale, maxρ, quad_penalty) = ("case_ACTIVSg2000_Corrected", 20, 0.3, 1.0, 0.1, 1e5) # 290 iterations
-# (case, T, ramp_scale, load_scale, maxρ, quad_penalty) = ("case_ACTIVSg2000_Corrected", 20, 0.3, 1.0, 0.01, 1e3) # 449 iterations
-# (case, T, ramp_scale, load_scale, maxρ, quad_penalty) = ("case_ACTIVSg2000_Corrected", 20, 0.3, 1.0, 0.01, 1e5) # 521 iterations
-(case, T, ramp_scale, load_scale, maxρ, quad_penalty) = ("case_ACTIVSg2000_Corrected", 20, 0.3, 1.0, 0.1, 1e3) # 225 iterations
-# (case, T, ramp_scale, load_scale, maxρ, quad_penalty) = ("case9241pegase", 2, 0.3, 0.8, 0.01, 1e3)
-# (case, T, ramp_scale, load_scale, maxρ, quad_penalty) = ("case118", 168, 0.2, 1.0, 0.1, 1e5)
-# (case, T, ramp_scale, load_scale, maxρ, quad_penalty) = ("case9", 6, 0.04, 1.0, 0.1, 0.1)
+case = "case9"
 
-T = parse(Int, ARGS[1])
-if MPI.Comm_rank(MPI.COMM_WORLD) == 0
-  println("$T periods")
+# choose one of the following (K*T subproblems in each case)
+if length(ARGS) == 0
+    (case, T, K) = ("case9", 2, 0)
+    # (K, T) = (1, 10)
+    # (K, T) = (10, 10)
+    # (K, T) = (10, 100)
+    # (K, T) = (100, 10)
+    # (K, T) = (100, 100)
+elseif length(ARGS) == 3
+    case = ARGS[1]
+    T = parse(Int, ARGS[2])
+    K = parse(Int, ARGS[3])
+else
+    println("Usage: [mpiexec -n nprocs] julia --project examples/exatron.jl [case T K]")
+    println("")
+    println("       (case,T,K) defaults to (case9,2,0)")
+    exit()
 end
 
-# No contingencies in this example
-K = 0
+# choose backend
+# backend = ProxAL.JuMPBackend()
+# # With ExaTronBackend(), CUDADevice will used
+backend = ProxAL.ExaTronBackend()
+
 
 # Load case
 DATA_DIR = joinpath(dirname(@__FILE__), "..", "data")
 case_file = joinpath(DATA_DIR, "$(case).m")
-# load_file = joinpath(DATA_DIR, "mp_demand", "$(case)_oneweek_168")
-load_file = joinpath(DATA_DIR, "mp_demand", "$(case)_3600")
+load_file = joinpath(DATA_DIR, "mp_demand", "$(case)_oneweek_168")
 
 # Model/formulation settings
 modelinfo = ModelInfo()
 modelinfo.num_time_periods = T
-modelinfo.load_scale = load_scale
-modelinfo.ramp_scale = ramp_scale
+modelinfo.load_scale = 1.0
+modelinfo.ramp_scale = 0.2
+modelinfo.corr_scale = 0.5
 modelinfo.allow_obj_gencost = true
-modelinfo.allow_constr_infeas = false
-modelinfo.weight_freq_ctrl = quad_penalty
+modelinfo.allow_constr_infeas = true
+modelinfo.weight_constr_infeas = 1e8
 modelinfo.time_link_constr_type = :penalty
-modelinfo.ctgs_link_constr_type = :frequency_ctrl
+modelinfo.ctgs_link_constr_type = :corrective_penalty
+modelinfo.allow_line_limits = false
 modelinfo.case_name = case
 modelinfo.num_ctgs = K
 
@@ -54,10 +65,12 @@ modelinfo.num_ctgs = K
 algparams = AlgParams()
 algparams.verbose = 1
 algparams.tol = 1e-3
-algparams.decompCtgs = true
+algparams.decompCtgs = (K > 0)
 algparams.iterlim = 100
-algparams.device = ProxAL.CUDADevice
-algparams.optimizer = optimizer_with_attributes(Ipopt.Optimizer, "print_level" => 0)
+if isa(backend, ProxAL.ExaTronBackend)
+    algparams.device = ProxAL.CUDADevice
+end
+algparams.optimizer = optimizer_with_attributes(Ipopt.Optimizer, "print_level" => 0) #,  "tol" => 1e-1*algparams.tol)
 algparams.tron_rho_pq=5*1e4
 algparams.tron_rho_pa=5*1e5
 algparams.tron_outer_iterlim=30
@@ -65,24 +78,17 @@ algparams.tron_inner_iterlim=2000
 algparams.tron_scale=1e-5
 algparams.mode = :coldstart
 algparams.init_opf = false
+tron_outer_eps = 1e-6
 
-# case_ACTIVSg2000_Corrected parameters
-algparams.tron_rho_pq=5*1e4
-algparams.tron_rho_pa=5*1e5
-algparams.tron_outer_iterlim=30
-algparams.tron_inner_iterlim=2000
-algparams.tron_scale=1e-5
-
-opt_sol, lyapunov_sol = Dict(), Dict()
 
 ranks = MPI.Comm_size(MPI.COMM_WORLD)
 if MPI.Comm_rank(MPI.COMM_WORLD) == 0
-   println("ProxAL/ExaTron $ranks ranks, $T periods")
+   println("ProxAL/ExaTron $ranks ranks, $T periods, $K contingencies")
 end
 cur_logger = global_logger(NullLogger())
 elapsed_t = @elapsed begin
   redirect_stdout(devnull) do
-    global nlp = ProxALEvaluator(case_file, load_file, modelinfo, algparams, ProxAL.ExaTronBackend(), opt_sol, lyapunov_sol)
+    global nlp = ProxALEvaluator(case_file, load_file, modelinfo, algparams, backend)
   end
 end
 if MPI.Comm_rank(MPI.COMM_WORLD) == 0

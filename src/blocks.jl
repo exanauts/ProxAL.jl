@@ -95,7 +95,7 @@ function OPFBlocks(
     for blk in LinearIndices(blkIndex)
         k = blkIndex[blk][1]
         t = blkIndex[blk][2]
-        if ismywork(blk, comm)
+        if is_my_work(blk, comm)
 
             # Local info
             localinfo = local_copy(modelinfo)

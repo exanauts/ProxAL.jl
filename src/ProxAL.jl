@@ -30,8 +30,6 @@ mutable struct ProxALProblem
     maxviol_d::Vector{Float64}
     maxviol_t_actual::Vector{Float64}
     maxviol_c_actual::Vector{Float64}
-    dist_x::Vector{Float64}
-    dist_λ::Vector{Float64}
     nlp_opt_sol::Array{Float64,2}
     nlp_soltime::Vector{Float64}
     wall_time_elapsed_actual::Float64
@@ -39,11 +37,7 @@ mutable struct ProxALProblem
     iter
 
     #---- other/static information ----
-    opt_sol::Dict
-    lyapunov_sol::Dict
-    initial_solve::Bool
-    par_order
-    plt
+    blkLinIndex
 end
 
 include("Evaluators/Evaluators.jl")
@@ -62,9 +56,13 @@ export ProxALEvaluator, NonDecomposedModel
 export optimize!
 export JuMPBackend, ExaPFBackend, ExaTronBackend
 
-function update_primal_nlpvars(x::AbstractPrimalSolution, opfBlockData::AbstractBlocks, blk::Int,
-                               modelinfo::ModelInfo,
-                               algparams::AlgParams)
+function update_primal_nlpvars(
+    x::AbstractPrimalSolution,
+    opfBlockData::AbstractBlocks,
+    blk::Int,
+    modelinfo::ModelInfo,
+    algparams::AlgParams
+)
     block = opfBlockData.blkIndex[blk]
     k = block[1]
     t = block[2]
@@ -115,12 +113,16 @@ function update_primal_nlpvars(x::AbstractPrimalSolution, opfBlockData::Abstract
     return nothing
 end
 
-function update_primal_penalty(x::AbstractPrimalSolution, opfdata::OPFData,
-                               opfBlockData::AbstractBlocks, blk::Int,
-                               primal::AbstractPrimalSolution,
-                               dual::AbstractDualSolution,
-                               modelinfo::ModelInfo,
-                               algparams::AlgParams)
+function update_primal_penalty(
+    x::AbstractPrimalSolution,
+    opfdata::OPFData,
+    opfBlockData::AbstractBlocks,
+    blk::Int,
+    primal::AbstractPrimalSolution,
+    dual::AbstractDualSolution,
+    modelinfo::ModelInfo,
+    algparams::AlgParams
+)
     ngen = size(x.Pg, 1)
     block = opfBlockData.blkIndex[blk]
     k = block[1]
@@ -138,10 +140,10 @@ function update_primal_penalty(x::AbstractPrimalSolution, opfdata::OPFData,
                 β = [opfdata.generators[g].scen_agc for g=1:ngen]
             elseif modelinfo.ctgs_link_constr_type == :frequency_penalty
                 β = [-opfdata.generators[g].alpha*x.ωt[k,t] for g=1:ngen]
-                @assert norm(x.Sk) <= algparams.zero
+                @assert norm(x.Sk[:,k,t]) <= algparams.zero
             else
                 β = zeros(ngen)
-                @assert norm(x.Sk) <= algparams.zero
+                @assert norm(x.Sk[:,k,t]) <= algparams.zero
             end
             @views x.Zk[:,k,t] .=   (((algparams.ρ_c/32.0)*primal.Zk[:,k,t]) .- dual.ctgs[:,k,t] .-
                                         (algparams.ρ_c*(x.Pg[:,1,t] .- x.Pg[:,k,t] .+ x.Sk[:,k,t] .- β))
@@ -152,11 +154,15 @@ function update_primal_penalty(x::AbstractPrimalSolution, opfdata::OPFData,
     return nothing
 end
 
-function update_dual_vars(λ::AbstractDualSolution, opfdata::OPFData,
-                          opfBlockData::AbstractBlocks, blk::Int,
-                          primal::AbstractPrimalSolution,
-                          modelinfo::ModelInfo,
-                          algparams::AlgParams)
+function update_dual_vars(
+    λ::AbstractDualSolution,
+    opfdata::OPFData,
+    opfBlockData::AbstractBlocks,
+    blk::Int,
+    primal::AbstractPrimalSolution,
+    modelinfo::ModelInfo,
+    algparams::AlgParams
+)
     block = opfBlockData.blkIndex[blk]
     k = block[1]
     t = block[2]
@@ -190,33 +196,16 @@ end
 
 
 function ProxALProblem(
-    opfdata::OPFData, rawdata::RawData,
+    opfdata::OPFData,
+    rawdata::RawData,
     modelinfo::ModelInfo,
     algparams::AlgParams,
     backend::AbstractBackend,
     comm::Union{MPI.Comm,Nothing},
-    opt_sol = Dict(),
-    lyapunov_sol = Dict(),
-    initial_primal = nothing,
-    initial_dual = nothing
 )
-    if !isempty(opt_sol)
-        (algparams.verbose > 0) &&
-            @printf("Optimal objective value = %.2f\n", opt_sol["objective_value_nondecomposed"])
-    end
-    if !isempty(lyapunov_sol)
-        (algparams.verbose > 0) &&
-            @printf("Lyapunov lower bound = %.2f\n", lyapunov_sol["objective_value_lyapunov_bound"])
-    end
-
     # initial values
-    initial_solve = initial_primal === nothing
-    x = (initial_primal === nothing) ?
-            OPFPrimalSolution(opfdata, modelinfo) :
-            deepcopy(initial_primal)
-    λ = (initial_dual === nothing) ?
-            OPFDualSolution(opfdata, modelinfo) :
-            deepcopy(initial_dual)
+    x = OPFPrimalSolution(opfdata, modelinfo)
+    λ = OPFDualSolution(opfdata, modelinfo)
     backend = if isa(backend, JuMPBackend)
         JuMPBlockBackend
     elseif isa(backend, ExaPFBackend)
@@ -232,20 +221,14 @@ function ProxALProblem(
     )
     blkLinIndex = LinearIndices(blocks.blkIndex)
     for blk in blkLinIndex
-        if ismywork(blk, comm)
-            # model = blocks.blkModel[blk]
-            # init!(model, algparams)
+        if is_my_work(blk, comm)
+            if algparams.mode ∉ [:nondecomposed, :lyapunov_bound]
+                init!(blocks.blkModel[blk], algparams)
+            end
             blocks.colValue[:,blk] .= get_block_view(x, blocks.blkIndex[blk], modelinfo, algparams)
         end
     end
 
-    par_order = []
-    if algparams.jacobi
-        par_order = blkLinIndex
-    elseif algparams.decompCtgs
-        par_order = @view blkLinIndex[2:end,:]
-    end
-    plt = nothing
     iter = 0
     objvalue = []
     lyapunov = []
@@ -254,8 +237,6 @@ function ProxALProblem(
     maxviol_d = []
     maxviol_t_actual = []
     maxviol_c_actual = []
-    dist_x = []
-    dist_λ = []
     nlp_opt_sol = Array{Float64, 2}(undef, blocks.colCount, blocks.blkCount)
     nlp_opt_sol .= blocks.colValue
     nlp_soltime = Vector{Float64}(undef, blocks.blkCount)
@@ -277,23 +258,18 @@ function ProxALProblem(
         maxviol_d,
         maxviol_t_actual,
         maxviol_c_actual,
-        dist_x,
-        dist_λ,
         nlp_opt_sol,
         nlp_soltime,
         wall_time_elapsed_actual,
         wall_time_elapsed_ideal,
         iter,
-        opt_sol,
-        lyapunov_sol,
-        initial_solve,
-        par_order,
-        plt
+        blkLinIndex,
     )
 end
 
 function runinfo_update(
-    runinfo::ProxALProblem, opfdata::OPFData,
+    runinfo::ProxALProblem,
+    opfdata::OPFData,
     opfBlockData::AbstractBlocks,
     modelinfo::ModelInfo,
     algparams::AlgParams,
@@ -301,8 +277,8 @@ function runinfo_update(
 )
     iter = runinfo.iter
     obj = 0.0
-    for blk in runinfo.par_order
-        if ismywork(blk, comm)
+    for blk in runinfo.blkLinIndex
+        if is_my_work(blk, comm)
             obj += compute_objective_function(runinfo.x, opfdata, opfBlockData, blk, modelinfo, algparams)
         end
     end
@@ -311,8 +287,8 @@ function runinfo_update(
 
     iter = runinfo.iter
     lyapunov = 0.0
-    for blk in runinfo.par_order
-        if ismywork(blk, comm)
+    for blk in runinfo.blkLinIndex
+        if is_my_work(blk, comm)
             lyapunov += compute_lyapunov_function(runinfo.x, runinfo.λ, opfdata, opfBlockData, blk, runinfo.xprev, modelinfo, algparams)
         end
     end
@@ -320,8 +296,8 @@ function runinfo_update(
     push!(runinfo.lyapunov, lyapunov)
 
     maxviol_t_actual = 0.0
-    for blk in runinfo.par_order
-        if ismywork(blk, comm)
+    for blk in runinfo.blkLinIndex
+        if is_my_work(blk, comm)
             lmaxviol_t_actual = compute_true_ramp_error(runinfo.x, opfdata, opfBlockData, blk, modelinfo)
             maxviol_t_actual = max(maxviol_t_actual, lmaxviol_t_actual)
         end
@@ -330,8 +306,8 @@ function runinfo_update(
     push!(runinfo.maxviol_t_actual, maxviol_t_actual)
 
     maxviol_c_actual = 0.0
-    for blk in runinfo.par_order
-        if ismywork(blk, comm)
+    for blk in runinfo.blkLinIndex
+        if is_my_work(blk, comm)
             lmaxviol_c_actual = compute_true_ctgs_error(runinfo.x, opfdata, opfBlockData, blk, modelinfo)
             maxviol_c_actual = max(maxviol_c_actual, lmaxviol_c_actual)
         end
@@ -339,52 +315,15 @@ function runinfo_update(
     maxviol_c_actual = comm_max(maxviol_c_actual, comm)
     push!(runinfo.maxviol_c_actual, maxviol_c_actual)
 
-    # FIX ME: Frigging bug in the parallel implementation of the dual error
-    # FIX ME: Re-implement parallel implementation of the dual error
-    # (ngen, K, T) = size(runinfo.x.Pg)
-    # smaxviol_d = 3*ngen*K + 2*ngen + K
-    # @show smaxviol_d
-    # maxviol_d = zeros(Float64, smaxviol_d)
-    # for blk in runinfo.par_order
-    #     if ismywork(blk, comm)
-    #         maxviol_d .+= compute_dual_error(runinfo.x, runinfo.xprev, runinfo.λ, runinfo.λprev, opfdata, opfBlockData, blk, modelinfo, algparams)
-    #         # compute_dual_error(runinfo.x, runinfo.xprev, runinfo.λ, runinfo.λprev, opfdata, opfBlockData, blk, modelinfo, algparams)
-    #     end
-    # end
-    # maxviol_d = MPI.Allreduce(maxviol_d, MPI.SUM, comm)
-    # maxviol_d = norm(maxviol_d, Inf)
-    # push!(runinfo.maxviol_d, maxviol_d)
-    maxviol_d = compute_dual_error(runinfo.x, runinfo.xprev, runinfo.λ, runinfo.λprev, opfdata, modelinfo, algparams)
+    maxviol_d = 0.0
+    for blk in runinfo.blkLinIndex
+        if is_my_work(blk, comm)
+            lmaxviol_d = compute_dual_error(runinfo.x, runinfo.xprev, runinfo.λ, runinfo.λprev, opfdata, opfBlockData, blk, modelinfo, algparams)
+            maxviol_d = max(maxviol_d, lmaxviol_d)
+        end
+    end
     maxviol_d = comm_max(maxviol_d, comm)
     push!(runinfo.maxviol_d, maxviol_d)
-
-    push!(runinfo.dist_x, NaN)
-    push!(runinfo.dist_λ, NaN)
-    #=
-    optimgap = NaN
-    lyapunov_gap = NaN
-    if !isempty(runinfo.opt_sol)
-        xstar = runinfo.opt_sol["primal"]
-        zstar = runinfo.opt_sol["objective_value_nondecomposed"]
-        runinfo.dist_x[iter] = dist(runinfo.x, xstar, modelinfo, algparams)
-        optimgap = 100.0 * abs(runinfo.objvalue[iter] - zstar) / abs(zstar)
-    end
-    if !isempty(runinfo.lyapunov_sol)
-        lyapunov_star = runinfo.lyapunov_sol["objective_value_lyapunov_bound"]
-        lyapunov_gap = 100.0 * (runinfo.lyapunov[end] - lyapunov_star) / abs(lyapunov_star)
-    end
-
-    if algparams.verbose > 0 && comm_rank(comm) == 0
-        @printf("iter %3d: ramp_err = %.3e, ctgs_err = %.3e, dual_err = %.3e, |x-x*| = %.3f, gap = %.2f%%, lyapgap = %.2f%%\n",
-                    iter,
-                    runinfo.maxviol_t[iter],
-                    runinfo.maxviol_c[iter],
-                    runinfo.maxviol_d[iter],
-                    runinfo.dist_x[iter],
-                    optimgap,
-                    lyapunov_gap)
-    end
-    =#
     if algparams.verbose > 0 && comm_rank(comm) == 0
         if iter == 1
             @printf("--------------------------------------------------------------------------------------------------------------------\n");

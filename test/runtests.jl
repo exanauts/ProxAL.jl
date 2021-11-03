@@ -11,19 +11,19 @@ end
 
 # Testing using 1 process
 @testset "Sequential tests" begin
-    include("single.jl")
+    include("convergence.jl")
 end
 
 # Testing using 2 processes
 
 @testset "Parallel tests" begin
     mpiexec() do cmd
-        run(`$cmd -n 2 $(Base.julia_cmd()) --project=$testdir/.. $testdir/distributed.jl`)
+        run(`$cmd -n 2 $(Base.julia_cmd()) --project=$testdir/.. $testdir/convergence.jl 1`)
     end
     @test true
 
     mpiexec() do cmd
-        run(`$cmd -n 1 $(Base.julia_cmd()) --project=$testdir/.. $testdir/distributed.jl`)
+        run(`$cmd -n 1 $(Base.julia_cmd()) --project=$testdir/.. $testdir/convergence.jl 1`)
     end
     @test true
 end
