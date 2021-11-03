@@ -18,10 +18,15 @@ julia --project deps/deps.jl
 
 # Running Example
 
-Executing with [ExaTron](https://github.com/exanauts/ExaTron.jl/) as a backend, `T=2` time periods, and `K=1` contingencies. The example per default uses `ProxAL.CUDADevice`.
+Executing with [ExaTron](https://github.com/exanauts/ExaTron.jl/) as a backend, IEEE test `case118`, `T=10` time periods, and `K=1` contingencies. The example per default uses `ProxAL.CUDADevice`.
 
 ```bash
-julia --project examples/exatron.jl 2 1
+julia --project examples/exatron.jl case118 10 1
+```
+
+Using 2 MPI processes:
+```bash
+mpiexec -n 2 julia --project examples/exatron.jl case118 10 1
 ```
 
 ## Funding

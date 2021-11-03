@@ -15,23 +15,23 @@ using Logging
 MPI.Init()
 
 case = "case9"
-# case = "case_ACTIVSg2000"
 
 # choose one of the following (K*T subproblems in each case)
 if length(ARGS) == 0
-    (K, T) = (1, 2)
+    (case, T, K) = ("case9", 2, 0)
     # (K, T) = (1, 10)
     # (K, T) = (10, 10)
     # (K, T) = (10, 100)
     # (K, T) = (100, 10)
     # (K, T) = (100, 100)
-elseif length(ARGS) == 2
-    T = parse(Int, ARGS[1])
-    K = parse(Int, ARGS[2])
+elseif length(ARGS) == 3
+    case = ARGS[1]
+    T = parse(Int, ARGS[2])
+    K = parse(Int, ARGS[3])
 else
-    println("Usage: [mpiexec -n nprocs] julia --project examples/exatron.jl [T K]")
+    println("Usage: [mpiexec -n nprocs] julia --project examples/exatron.jl [case T K]")
     println("")
-    println("       (K,T) defaults to (0,10)")
+    println("       (case,T,K) defaults to (case9,2,0)")
     exit()
 end
 
@@ -42,9 +42,9 @@ backend = ProxAL.ExaTronBackend()
 
 
 # Load case
-DATA_DIR = joinpath(dirname(@__FILE__), "..", "ExaData")
+DATA_DIR = joinpath(dirname(@__FILE__), "..", "data")
 case_file = joinpath(DATA_DIR, "$(case).m")
-load_file = joinpath(DATA_DIR, "$(case)")
+load_file = joinpath(DATA_DIR, "mp_demand", "$(case)_oneweek_168")
 
 # Model/formulation settings
 modelinfo = ModelInfo()
@@ -88,7 +88,7 @@ end
 cur_logger = global_logger(NullLogger())
 elapsed_t = @elapsed begin
   redirect_stdout(devnull) do
-    global nlp = ProxALEvaluator(case_file, load_file, modelinfo, algparams, backend, Dict(), Dict())
+    global nlp = ProxALEvaluator(case_file, load_file, modelinfo, algparams, backend)
   end
 end
 if MPI.Comm_rank(MPI.COMM_WORLD) == 0
