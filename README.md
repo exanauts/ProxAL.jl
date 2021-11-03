@@ -16,8 +16,6 @@ The package is under heavy development and relies on non registered Julia packag
 julia --project deps/deps.jl
 ```
 
-This will also download the case files for TAMU 2K
-
 # Running Example
 
 Executing with [ExaTron](https://github.com/exanauts/ExaTron.jl/) as a backend, `T=2` time periods, and `K=1` contingencies. The example per default uses `ProxAL.CUDADevice`.
