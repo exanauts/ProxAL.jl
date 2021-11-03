@@ -30,8 +30,6 @@ function ProxALEvaluator(
     modelinfo::ModelInfo,
     algparams::AlgParams,
     space::AbstractBackend=JuMPBackend(),
-    opt_sol::Dict = Dict(),
-    lyapunov_sol::Dict = Dict(),
     comm::Union{MPI.Comm,Nothing} = MPI.COMM_WORLD
 )
     rawdata = RawData(case_file, load_file)
@@ -66,7 +64,7 @@ function ProxALEvaluator(
     end
 
     # ctgs_arr = deepcopy(rawdata.ctgs_arr)
-    problem = ProxALProblem(opfdata, rawdata, modelinfo, algparams, space, comm, opt_sol, lyapunov_sol)
+    problem = ProxALProblem(opfdata, rawdata, modelinfo, algparams, space, comm)
     return ProxALEvaluator(problem, modelinfo, algparams, opfdata, rawdata, space, comm)
 end
 
@@ -108,8 +106,7 @@ function optimize!(
     if (!isnothing(ρ_t_initial) || !isnothing(ρ_c_initial)) && isnothing(τ_initial)
         algparams.τ = τ_default(modelinfo, algparams)
     end
-    runinfo.initial_solve &&
-        (algparams_copy = deepcopy(algparams))
+
     opfBlockData = runinfo.opfBlockData
     nlp_opt_sol = runinfo.nlp_opt_sol
     nlp_soltime = runinfo.nlp_soltime
@@ -379,16 +376,6 @@ function optimize!(
     algparams.init_opf && opf_initialization!(nlp)
 
     function iteration()
-
-        if runinfo.initial_solve
-            if runinfo.iter == 1
-                algparams.ρ_t = 0.0
-                algparams.ρ_c = 0.0
-                algparams.τ = 0.0
-            elseif runinfo.iter == 2
-                algparams = deepcopy(algparams_copy)
-            end
-        end
 
         # use this to compute the KKT error at the end of the loop
         runinfo.xprev = deepcopy(x)

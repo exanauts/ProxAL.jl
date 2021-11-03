@@ -97,7 +97,8 @@ function OPFDualSolution(nlp::AbstractNLPEvaluator)
     return OPFDualSolution(nlp.opfdata, nlp.modelinfo)
 end
 
-function get_block_view(x::OPFPrimalSolution, block::CartesianIndex,
+function get_block_view(x::OPFPrimalSolution,
+                        block::CartesianIndex,
                         modelinfo::ModelInfo,
                         algparams::AlgParams)
     k = block[1]
@@ -111,7 +112,7 @@ function get_block_view(x::OPFPrimalSolution, block::CartesianIndex,
     St = view(x.St, :, t)
     Zt = view(x.Zt, :, t)
     Sk = view(x.Sk, :, range_k, t)
-    Zk = view(x.Sk, :, range_k, t)
+    Zk = view(x.Zk, :, range_k, t)
 
     return CatView(Pg, Qg, Vm, Va, ωt, St, Zt, Sk, Zk)
 end
