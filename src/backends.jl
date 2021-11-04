@@ -30,7 +30,7 @@ abstract type AbstractBlockModel end
 """
     init!(block::AbstractBlockModel, algparams::AlgParams)
 
-Init the optimization model by populating the model
+Initialize the optimization model by populating the model
 with variables and constraints.
 
 """
@@ -40,7 +40,7 @@ function init! end
     optimize!(block::AbstractBlockModel, x0::AbstractArray, algparams::AlgParams)
 
 Solve the optimization problem, starting from an initial
-variable `x0`. The optimization solver is specified in field
+point `x0`. The optimization solver is specified in field
 `algparams.optimizer`.
 
 """
@@ -58,8 +58,10 @@ with fields
 - `va::AbstractArray`: optimal values of voltage angles
 - `pg::AbstractArray`: optimal values of active power generations
 - `qg::AbstractArray`: optimal values of reactive power generations
-- `ωt::AbstractArray`: optimal values of frequency
-- `st::AbstractArray`: optimal values of slack variables
+- `ωt::AbstractArray`: optimal values of frequency variable
+- `st::AbstractArray`: optimal values of slack variables for ramping
+- `sk::AbstractArray`: optimal values of slack variables for contingencies (OPTIONAL)
+- `zk::AbstractArray`: optimal values of penalty variables for contingencies (OPTIONAL)
 """
 function get_solution end
 
@@ -74,7 +76,7 @@ function get_solution end
 
 Update the objective inside `block`'s optimization subproblem.
 The new objective updates the coefficients of the penalty
-terms, to reflect the new `primal` and `dual` solutions
+terms with respect to the reference `primal` and `dual` solutions
 passed in the arguments.
 
 """
@@ -90,6 +92,16 @@ model `block`.
 """
 function add_variables! end
 
+# Start values
+"""
+    set_start_values!(block::AbstractBlockModel, x0::AbstractArray)
+
+Set `x0` as the initial point for the optimization of
+model `block`.
+
+"""
+function set_start_values! end
+
 # Constraints
 function add_ctgs_linking_constraints! end
 
@@ -102,6 +114,7 @@ function set_objective!(block::EmptyBlockModel, algparams::AlgParams,
 end
 function get_solution(block::EmptyBlockModel) end
 
+### Implementation of JuMPBlockBackend
 struct JuMPBlockBackend <: AbstractBlockModel
     id::Int
     k::Int
@@ -112,28 +125,31 @@ struct JuMPBlockBackend <: AbstractBlockModel
     rawdata::RawData
 end
 
-### Implementation of JuMPBlockBackend
 """
     JuMPBlockBackend(
         blk::Int,
-        opfdata::OPFData, raw_data::RawData,
-        modelinfo::ModelInfo, t::Int, k::Int, T::Int,
+        opfdata::OPFData,
+        raw_data::RawData,
+        algparams::AlgParams,
+        modelinfo::ModelInfo,
+        t::Int, k::Int, T::Int,
     )
 
-Use the modeler JuMP to define the optimal power flow
+Use the JuMP backend to define the optimal power flow
 inside the block model.
 This function is called inside the constructor
-of the structure `OPFBlocks`, used for decomposition purpose.
+of the structure `OPFBlocks`.
 
 # Arguments
 
 - `blk::Int`: ID of the block represented by this model
 - `opfdata::OPFData`: data used to build the optimal power flow problem.
 - `raw_data::RawData`: same data, in raw format
-- `modelinfo::ModelInfo`: parameters related to specification of the optimization model
-- `t::Int`: current time-step. Value should be between `1` and `T`.
-- `k::Int`: current contingency
-- `T::Int`: final horizon
+- `algparams::AlgParams`: algorithm parameters
+- `modelinfo::ModelInfo`: model parameters
+- `t::Int`: current time period index. Value should be between `1` and `T`.
+- `k::Int`: current contingency index
+- `T::Int`: final time period index
 
 """
 function JuMPBlockBackend(
@@ -276,13 +292,23 @@ function add_ctgs_linking_constraints!(block::JuMPBlockBackend, algparams)
 end
 
 ### Implementation of ExaBlockBackend
+struct ExaBlockBackend <: AbstractBlockModel
+    id::Int
+    k::Int
+    t::Int
+    model::ExaPF.AbstractNLPEvaluator
+    data::OPFData
+    params::ModelInfo
+end
+
 """
     ExaBlockBackend(
         blk::Int,
-        opfdata::OPFData, raw_data::RawData,
-        modelinfo::ModelInfo, t::Int, k::Int, T::Int;
-        device::TargetDevice=CPU,
-        nr_tol::Float64=1e-10,
+        opfdata::OPFData,
+        raw_data::RawData,
+        algparams::AlgParams,
+        modelinfo::ModelInfo,
+        t::Int, k::Int, T::Int;
     )
 
 Use the package ExaPF to define the optimal power flow
@@ -295,21 +321,13 @@ of the structure `OPFBlocks`, used for decomposition purpose.
 - `blk::Int`: ID of the block represented by this model
 - `opfdata::OPFData`: data used to build the optimal power flow problem.
 - `raw_data::RawData`: same data, in raw format
-- `modelinfo::ModelInfo`: parameters related to specification of the optimization model
-- `t::Int`: current time-step. Value should be between `1` and `T`.
-- `k::Int`: current contingency
-- `T::Int`: final horizon
+- `algparams::AlgParams`: algorithm parameters
+- `modelinfo::ModelInfo`: model parameters
+- `t::Int`: current time period index. Value should be between `1` and `T`.
+- `k::Int`: current contingency index
+- `T::Int`: final time period index
 
 """
-struct ExaBlockBackend <: AbstractBlockModel
-    id::Int
-    k::Int
-    t::Int
-    model::ExaPF.AbstractNLPEvaluator
-    data::OPFData
-    params::ModelInfo
-end
-
 function ExaBlockBackend(
     blk::Int,
     opfdata::OPFData, raw_data::RawData, algparams::AlgParams,
@@ -505,25 +523,6 @@ end
 
 
 ### Implementation of TronBlockBackend
-"""
-    TronBlockBackend(
-        blk::Int,
-        opfdata::OPFData, raw_data::RawData,
-        modelinfo::ModelInfo, t::Int, k::Int, T::Int;
-    )
-
-
-# Arguments
-
-- `blk::Int`: ID of the block represented by this model
-- `opfdata::OPFData`: data used to build the optimal power flow problem.
-- `raw_data::RawData`: same data, in raw format
-- `modelinfo::ModelInfo`: parameters related to specification of the optimization model
-- `t::Int`: current time-step. Value should be between `1` and `T`.
-- `k::Int`: current contingency
-- `T::Int`: final horizon
-
-"""
 struct TronBlockBackend <: AbstractBlockModel
     env::ExaTron.AdmmEnv
     id::Int
@@ -566,6 +565,29 @@ function ExaTron.OPFData(data::OPFData)
     )
 end
 
+"""
+    TronBlockBackend(
+        blk::Int,
+        opfdata::OPFData,
+        raw_data::RawData,
+        algparams::AlgParams,
+        modelinfo::ModelInfo,
+        t::Int, k::Int, T::Int;
+    )
+
+
+# Arguments
+
+- `blk::Int`: ID of the block represented by this model
+- `opfdata::OPFData`: data used to build the optimal power flow problem.
+- `raw_data::RawData`: same data, in raw format
+- `algparams::AlgParams`: algorithm parameters
+- `modelinfo::ModelInfo`: model parameters
+- `t::Int`: current time period index. Value should be between `1` and `T`.
+- `k::Int`: current contingency index
+- `T::Int`: final time period index
+
+"""
 function TronBlockBackend(
     blk::Int,
     opfdata::OPFData, raw_data::RawData, algparams::AlgParams,

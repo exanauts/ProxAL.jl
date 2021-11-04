@@ -11,6 +11,7 @@ using CatViews
 using CUDA
 using MPI
 using Logging
+using LazyArtifacts
 
 MPI.Init()
 
@@ -42,7 +43,7 @@ backend = ProxAL.ExaTronBackend()
 
 
 # Load case
-DATA_DIR = joinpath(dirname(@__FILE__), "..", "data")
+const DATA_DIR = joinpath(artifact"ExaData", "ExaData")
 case_file = joinpath(DATA_DIR, "$(case).m")
 load_file = joinpath(DATA_DIR, "mp_demand", "$(case)_oneweek_168")
 

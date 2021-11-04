@@ -176,13 +176,15 @@ end
 
 #
 """
-    opf_loaddata(raw::RawData;
-                 time_horizon_start::Int=1,
-                 time_horizon_end::Int=0,
-                 load_scale::Float64=1.0,
-                 ramp_scale::Float64=0.0,
-                 corr_scale::Float64=0.1,
-                 lineOff=Line())
+    opf_loaddata(
+        raw::RawData;
+        time_horizon_start::Int=1,
+        time_horizon_end::Int=0,
+        load_scale::Float64=1.0,
+        ramp_scale::Float64=0.0,
+        corr_scale::Float64=0.1,
+        lineOff=Line()
+    )
 
 Loads the multi-period ACOPF instance data from `raw`
 with the time horizon defined to be

@@ -8,26 +8,5 @@
 
 This is a Julia implementation of a parallel <ins>Prox</ins>imal <ins>A</ins>ugmented <ins>L</ins>agrangian solver for solving multiperiod contingency-constrained ACOPF problems. Please refer to the [documentation][docs-latest-url] for package installation, usage and solver options.
 
-# Installation
-
-The package is under heavy development and relies on non registered Julia packages and versions. This requires to install packages via
-
-```bash
-julia --project deps/deps.jl
-```
-
-# Running Example
-
-Executing with [ExaTron](https://github.com/exanauts/ExaTron.jl/) as a backend, IEEE test `case118`, `T=10` time periods, and `K=1` contingencies. The example per default uses `ProxAL.CUDADevice`.
-
-```bash
-julia --project examples/exatron.jl case118 10 1
-```
-
-Using 2 MPI processes:
-```bash
-mpiexec -n 2 julia --project examples/exatron.jl case118 10 1
-```
-
 ## Funding
 This research was supported by the Exascale Computing Project (17-SC-20-SC), a joint project of the U.S. Department of Energy’s Office of Science and National Nuclear Security Administration, responsible for delivering a capable exascale ecosystem, including software, applications, and hardware technology, to support the nation’s exascale computing imperative.

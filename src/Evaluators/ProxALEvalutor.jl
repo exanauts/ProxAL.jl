@@ -14,8 +14,8 @@ end
         load_file::String,
         modelinfo::ModelInfo,
         algparams::AlgParams,
-        space::AbstractBackend=JuMPBackend(),
-        comm::MPI.Comm = MPI.COMM_WORLD
+        space::AbstractBackend = JuMPBackend(),
+        comm::Union{MPI.Comm,Nothing} = MPI.COMM_WORLD
     )
 
 Instantiate multi-period ACOPF

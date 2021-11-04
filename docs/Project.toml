@@ -1,2 +1,5 @@
 [deps]
 Documenter = "e30172f5-a6a5-5a46-863b-614d45cd2de4"
+ExaPF = "0cf0e50c-a82e-488f-ac7e-41ffdff1b8aa"
+ExaTron = "28b18bf8-76f9-41ea-81fa-0f922810b349"
+ProxAL = "12c3852d-bf95-4e7b-be60-68937c3c927b"
