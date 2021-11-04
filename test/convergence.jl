@@ -5,10 +5,11 @@ using LinearAlgebra, JuMP
 using CatViews
 using CUDA
 using MPI
+using LazyArtifacts
 
 use_MPI = !isempty(ARGS) && (parse(Bool, ARGS[1]) == true)
 use_MPI && MPI.Init()
-DATA_DIR = joinpath(dirname(@__FILE__), "..", "data")
+const DATA_DIR = joinpath(artifact"ExaData", "ExaData")
 case = "case9"
 T = 2
 ramp_scale = 0.5
