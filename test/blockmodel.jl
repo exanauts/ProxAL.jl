@@ -5,8 +5,9 @@ using ExaPF
 using JuMP
 using ProxAL
 using DelimitedFiles, Printf
+using LazyArtifacts
 
-DATA_DIR = joinpath(dirname(@__FILE__), "..", "data")
+const DATA_DIR = joinpath(artifact"ExaData", "ExaData")
 case = "case9"
 T = 3
 ramp_scale = 0.5
