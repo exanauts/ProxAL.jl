@@ -7,5 +7,5 @@ CurrentModule = ProxAL
 ## Description
 
 ```@docs
-ModelParams
+ModelInfo
 ```

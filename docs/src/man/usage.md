@@ -1,51 +1,63 @@
 # Usage
-`ProxAL.jl` can be called from existing Julia code or REPL, or also from the terminal.
-
-!!! note
-    To do: Update documentation to show how to use `ExaTron`, `ExaPF` backends, as well as other solvers like `MadNLP`.
-
-## Julia code or REPL
-Install `ProxAL.jl` via the Julia package manager (type `]`):
-```julia-repl
-pkg> add git@github.com:exanauts/ProxAL.jl.git
-pkg> test ProxAL
+`ProxAL.jl` can be called from existing Julia code or REPL. The package is under heavy development and relies on non-registered Julia packages and versions. This requires to install packages via:
+```shell
+$ git clone https://github.com/exanauts/ProxAL.jl.git
+$ cd ProxAL.jl
+$ julia --project deps/deps.jl
 ```
-Next, set up and solve the problem as follows. Note that all case files are stored in the `data/` subdirectory. For a full list of model and algorithmic options, see [Model parameters](@ref) and [Algorithm parameters](@ref).
 
-Consider the following `example.jl` using the `JuMP` backend, `Ipopt` solver, and `MPI`:
+## Example
+We can set up and solve a problem as follows. For a full list of model and algorithmic options, see [Model parameters](@ref) and [Algorithm parameters](@ref).
+
+Consider the following `example.jl` using the `JuMP` backend, `Ipopt` solver, and using `MPI`:
 ```julia
 using ProxAL
 using JuMP, Ipopt
 using MPI
+using LazyArtifacts
 
 MPI.Init()
 
 # Model/formulation settings
 modelinfo = ModelParams()
-modelinfo.case_name = "case9"
-modelinfo.num_time_periods = 2
-modelinfo.num_ctgs = 1
-modelinfo.weight_freq_ctrl = 0.1
-modelinfo.time_link_constr_type = :penalty
-modelinfo.ctgs_link_constr_type = :frequency_ctrl
+modelinfo.num_time_periods = 10
+modelinfo.num_ctgs = 0
+modelinfo.allow_line_limits = false
 
 # Load case in MATPOWER format
-case_file = "data/$(modelinfo.case_name).m"
-load_file = "data/mp_demand/$(modelinfo.case_name)_oneweek_168"
+# This automatically loads data from https://github.com/exanauts/ExaData
+# You may also provide your own case data
+case_file = joinpath(artifact"ExaData", "ExaData", "case118.m")
+load_file = joinpath(artifact"ExaData", "ExaData", "mp_demand", "case118_oneweek_168")
+
+# Choose the backend
+backend = ProxAL.JuMPBackend()
 
 # Algorithm settings
 algparams = AlgParams()
-algparams.optimizer = JuMP.optimizer_with_attributes(Ipopt.Optimizer, "print_level" => 0)
-algparams.decompCtgs = false
 algparams.verbose = 1
+algparams.optimizer = JuMP.optimizer_with_attributes(Ipopt.Optimizer, "print_level" => 0)
+algparams.tol = 1e-3 # tolerance for convergence
 
-nlp = ProxALEvaluator(case_file, load_file, modelinfo, algparams, JuMPBackend())
+# Solve the problem
+nlp = ProxALEvaluator(case_file, load_file, modelinfo, algparams, backend, MPI.COMM_WORLD)
 runinfo = ProxAL.optimize!(nlp)
+
+@show(runinfo.iter)                  # number of iterations
+@show(runinfo.maxviol_t_actual[end]) # ramping violation at last iteration
+@show(runinfo.maxviol_d[end])        # dual residual at last iteration
+
+MPI.Finalize()
 ```
 
-To execute this file with `2` MPI processes, you can call
-```
-mpiexec -n 2 julia --project=. example.jl
+To execute this file with `2` MPI processes:
+```shell
+$ mpiexec -n 2 julia --project example.jl
 ```
 
+To disable MPI, simply pass `nothing` as the last argument to `ProxALEvaluator` (or omit the argument entirely) and you can simply run:
+```shell
+$ julia --project example.jl
+```
 
+An example using the `ExaTron` backend with `ProxAL.CUDADevice` (GPU) can be found in `examples/exatron.jl`.

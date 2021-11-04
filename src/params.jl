@@ -45,6 +45,13 @@ Specifies ProxAL's algorithmic parameters.
 | `nr_tol::Float64`    | Tolerance of the Newton-Raphson algorithm (used only in `ExaPFBackend()` model) | 1e-10
 | `init_opt::Bool` |   if true: initialize block OPFs with base OPF solution | false
 | `device::TargetDevice` | Target device to deport the resolution of the optimization problem | CPU
+| `verbose_inner::Int` | Verbose level for `ExaTronBackend()` | 0
+| `tron_rho_pq::Float64` | Parameter for `ExaTronBackend()` | 4e2
+| `tron_rho_pa::Float64` | Parameter for `ExaTronBackend()` | 4e4
+| `tron_scale::Float64` | Parameter for `ExaTronBackend()` | 1e-4
+| `tron_inner_iterlim::Int` | Parameter for `ExaTronBackend()` | 800
+| `tron_outer_iterlim::Int` | Parameter for `ExaTronBackend()` | 20
+| `tron_outer_eps::Float64` | Parameter for `ExaTronBackend()` | 1e-4
 """
 Base.@kwdef mutable struct AlgParams
     decompCtgs::Bool = false # decompose contingencies (along with time)

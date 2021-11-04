@@ -14,13 +14,14 @@ end
         modelinfo::ModelInfo,
         algparams::AlgParams,
         space::AbstractBackend=JuMPBackend(),
-        comm::MPI.Comm = MPI.COMM_WORLD
+        time_horizon_start = 1,
     )
 
 Instantiate non-decomposed multi-period ACOPF instance
 specified in `case_file` with loads in `load_file` with model parameters
-`modelinfo` and algorithm parameters `algparams`, and
-a MPI communicator `comm`.
+`modelinfo` and algorithm parameters `algparams`.
+The problem is defined over the horizon
+[`time_horizon_start`, `modelinfo.num_time_periods`]
 
 """
 function NonDecomposedModel(

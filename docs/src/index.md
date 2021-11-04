@@ -1,6 +1,6 @@
 # ProxAL
 
-[ProxAL.jl](https://github.com/exanauts/ProxAL.jl) is a Julia package to solve multiperiod contingency-constrained AC Optimal Power Flow (ACOPF) problems. Its main feature is a distributed parallel implementation, which allows running on high-performance computing architectures. 
+[ProxAL.jl](https://github.com/exanauts/ProxAL.jl) is a Julia package to solve linearly coupled block-structured nonlinear programming problems. In its current version, `ProxAL` can only solve multi-period contingency-constrained AC Optimal Power Flow (ACOPF) problems. Its main feature is a distributed parallel implementation, which allows running on high-performance computing architectures. 
 
 This document describes the algorithm, API and main functions of `ProxAL.jl`.
 
@@ -24,7 +24,9 @@ Pages = [
     "lib/modelparams.md",
     "lib/algparams.md",
     "lib/algorithm.md",
-    "lib/developer.md",
+    "lib/backends.md",
+    "lib/opf.md",
+    "lib/mpi.md",
 ]
 Depth = 1
 ```
