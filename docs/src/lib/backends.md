@@ -33,7 +33,6 @@ JuMPBlockBackend
 ExaTronBackend
 TronBlockBackend
 ExaPFBackend
-ExaBlockBackend
 
 ```
 
