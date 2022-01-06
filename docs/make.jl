@@ -1,5 +1,6 @@
 using Pkg
 
+include(joinpath(dirname(@__FILE__), "..", "deps/deps.jl"))
 Pkg.develop(PackageSpec(path=joinpath(dirname(@__FILE__), "..")))
 # when first running instantiate
 Pkg.instantiate()
@@ -24,7 +25,9 @@ makedocs(
             "Model parameters" => "lib/modelparams.md",
             "Algorithm parameters" => "lib/algparams.md",
             "Main functions" => "lib/algorithm.md",
-            "Developer reference" => "lib/developer.md",
+            "NLP blocks and backends" => "lib/backends.md",
+            "Optimal Power Flow" => "lib/opf.md",
+            "MPI communication" => "lib/mpi.md",
         ]
     ]
 )

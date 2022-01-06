@@ -6,6 +6,8 @@ CurrentModule = ProxAL
 
 ## API Reference
 ```@docs
-solve_fullmodel
-run_proxALM
+ProxALEvaluator
+NonDecomposedModel
+optimize!(::ProxALEvaluator)
+optimize!(::NonDecomposedModel)
 ```

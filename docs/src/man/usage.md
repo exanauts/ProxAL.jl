@@ -1,100 +1,63 @@
 # Usage
-`ProxAL.jl` can be called from existing Julia code or REPL, or also from the terminal.
-
-!!! note
-    To do: Update documentation to show how to use MPI.
-
-## Julia code or REPL
-Install `ProxAL.jl` via the Julia package manager (type `]`):
-```julia-repl
-pkg> add git@github.com:exanauts/ProxAL.jl.git
-pkg> test ProxAL
+`ProxAL.jl` can be called from existing Julia code or REPL. The package is under heavy development and relies on non-registered Julia packages and versions. This requires to install packages via:
+```shell
+$ git clone https://github.com/exanauts/ProxAL.jl.git
+$ cd ProxAL.jl
+$ julia --project deps/deps.jl
 ```
-Next, set up and solve the problem as follows. Note that all case files are stored in the `data/` subdirectory. For a full list of model and algorithmic options, see [Model parameters](@ref) and [Algorithm parameters](@ref).
+
+## Example
+We can set up and solve a problem as follows. For a full list of model and algorithmic options, see [Model parameters](@ref) and [Algorithm parameters](@ref).
+
+Consider the following `example.jl` using the `JuMP` backend, `Ipopt` solver, and using `MPI`:
 ```julia
 using ProxAL
 using JuMP, Ipopt
+using MPI
+using LazyArtifacts
+
+MPI.Init()
 
 # Model/formulation settings
 modelinfo = ModelParams()
-modelinfo.case_name = "case9"
-modelinfo.num_time_periods = 2
-modelinfo.num_ctgs = 1
-modelinfo.weight_quadratic_penalty_time = 0.1
-modelinfo.weight_freq_ctrl = 0.1
-modelinfo.time_link_constr_type = :penalty
-modelinfo.ctgs_link_constr_type = :frequency_ctrl
+modelinfo.num_time_periods = 10
+modelinfo.num_ctgs = 0
+modelinfo.allow_line_limits = false
 
-# Load case
-case_file = "data/" * modelinfo.case_name
-load_file = "data/mp_demand/" * modelinfo.case_name * "_oneweek_168"
-rawdata = RawData(case_file, load_file)
-opfdata = opf_loaddata(rawdata;
-                       time_horizon_start = 1,
-                       time_horizon_end = modelinfo.num_time_periods,
-                       load_scale = modelinfo.load_scale,
-                       ramp_scale = modelinfo.ramp_scale)
+# Load case in MATPOWER format
+# This automatically loads data from https://github.com/exanauts/ExaData
+# You may also provide your own case data
+case_file = joinpath(artifact"ExaData", "ExaData", "case118.m")
+load_file = joinpath(artifact"ExaData", "ExaData", "mp_demand", "case118_oneweek_168")
+
+# Choose the backend
+backend = ProxAL.JuMPBackend()
 
 # Algorithm settings
 algparams = AlgParams()
-algparams.parallel = false
-algparams.decompCtgs = false
-algparams.verbose = 0
+algparams.verbose = 1
 algparams.optimizer = JuMP.optimizer_with_attributes(Ipopt.Optimizer, "print_level" => 0)
-maxρ = 0.1
-set_rho!(algparams;
-         ngen = length(opfdata.generators),
-         modelinfo = modelinfo,
-         maxρ_t = maxρ,
-         maxρ_c = maxρ)
-algparams.mode = :coldstart
+algparams.tol = 1e-3 # tolerance for convergence
 
-if algparams.mode ∈ [:nondecomposed, :lyapunov_bound]
-    solve_fullmodel(opfdata, rawdata, modelinfo, algparams)
-elseif algparams.mode == :coldstart
-    run_proxALM(opfdata, rawdata, modelinfo, algparams)
-end
+# Solve the problem
+nlp = ProxALEvaluator(case_file, load_file, modelinfo, algparams, backend, MPI.COMM_WORLD)
+runinfo = ProxAL.optimize!(nlp)
+
+@show(runinfo.iter)                  # number of iterations
+@show(runinfo.maxviol_t_actual[end]) # ramping violation at last iteration
+@show(runinfo.maxviol_d[end])        # dual residual at last iteration
+
+MPI.Finalize()
 ```
 
-
-## Terminal
-The `examples/` directory provides an example of how `ProxAL.jl` can be set up to be used from the terminal. Enter `julia examples/main.jl --help` to get a help message:
-```
-usage: main.jl [--T T] [--Ctgs CTGS] [--time_unit UNIT]
-               [--ramp_value RVAL] [--decompCtgs] [--ramp_constr RCON]
-               [--Ctgs_constr CCON] [--load_scale LSCALE]
-               [--quad_penalty QPEN] [--auglag_rho RHO]
-               [--compute_mode MODE] [-h] case
-
-positional arguments:
-  case                 Case name [case9, case30, case118,
-                       case1354pegase, case2383wp, case9241pegase]
-
-optional arguments:
-  --T T                No. of time periods (type: Int64, default: 10)
-  --Ctgs CTGS          No. of line ctgs (type: Int64, default: 0)
-  --time_unit UNIT     Select: [hour, minute] (default: "minute")
-  --ramp_value RVAL    Ramp value: % Pg_max/time_unit (type: Float64,
-                       default: 0.5)
-  --decompCtgs         Decompose contingencies
-  --ramp_constr RCON   Select: [penalty, equality, inequality]
-                       (default: "penalty")
-  --Ctgs_constr CCON   Select: [frequency_ctrl, preventive_penalty,
-                       preventive_equality, corrective_penalty,
-                       corrective_equality, corrective_inequality]
-                       (default: "preventive_equality")
-  --load_scale LSCALE  Load multiplier (type: Float64, default: 1.0)
-  --quad_penalty QPEN  Qaudratic penalty parameter (type: Float64,
-                       default: 1000.0)
-  --auglag_rho RHO     Aug Lag parameter (type: Float64, default: 1.0)
-  --compute_mode MODE  Choose from: [nondecomposed, coldstart,
-                       lyapunov_bound] (default: "coldstart")
-  -h, --help           show this help message and exit
+To execute this file with `2` MPI processes:
+```shell
+$ mpiexec -n 2 julia --project example.jl
 ```
 
-A typical call might look as follows:
-```
-julia examples/main.jl case9 --T=2 --Ctgs=1 --time_unit=hour --ramp_value=0.5 --load_scale=1.0 --ramp_constr=penalty --Ctgs_constr=frequency_ctrl --auglag_rho=0.1 --quad_penalty=0.1 --compute_mode=coldstart
+To disable MPI, simply pass `nothing` as the last argument to `ProxALEvaluator` (or omit the argument entirely) and you can simply run:
+```shell
+$ julia --project example.jl
 ```
 
-
+An example using the `ExaTron` backend with `ProxAL.CUDADevice` (GPU) can be found in `examples/exatron.jl`.
