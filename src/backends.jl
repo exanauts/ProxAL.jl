@@ -292,14 +292,14 @@ function add_ctgs_linking_constraints!(block::JuMPBlockBackend, algparams)
 end
 
 ### Implementation of ExaBlockBackend
-struct ExaBlockBackend <: AbstractBlockModel
-    id::Int
-    k::Int
-    t::Int
-    model::ExaPF.AbstractNLPEvaluator
-    data::OPFData
-    params::ModelInfo
-end
+# struct ExaBlockBackend <: AbstractBlockModel
+#     id::Int
+#     k::Int
+#     t::Int
+#     model::ExaPF.AbstractNLPEvaluator
+#     data::OPFData
+#     params::ModelInfo
+# end
 
 """
     ExaBlockBackend(
@@ -328,198 +328,198 @@ of the structure `OPFBlocks`, used for decomposition purpose.
 - `T::Int`: final time period index
 
 """
-function ExaBlockBackend(
-    blk::Int,
-    opfdata::OPFData, raw_data::RawData, algparams::AlgParams,
-    modelinfo::ModelInfo, t::Int, k::Int, T::Int,
-)
+# function ExaBlockBackend(
+#     blk::Int,
+#     opfdata::OPFData, raw_data::RawData, algparams::AlgParams,
+#     modelinfo::ModelInfo, t::Int, k::Int, T::Int,
+# )
 
-    data = Dict{String, Array}()
-    data["bus"] = raw_data.bus_arr
-    data["branch"] = raw_data.branch_arr
-    data["gen"] = raw_data.gen_arr
-    data["cost"] = raw_data.costgen_arr
-    data["baseMVA"] = [raw_data.baseMVA]
+#     data = Dict{String, Array}()
+#     data["bus"] = raw_data.bus_arr
+#     data["branch"] = raw_data.branch_arr
+#     data["gen"] = raw_data.gen_arr
+#     data["cost"] = raw_data.costgen_arr
+#     data["baseMVA"] = [raw_data.baseMVA]
 
-    power_network = PS.PowerNetwork(data)
+#     power_network = PS.PowerNetwork(data)
 
-    if t == 1
-        time = ExaPF.Origin
-    elseif t == T
-        time = ExaPF.Final
-    else
-        time = ExaPF.Normal
-    end
+#     if t == 1
+#         time = ExaPF.Origin
+#     elseif t == T
+#         time = ExaPF.Final
+#     else
+#         time = ExaPF.Normal
+#     end
 
-    # Instantiate model in memory
-    target = if algparams.device == CPU
-        ExaPF.CPU()
-    elseif algparams.device == CUDADevice
-        ExaPF.CUDADevice()
-    end
-    model = ExaPF.ProxALEvaluator(power_network, time;
-                                  device=target)
-    return ExaBlockBackend(blk, k, t, model, opfdata, modelinfo)
-end
+#     # Instantiate model in memory
+#     target = if algparams.device == CPU
+#         ExaPF.CPU()
+#     elseif algparams.device == CUDADevice
+#         ExaPF.CUDADevice()
+#     end
+#     model = ExaPF.ProxALEvaluator(power_network, time;
+#                                   device=target)
+#     return ExaBlockBackend(blk, k, t, model, opfdata, modelinfo)
+# end
 
-function init!(block::ExaBlockBackend, algparams::AlgParams)
-    opfmodel = block.model
-    baseMVA = block.data.baseMVA
+# function init!(block::ExaBlockBackend, algparams::AlgParams)
+#     opfmodel = block.model
+#     baseMVA = block.data.baseMVA
 
-    # Get params
-    opfdata = block.data
-    modelinfo = block.params
-    Kblock = modelinfo.num_ctgs + 1
-    t, k = block.t, block.k
-    # Generators
-    gens = block.data.generators
-    ramp_agc = [g.ramp_agc for g in gens]
+#     # Get params
+#     opfdata = block.data
+#     modelinfo = block.params
+#     Kblock = modelinfo.num_ctgs + 1
+#     t, k = block.t, block.k
+#     # Generators
+#     gens = block.data.generators
+#     ramp_agc = [g.ramp_agc for g in gens]
 
-    # Sanity check
-    @assert modelinfo.num_time_periods == 1
-    @assert !algparams.decompCtgs || Kblock == 1
+#     # Sanity check
+#     @assert modelinfo.num_time_periods == 1
+#     @assert !algparams.decompCtgs || Kblock == 1
 
-    # TODO: currently, only one contingency is supported
-    j = 1
-    pd = opfdata.Pd[:,1] / baseMVA
-    qd = opfdata.Qd[:,1] / baseMVA
+#     # TODO: currently, only one contingency is supported
+#     j = 1
+#     pd = opfdata.Pd[:,1] / baseMVA
+#     qd = opfdata.Qd[:,1] / baseMVA
 
-    ExaPF.setvalues!(opfmodel, PS.ActiveLoad(), pd)
-    ExaPF.setvalues!(opfmodel, PS.ReactiveLoad(), qd)
-    # Set bounds on slack variables s
-    copyto!(opfmodel.s_max, 2 .* ramp_agc)
-    opfmodel.scale_objective = modelinfo.obj_scale
+#     ExaPF.setvalues!(opfmodel, PS.ActiveLoad(), pd)
+#     ExaPF.setvalues!(opfmodel, PS.ReactiveLoad(), qd)
+#     # Set bounds on slack variables s
+#     copyto!(opfmodel.s_max, 2 .* ramp_agc)
+#     opfmodel.scale_objective = modelinfo.obj_scale
 
-    return opfmodel
-end
+#     return opfmodel
+# end
 
-function add_ctgs_linking_constraints!(block::ExaBlockBackend)
-    error("Contingencies are not supported in ExaPF")
-end
+# function add_ctgs_linking_constraints!(block::ExaBlockBackend)
+#     error("Contingencies are not supported in ExaPF")
+# end
 
-function update_penalty!(block::ExaBlockBackend, algparams::AlgParams,
-                         primal::AbstractPrimalSolution, dual::AbstractDualSolution)
-    examodel = block.model
-    opfdata = block.data
-    modelinfo = block.params
-    # Generators
-    gens = block.data.generators
+# function update_penalty!(block::ExaBlockBackend, algparams::AlgParams,
+#                          primal::AbstractPrimalSolution, dual::AbstractDualSolution)
+#     examodel = block.model
+#     opfdata = block.data
+#     modelinfo = block.params
+#     # Generators
+#     gens = block.data.generators
 
-    t, k = block.t, block.k
-    ramp_agc = [g.ramp_agc for g in gens]
+#     t, k = block.t, block.k
+#     ramp_agc = [g.ramp_agc for g in gens]
 
-    time = examodel.time
+#     time = examodel.time
 
-    # Update current values
-    λf = dual.ramping[:, t]
-    pgc = primal.Pg[:, k, t]
-    ExaPF.update_multipliers!(examodel, ExaPF.Current(), λf)
-    ExaPF.update_primal!(examodel, ExaPF.Current(), pgc)
-    # Update parameters
-    examodel.τ = algparams.τ
+#     # Update current values
+#     λf = dual.ramping[:, t]
+#     pgc = primal.Pg[:, k, t]
+#     ExaPF.update_multipliers!(examodel, ExaPF.Current(), λf)
+#     ExaPF.update_primal!(examodel, ExaPF.Current(), pgc)
+#     # Update parameters
+#     examodel.τ = algparams.τ
 
-    # Update previous values
-    if time != ExaPF.Origin
-        pgf = primal.Pg[:, 1, t-1] .+ primal.Zt[:, t] .- ramp_agc
-        ExaPF.update_primal!(examodel, ExaPF.Previous(), pgf)
-        # Update parameters
-        examodel.ρf = algparams.ρ_t
-    end
+#     # Update previous values
+#     if time != ExaPF.Origin
+#         pgf = primal.Pg[:, 1, t-1] .+ primal.Zt[:, t] .- ramp_agc
+#         ExaPF.update_primal!(examodel, ExaPF.Previous(), pgf)
+#         # Update parameters
+#         examodel.ρf = algparams.ρ_t
+#     end
 
-    # Update next values
-    if time != ExaPF.Final
-        λt = dual.ramping[:, t+1]
-        pgt = primal.Pg[:, 1, t+1] .- primal.St[:, t+1] .- primal.Zt[:, t+1] .+ ramp_agc
-        ExaPF.update_multipliers!(examodel, ExaPF.Next(), λt)
-        ExaPF.update_primal!(examodel, ExaPF.Next(), pgt)
-        # Update parameters
-        examodel.ρt = algparams.ρ_t
-    end
-end
+#     # Update next values
+#     if time != ExaPF.Final
+#         λt = dual.ramping[:, t+1]
+#         pgt = primal.Pg[:, 1, t+1] .- primal.St[:, t+1] .- primal.Zt[:, t+1] .+ ramp_agc
+#         ExaPF.update_multipliers!(examodel, ExaPF.Next(), λt)
+#         ExaPF.update_primal!(examodel, ExaPF.Next(), pgt)
+#         # Update parameters
+#         examodel.ρt = algparams.ρ_t
+#     end
+# end
 
-function set_objective!(block::ExaBlockBackend, algparams::AlgParams,
-                        primal::AbstractPrimalSolution, dual::AbstractDualSolution)
-    update_penalty!(block, algparams, primal, dual)
-    return
-end
+# function set_objective!(block::ExaBlockBackend, algparams::AlgParams,
+#                         primal::AbstractPrimalSolution, dual::AbstractDualSolution)
+#     update_penalty!(block, algparams, primal, dual)
+#     return
+# end
 
-function get_solution(block::ExaBlockBackend, output)
-    opfmodel = block.model
+# function get_solution(block::ExaBlockBackend, output)
+#     opfmodel = block.model
 
-    # Check optimization status
-    status = output.status
-    if status ∉ MOI_OPTIMAL_STATUSES
-        @warn("Block $(block.id) subproblem not solved to optimality. status: $status")
-    end
+#     # Check optimization status
+#     status = output.status
+#     if status ∉ MOI_OPTIMAL_STATUSES
+#         @warn("Block $(block.id) subproblem not solved to optimality. status: $status")
+#     end
 
-    # Get optimal solution in reduced space
-    nu = opfmodel.nu
-    x♯ = output.minimizer
-    u♯ = x♯[1:nu]
-    s♯ = x♯[nu+1:end]
-    # Unroll solution in full space
-    ## i) Project in null-space of equality constraints
-    ExaPF.update!(opfmodel, x♯)
-    pg = get(opfmodel, PS.ActivePower())
-    qg = get(opfmodel, PS.ReactivePower())
-    vm = get(opfmodel, PS.VoltageMagnitude())
-    va = get(opfmodel, PS.VoltageAngle())
+#     # Get optimal solution in reduced space
+#     nu = opfmodel.nu
+#     x♯ = output.minimizer
+#     u♯ = x♯[1:nu]
+#     s♯ = x♯[nu+1:end]
+#     # Unroll solution in full space
+#     ## i) Project in null-space of equality constraints
+#     ExaPF.update!(opfmodel, x♯)
+#     pg = get(opfmodel, PS.ActivePower())
+#     qg = get(opfmodel, PS.ReactivePower())
+#     vm = get(opfmodel, PS.VoltageMagnitude())
+#     va = get(opfmodel, PS.VoltageAngle())
 
-    solution = (
-        status=status,
-        minimum=output.minimum,
-        vm=vm,
-        va=va,
-        pg=pg,
-        qg=qg,
-        ωt=[0.0], # At the moment, no frequency variable in ExaPF
-        st=s♯,
-    )
-    return solution
-end
+#     solution = (
+#         status=status,
+#         minimum=output.minimum,
+#         vm=vm,
+#         va=va,
+#         pg=pg,
+#         qg=qg,
+#         ωt=[0.0], # At the moment, no frequency variable in ExaPF
+#         st=s♯,
+#     )
+#     return solution
+# end
 
-function set_start_values!(block::ExaBlockBackend, x0)
-    ngen = length(block.data.generators)
-    nbus = length(block.data.buses)
-    # Only one contingency, at the moment
-    K = 1
-    # Extract values from array x0
-    pg = x0[1:ngen*K]
-    qg = x0[ngen*K+1:2*ngen*K]
-    vm = x0[2*ngen*K+1:2*ngen*K+nbus*K]
-    va = x0[2*ngen*K+nbus*K+1:2*ngen*K+2*nbus*K]
-    # Transfer them to ExaPF. Initial control will be automatically updated
-    ExaPF.transfer!(block.model, vm, va, pg, qg)
-end
+# function set_start_values!(block::ExaBlockBackend, x0)
+#     ngen = length(block.data.generators)
+#     nbus = length(block.data.buses)
+#     # Only one contingency, at the moment
+#     K = 1
+#     # Extract values from array x0
+#     pg = x0[1:ngen*K]
+#     qg = x0[ngen*K+1:2*ngen*K]
+#     vm = x0[2*ngen*K+1:2*ngen*K+nbus*K]
+#     va = x0[2*ngen*K+nbus*K+1:2*ngen*K+2*nbus*K]
+#     # Transfer them to ExaPF. Initial control will be automatically updated
+#     ExaPF.transfer!(block.model, vm, va, pg, qg)
+# end
 
-function optimize!(block::ExaBlockBackend, x0::Union{Nothing, AbstractArray}, algparams::AlgParams)
-    blk = block.id
-    opfmodel = block.model
-    optimizer = algparams.gpu_optimizer
+# function optimize!(block::ExaBlockBackend, x0::Union{Nothing, AbstractArray}, algparams::AlgParams)
+#     blk = block.id
+#     opfmodel = block.model
+#     optimizer = algparams.gpu_optimizer
 
-    if isa(optimizer, MOI.OptimizerWithAttributes)
-        optimizer = MOI.instantiate(optimizer)
-    end
+#     if isa(optimizer, MOI.OptimizerWithAttributes)
+#         optimizer = MOI.instantiate(optimizer)
+#     end
 
-    # Critical part: if x0 is not feasible, it is very likely
-    # that the Newton-Raphson algorithm implemented inside ExaPF
-    # would fail to converge. If we do not trust x0, it is better
-    # to pass nothing so ExaPF will compute a default starting point
-    # on its own.
-    if isa(x0, Array)
-        set_start_values!(block, x0)
-    end
-    # Optimize with optimizer, using ExaPF model
-    output = ExaPF.optimize!(optimizer, opfmodel)
-    # Recover solution
-    solution = get_solution(block, output)
+#     # Critical part: if x0 is not feasible, it is very likely
+#     # that the Newton-Raphson algorithm implemented inside ExaPF
+#     # would fail to converge. If we do not trust x0, it is better
+#     # to pass nothing so ExaPF will compute a default starting point
+#     # on its own.
+#     if isa(x0, Array)
+#         set_start_values!(block, x0)
+#     end
+#     # Optimize with optimizer, using ExaPF model
+#     output = ExaPF.optimize!(optimizer, opfmodel)
+#     # Recover solution
+#     solution = get_solution(block, output)
 
-    if isa(optimizer, MOI.OptimizerWithAttributes)
-        MOI.empty!(optimizer)
-    end
+#     if isa(optimizer, MOI.OptimizerWithAttributes)
+#         MOI.empty!(optimizer)
+#     end
 
-    return solution
-end
+#     return solution
+# end
 
 
 ### Implementation of TronBlockBackend

@@ -1,7 +1,7 @@
 name = "ProxAL"
 uuid = "12c3852d-bf95-4e7b-be60-68937c3c927b"
-authors = ["Anirudh Subramanyam <asubramanyam@anl.gov>"]
-version = "0.2.0"
+authors = ["Youngdae Kim <youngdae@anl.gov>", "Francois Pacaud <fpacaud@anl.gov>", "Michel Schanen <mschanen@anl.gov>", "Anirudh Subramanyam <asubramanyam@anl.gov>"]
+version = "0.3.0"
 
 [deps]
 CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
@@ -19,10 +19,10 @@ SparseArrays = "2f01184e-e22b-5df5-ae63-d93ebab69eaf"
 [compat]
 CUDA = "~3.4"
 CatViews = "1"
-ExaPF = "0.5"
+ExaPF = "0.6"
 Ipopt = "0.6"
 JuMP = "0.21"
-MPI = "0.15"
+MPI = "0.19"
 julia = "1.6"
 
 [extras]
