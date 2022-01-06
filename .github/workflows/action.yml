@@ -30,7 +30,7 @@ jobs:
           version: ${{ matrix.julia-version }}
       - run: julia --project deps/deps.jl
       - uses: julia-actions/julia-buildpkg@latest
-      # - uses: julia-actions/julia-runtest@latest
+      - uses: julia-actions/julia-runtest@latest
       - run: julia --project=docs/ deps/deps_docs.jl
       - run: julia --project=docs/ docs/make.jl
 

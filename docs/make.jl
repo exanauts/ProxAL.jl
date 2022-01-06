@@ -35,5 +35,7 @@ makedocs(
 deploydocs(
     repo = "github.com/exanauts/ProxAL.jl.git",
     target = "build",
+    devbranch = "develop",
+    devurl = "dev",
     push_preview = true,
 )
