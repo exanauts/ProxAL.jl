@@ -343,6 +343,9 @@ function opf_loaddata(raw::RawData;
     # demands for multiperiod OPF
     Pd = raw.pd_arr
     Qd = raw.qd_arr
+    if (length(Pd) < 1) || (length(Qd) < 1)
+        error("Scenario files couldn't be read")
+    end
 
     pd_scen = Pd[:, 1]
     qd_scen = Qd[:, 1]
@@ -353,6 +356,9 @@ function opf_loaddata(raw::RawData;
     end
 
     if time_horizon_end > 0
+        if (length(Pd) < time_horizon_end) || (length(Qd) < time_horizon_end)
+            error("Scenario files couldn't be read")
+        end
         Pd = Pd[:,time_horizon_start:time_horizon_end] .* load_scale
         Qd = Qd[:,time_horizon_start:time_horizon_end] .* load_scale
     end

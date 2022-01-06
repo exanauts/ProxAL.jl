@@ -16,36 +16,36 @@ using LazyArtifacts
 MPI.Init()
 
 case = "case9"
+demandfiles = "$(case)_oneweek_168"
+# Large 2000 bus case
+# case = "case_ACTIVSg2000"
+# demandfiles = "$(case)"
 
 # choose one of the following (K*T subproblems in each case)
 if length(ARGS) == 0
-    (case, T, K) = ("case9", 2, 0)
-    # (K, T) = (1, 10)
-    # (K, T) = (10, 10)
-    # (K, T) = (10, 100)
-    # (K, T) = (100, 10)
-    # (K, T) = (100, 100)
-elseif length(ARGS) == 3
+    (T, K) = (2, 1)
+elseif length(ARGS) == 4
     case = ARGS[1]
-    T = parse(Int, ARGS[2])
-    K = parse(Int, ARGS[3])
+    demandfiles = ARGS[2]
+    T = parse(Int, ARGS[3])
+    K = parse(Int, ARGS[4])
 else
-    println("Usage: [mpiexec -n nprocs] julia --project examples/exatron.jl [case T K]")
+    println("Usage: [mpiexec -n nprocs] julia --project examples/exatron.jl [case demandfiles T K]")
     println("")
-    println("       (case,T,K) defaults to (case9,2,0)")
+    println("       (case,demandfiles,T,K) defaults to (case9,case9_oneweek_168,2,1)")
     exit()
 end
 
 # choose backend
 # backend = ProxAL.JuMPBackend()
-# # With ExaTronBackend(), CUDADevice will used
+# With ExaTronBackend(), CUDADevice will used
 backend = ProxAL.ExaTronBackend()
 
 
 # Load case
 const DATA_DIR = joinpath(artifact"ExaData", "ExaData")
 case_file = joinpath(DATA_DIR, "$(case).m")
-load_file = joinpath(DATA_DIR, "mp_demand", "$(case)_oneweek_168")
+load_file = joinpath(DATA_DIR, "mp_demand", demandfiles)
 
 # Model/formulation settings
 modelinfo = ModelInfo()
