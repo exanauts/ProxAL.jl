@@ -32,3 +32,8 @@ makedocs(
     ]
 )
 
+deploydocs(
+    repo = "github.com/exanauts/Documenter.jl.git",
+    target = "build",
+    push_preview = true,
+)
