@@ -33,7 +33,7 @@ makedocs(
 )
 
 deploydocs(
-    repo = "github.com/exanauts/Documenter.jl.git",
+    repo = "github.com/exanauts/ProxAL.jl.git",
     target = "build",
     push_preview = true,
 )
