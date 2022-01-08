@@ -1,6 +1,5 @@
 using Pkg
 
-include(joinpath(dirname(@__FILE__), "..", "deps/deps.jl"))
 Pkg.develop(PackageSpec(path=joinpath(dirname(@__FILE__), "..")))
 # when first running instantiate
 Pkg.instantiate()
