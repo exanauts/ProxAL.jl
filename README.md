@@ -1,9 +1,9 @@
 
 # ProxAL.jl
 
-| **Documentation** | **Release** | **Dev** |
-|:-:|:-:|:-:|
-| [![][docs-stable-img]][docs-stable-url] | [![][build-stable-img]][build-url] | [![][build-latest-img]][build-url]  |
+| **Documentation** | **Release** | **Dev** | **DOI** |
+|:-:|:-:|:-:|:-:|
+| [![][docs-stable-img]][docs-stable-url] | [![][build-stable-img]][build-url] | [![][build-latest-img]][build-url]  | [![DOI][doi-img]][doi-url] |
 
 [docs-latest-img]: https://img.shields.io/badge/docs-latest-blue.svg
 [docs-latest-url]: https://exanauts.github.io/ProxAL.jl/
@@ -20,3 +20,6 @@ This research was supported by the Exascale Computing Project (17-SC-20-SC), a j
 
 [build-stable-img]: https://github.com/exanauts/ProxAL.jl/workflows/Run%20tests/badge.svg?branch=master
 [build-latest-img]: https://github.com/exanauts/ProxAL.jl/workflows/Run%20tests/badge.svg?branch=develop
+
+[doi-img]: https://zenodo.org/badge/236063417.svg
+[doi-url]: https://zenodo.org/badge/latestdoi/236063417
