@@ -595,9 +595,17 @@ function TronBlockBackend(
 )
     scale = 1e-4
     use_gpu = (algparams.device == CUDADevice)
+    iterlim = 800
     trondata = ExaTron.OPFData(opfdata)
+    target = if algparams.device == CPU
+        KA.CPU()
+    elseif algparams.device == CUDADevice
+        CUDAKernels.CUDADevice()
+    elseif algparams.device == ROCDevice
+        ROCKernels.ROCDevice()
+    end
     env = ExaTron.ProxALAdmmEnv(
-        trondata, use_gpu, t, T, algparams.tron_rho_pq, algparams.tron_rho_pa;
+        trondata, target, t, T, algparams.tron_rho_pq, algparams.tron_rho_pa;
         allow_infeas=modelinfo.allow_constr_infeas, rho_sigma=modelinfo.weight_constr_infeas,
         verbose=algparams.verbose_inner, use_twolevel=true, outer_eps=algparams.tron_outer_eps,
     )

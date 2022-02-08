@@ -19,7 +19,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        julia-version: ['1.7']
+        julia-version: ['nightly']
         julia-arch: [x64]
         os: [ubuntu-20.04]
 
@@ -40,7 +40,7 @@ jobs:
     runs-on: self-hosted
     strategy:
       matrix:
-        julia-version: ['1.7']
+        julia-version: ['nightly']
         julia-arch: [x64]
         os: [ubuntu-20.04]
 
