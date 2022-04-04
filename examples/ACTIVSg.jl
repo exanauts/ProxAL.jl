@@ -86,15 +86,15 @@ if MPI.Comm_rank(MPI.COMM_WORLD) == 0
     elapsed_t = @elapsed begin
         info = ProxAL.optimize!(nlp)
     end
+
+    @show(info.iter)
+    @show(info.maxviol_d)
+    @show(info.maxviol_t_actual)
+    @show(info.objvalue)
+    @show(info.wall_time_elapsed_actual)
+    @show(info.wall_time_elapsed_ideal)
 else
     info = ProxAL.optimize!(nlp)
 end
-
-@show(info.iter)
-@show(info.maxviol_d)
-@show(info.maxviol_t_actual)
-@show(info.objvalue)
-@show(info.wall_time_elapsed_actual)
-@show(info.wall_time_elapsed_ideal)
 
 MPI.Finalize()
