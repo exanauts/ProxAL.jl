@@ -19,7 +19,7 @@ obj_scale  = length(ARGS) > 3 ? parse(Float64, ARGS[4]) : 1e-3
 
 # choose case
 case = "case118"
-#case = "case_ACTIVSg10k"
+case = "case_ACTIVSg10k"
 resolution = 30 #in minutes
 
 # choose backend
