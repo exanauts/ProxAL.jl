@@ -32,6 +32,7 @@ case_file = joinpath(artifact"ExaData", "ExaData/matpower/$(case).m")
 # Model/formulation settings
 modelinfo = ModelInfo()
 modelinfo.case_name = case
+modelinfo.time_horizon_start = 20
 modelinfo.num_time_periods = 12
 modelinfo.load_scale = 1.0
 if startswith(case, "case_ACTIVSg")
