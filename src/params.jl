@@ -93,6 +93,7 @@ Specifies the ACOPF model structure.
 
 | Parameter | Description | Default value |
 | :--- | :--- | :--- |
+| `time_horizon_start::Int` | starting index of planning horizon | 1
 | `num_time_periods::Int` | number of time periods | 1
 | `num_ctgs::Int` | number of line contingencies | 0
 | `load_scale::Float64` | load multiplication factor | 1.0
@@ -111,6 +112,7 @@ Specifies the ACOPF model structure.
 | `ctgs_link_constr_type::Symbol` | `∈ [:frequency_penalty, :frequency_equality, :preventive_penalty, :preventive_equality, :corrective_penalty, :corrective_equality, :corrective_inequality]`, see [Formulation](@ref) | `:frequency_penalty`
 """
 Base.@kwdef mutable struct ModelInfo
+    time_horizon_start::Int = 1
     num_time_periods::Int = 1
     num_ctgs::Int = 0
     load_scale::Float64 = 1.0

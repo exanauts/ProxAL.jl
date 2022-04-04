@@ -35,8 +35,8 @@ function ProxALEvaluator(
     rawdata = RawData(case_file, load_file)
     opfdata = opf_loaddata(
         rawdata;
-        time_horizon_start = 1,
-        time_horizon_end = modelinfo.num_time_periods,
+        time_horizon_start = modelinfo.time_horizon_start,
+        time_horizon_end = modelinfo.time_horizon_start + modelinfo.num_time_periods - 1,
         load_scale = modelinfo.load_scale,
         ramp_scale = modelinfo.ramp_scale,
         corr_scale = modelinfo.corr_scale
