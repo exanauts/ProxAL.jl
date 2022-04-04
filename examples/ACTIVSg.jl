@@ -19,9 +19,8 @@ obj_scale  = length(ARGS) > 3 ? parse(Float64, ARGS[4]) : 1e-3
 
 # choose case
 case = "case118"
-case = "case_ACTIVSg10k"
+#case = "case_ACTIVSg10k"
 resolution = 30 #in minutes
-summit = true
 
 # choose backend
 backend = (solver == "ipopt") ? ProxAL.JuMPBackend() : ProxAL.ExaTronBackend()
@@ -36,7 +35,7 @@ modelinfo.num_time_periods = 12
 modelinfo.load_scale = 1.0
 if startswith(case, "case_ACTIVSg")
     tfile = Int(24 * 7 * (60 / resolution))
-    load_file = summit ? "/gpfs/alpine/proj-shared/csc359" : "/scratch"
+    load_file = isdir("/scratch") ? "/scratch" : "/gpfs/alpine/proj-shared/csc359"
     load_file = joinpath(load_file, "ACTIVSg_Time_Series/mp_demand/$(case)_Jun_oneweek_$(tfile)_$(resolution)min")
     modelinfo.ramp_scale = Float64(resolution)
 else
@@ -92,6 +91,7 @@ if MPI.Comm_rank(MPI.COMM_WORLD) == 0
         info = ProxAL.optimize!(nlp; ρ_t_initial = rho0)
     end
 
+    @show(ARGS)
     @show(info.iter)
     @show(info.maxviol_d)
     @show(info.maxviol_t_actual)
