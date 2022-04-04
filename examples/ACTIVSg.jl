@@ -49,7 +49,7 @@ modelinfo.allow_obj_gencost = true
 if isa(backend, ProxAL.ExaTronBackend)
     modelinfo.allow_constr_infeas = false
 else
-    modelinfo.allow_constr_infeas = true
+    modelinfo.allow_constr_infeas = false
     modelinfo.weight_constr_infeas = 1e4
 end
 modelinfo.time_link_constr_type = :penalty
