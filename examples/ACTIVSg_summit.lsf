@@ -1,0 +1,14 @@
+#!/bin/bash
+# Begin LSF Directives
+#BSUB -P CSC359
+#BSUB -W 0:15
+#BSUB -nnodes 2
+#BSUB -J case_ACTIVSg10k_exatron
+ 
+cd $PROJWORK/csc359/anirudh/FY22Q2/ProxAL.jl
+date
+module load cuda
+export JULIA_CUDA_VERBOSE=1
+export JULIA_DEPOT_PATH=$PROJWORK/csc359/anirudh/FY22Q2/julia_depot
+export JULIA_MPI_BINARY=system
+jsrun -n 2 -r 1 -c 6 -a 6 -g 6 $PROJWORK/csc359/anirudh/julia-1.7.1/bin/julia --color=no --project ./examples/ACTIVSg.jl
