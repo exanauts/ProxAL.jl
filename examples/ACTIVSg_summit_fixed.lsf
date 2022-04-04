@@ -10,7 +10,9 @@ RANKS=12
 cd $PROJWORK/csc359/anirudh/FY22Q2/ProxAL.jl
 date
 module load cuda
+module load cuda/11.4.2
 export JULIA_CUDA_VERBOSE=1
 export JULIA_DEPOT_PATH=$PROJWORK/csc359/anirudh/FY22Q2/julia_depot
 export JULIA_MPI_BINARY=system
+export JULIA_CUDA_USE_BINARYBUILDER=false
 jsrun -n $RANKS -r 6 -c 1 -a 1 -g 1 $PROJWORK/csc359/anirudh/julia-1.7.1/bin/julia --color=no --project ./examples/ACTIVSg.jl
