@@ -27,12 +27,7 @@ function opf_model_add_variables(opfmodel::JuMP.Model, opfdata::OPFData,
     @variable(opfmodel, Zt[1:ngen,1:T])     # slack for ramp constraints to guarantee ADMM converges
     @variable(opfmodel, Sk[1:ngen,1:K,1:T]) # slack for ctgs_link_constr
     @variable(opfmodel, Zk[1:ngen,1:K,1:T]) # slack for ctgs_link_constr to guarantee ADMM converges
-    if modelinfo.allow_constr_infeas
-        @variable(opfmodel, sigma_real[1:nbus,1:K,1:T], start = 0)
-        @variable(opfmodel, sigma_imag[1:nbus,1:K,1:T], start = 0)
-        @variable(opfmodel, sigma_lineFr[1:nline,1:K,1:T] >= 0, start = 0)
-        @variable(opfmodel, sigma_lineTo[1:nline,1:K,1:T] >= 0, start = 0)
-    end
+    @variable(opfmodel, sigma[1:K,1:T] >= 0, start = 0)
 
     # Variable bounds and start values
     for i=1:ngen
@@ -118,11 +113,7 @@ function opf_model_add_block_constraints(opfmodel::JuMP.Model, opfdata::OPFData,
                     load_scale = modelinfo.load_scale,
                     ramp_scale = modelinfo.ramp_scale,
                     corr_scale = modelinfo.corr_scale)
-            opf_model_add_real_power_balance_constraints(opfmodel, opfdata_c, opfmodel[:Pg][:,k,t], opfdata.Pd[:,t], opfmodel[:Vm][:,k,t], opfmodel[:Va][:,k,t], opfmodel[:sigma_real][:,k,t])
-            opf_model_add_imag_power_balance_constraints(opfmodel, opfdata_c, opfmodel[:Qg][:,k,t], opfdata.Qd[:,t], opfmodel[:Vm][:,k,t], opfmodel[:Va][:,k,t], opfmodel[:sigma_imag][:,k,t])
-            if modelinfo.allow_line_limits
-                opf_model_add_line_power_constraints(opfmodel, opfdata_c, opfmodel[:Vm][:,k,t], opfmodel[:Va][:,k,t], opfmodel[:sigma_lineFr][:,k,t], opfmodel[:sigma_lineTo][:,k,t])
-            end
+            opf_model_add_squared_penalty_constraints(opfmodel, opfdata_c, opfmodel[:Pg][:,k,t], opfmodel[:Qg][:,k,t], opfdata.Pd[:,t], opfdata.Qd[:,t], opfmodel[:Vm][:,k,t], opfmodel[:Va][:,k,t], opfmodel[:sigma][k,t])
         end
     else
         zb = zeros(length(opfdata.buses))
@@ -241,6 +232,34 @@ function opf_model_add_imag_power_balance_constraints(opfmodel::JuMP.Model, opfd
     end
 end
 
+function opf_model_add_squared_penalty_constraints(opfmodel::JuMP.Model, opfdata::OPFData, Pg, Qg, Pd, Qd, Vm, Va, sigma)
+    # Network data short-hands
+    baseMVA = opfdata.baseMVA
+    buses = opfdata.buses
+    busIdx = opfdata.BusIdx
+    BusGeners = opfdata.BusGenerators
+    Ybus = opfdata.Ybus
+
+    rows = Ybus.rowval
+    yvals = Ybus.nzval
+    g_ij = real.(yvals)
+    b_ij = imag.(yvals)
+
+    # Power Balance Equations
+    @NLconstraint(opfmodel, sigma ==
+        #real part
+        sum((Vm[b] * sum(Vm[rows[c]] * (g_ij[c] * cos(Va[b] - Va[rows[c]]) + b_ij[c] * sin(Va[b] - Va[rows[c]])) for c in Ybus.colptr[b]:(Ybus.colptr[b+1]-1))
+            - ( sum(baseMVA*Pg[g] for g in get(BusGeners, b, Int[])) - Pd[b]) / baseMVA)^2      # Sbus part
+            for b in 1:length(buses)
+        ) +
+        #imag part
+        sum((Vm[b] * sum(Vm[rows[c]] * (g_ij[c] * sin(Va[b] - Va[rows[c]]) - b_ij[c] * cos(Va[b] - Va[rows[c]])) for c in Ybus.colptr[b]:(Ybus.colptr[b+1]-1))
+            - ( sum(baseMVA*Qg[g] for g in get(BusGeners, b, Int[])) - Qd[b]) / baseMVA)^2      #Sbus part
+            for b in 1:length(buses)
+        )
+    )
+end
+
 function opf_model_add_time_linking_constraints(opfmodel::JuMP.Model, opfdata::OPFData, modelinfo::ModelInfo)
     (ngen, K, T) = size(opfmodel[:Pg])
 
@@ -304,14 +323,7 @@ function compute_objective_function(
         obj_gencost = 0
     end
     if modelinfo.allow_constr_infeas
-        sigma_real = opfdict[:sigma_real]
-        sigma_imag = opfdict[:sigma_imag]
-        sigma_lineFr = opfdict[:sigma_lineFr]
-        sigma_lineTo = opfdict[:sigma_lineTo]
-        nbus = size(sigma_real, 1)
-        nline = size(sigma_lineFr, 1)
-        obj_constr_infeas = 0.5*sum(sigma_real[b,k,t]^2 + sigma_imag[b,k,t]^2 for b=1:nbus) +
-                            0.5*sum(sigma_lineFr[l,k,t]^2 + sigma_lineTo[l,k,t]^2 for l=1:nline)
+        obj_constr_infeas = 0.5*opfdict[:sigma]^2
         obj_constr_infeas = (kIdx > 1 ? modelinfo.weight_ctgs : 1.0)*obj_constr_infeas
     else
         obj_constr_infeas = 0
@@ -577,10 +589,7 @@ function compute_objective_function(
              :ωt => x.ωt,
              :Zt => x.Zt,
              :Zk => x.Zk,
-             :sigma_real => x.sigma_real,
-             :sigma_imag => x.sigma_imag,
-             :sigma_lineFr => x.sigma_lineFr,
-             :sigma_lineTo => x.sigma_lineTo)
+             :sigma => x.sigma)
     return compute_objective_function(d, opfdata, opfBlockData, blk, modelinfo, algparams)
 end
 
@@ -597,10 +606,7 @@ function compute_lyapunov_function(
              :Zt => x.Zt,
              :Sk => x.Sk,
              :Zk => x.Zk,
-             :sigma_real => x.sigma_real,
-             :sigma_imag => x.sigma_imag,
-             :sigma_lineFr => x.sigma_lineFr,
-             :sigma_lineTo => x.sigma_lineTo)
+             :sigma => x.sigma)
     lagrangian = compute_lagrangian_function(d, λ, opfdata, opfBlockData, blk, modelinfo, algparams)
     quadratic_penalty = compute_quadratic_penalty(d, opfdata, opfBlockData, blk, modelinfo, algparams)
     proximal = compute_proximal_function(x, xref, opfBlockData, blk, modelinfo, algparams)

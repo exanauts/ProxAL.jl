@@ -103,12 +103,7 @@ function opf_solve_nondecomposed(opfmodel::JuMP.Model, opfdata::OPFData,
     x.Zt .= value.(opfmodel[:Zt])
     x.Sk .= value.(opfmodel[:Sk])
     x.Zk .= value.(opfmodel[:Zk])
-    if modelinfo.allow_constr_infeas
-        x.sigma_real .= value.(opfmodel[:sigma_real])
-        x.sigma_imag .= value.(opfmodel[:sigma_imag])
-        x.sigma_lineFr .= value.(opfmodel[:sigma_lineFr])
-        x.sigma_lineTo .= value.(opfmodel[:sigma_lineTo])
-    end
+    x.sigma .= value.(opfmodel[:sigma])
 
 
     result = Dict()

@@ -11,10 +11,7 @@ mutable struct OPFPrimalSolution <: AbstractPrimalSolution
     Zt
     Sk
     Zk
-    sigma_real
-    sigma_imag
-    sigma_lineFr
-    sigma_lineTo
+    sigma
 
     function OPFPrimalSolution(opfdata::OPFData, modelinfo::ModelInfo) 
         buses = opfdata.buses
@@ -36,17 +33,7 @@ mutable struct OPFPrimalSolution <: AbstractPrimalSolution
         Zt = zeros(ngen,T)
         Sk = zeros(ngen,K,T)
         Zk = zeros(ngen,K,T)
-        if modelinfo.allow_constr_infeas
-            sigma_real = zeros(nbus,K,T)
-            sigma_imag = zeros(nbus,K,T)
-            sigma_lineFr = zeros(nline,K,T)
-            sigma_lineTo = zeros(nline,K,T)
-        else
-            sigma_real = 0
-            sigma_imag = 0
-            sigma_lineFr = 0
-            sigma_lineTo = 0
-        end
+        sigma = zeros(K,T)
 
         for i=1:ngen
             Pg[i,:,:] .= 0.5*(gens[i].Pmax + gens[i].Pmin)
@@ -67,7 +54,7 @@ mutable struct OPFPrimalSolution <: AbstractPrimalSolution
             end
         end
 
-        new(Pg,Qg,Vm,Va,ωt,St,Zt,Sk,Zk,sigma_real,sigma_imag,sigma_lineFr,sigma_lineTo)
+        new(Pg,Qg,Vm,Va,ωt,St,Zt,Sk,Zk,sigma)
     end
 end
 
