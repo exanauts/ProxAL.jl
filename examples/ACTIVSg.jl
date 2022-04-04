@@ -16,6 +16,7 @@ solver     = length(ARGS) > 0 ? ARGS[1] : "exatron"
 num_sweeps = length(ARGS) > 1 ? parse(Int, ARGS[2]) : 2
 rho0       = length(ARGS) > 2 ? parse(Float64, ARGS[3]) : 1e-3
 obj_scale  = length(ARGS) > 3 ? parse(Float64, ARGS[4]) : 1e-3
+update_par = length(ARGS) > 4 ? parse(Bool, ARGS[5]) : true
 
 # choose case
 case = "case118"
@@ -74,7 +75,10 @@ if isa(backend, ProxAL.ExaTronBackend)
 end
 algparams.optimizer = optimizer_with_attributes(Ipopt.Optimizer, "print_level" => 0, "tol" => 1e-4) # "linear_solver" => "ma27"
 algparams.init_opf = false
-algparams.updateρ_t = algparams.updateτ = false
+if !update_par
+    algparams.updateρ_t = false
+    algparams.updateτ = false
+end
 
 # Set up and solve problem
 algparams.mode = :coldstart
