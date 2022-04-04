@@ -39,6 +39,12 @@ function opf_model_add_variables(opfmodel::JuMP.Model, opfdata::OPFData,
         set_lower_bound.(Pg[i,:,:], gens[i].Pmin)
         set_upper_bound.(Pg[i,:,:], gens[i].Pmax)
         set_start_value.(Pg[i,:,:], 0.5*(gens[i].Pmax + gens[i].Pmin))
+        if tIdx == 0
+            for t=1:T
+                set_upper_bound.(Pg[i,:,t], opfdata.Pgmax[i,t])
+                set_start_value.(Pg[i,:,t], 0.5*(opfdata.Pgmax[i,t] + gens[i].Pmin))
+            end
+        end
         set_lower_bound.(Qg[i,:,:], gens[i].Qmin)
         set_upper_bound.(Qg[i,:,:], gens[i].Qmax)
         set_start_value.(Qg[i,:,:], 0.5*(gens[i].Qmax + gens[i].Qmin))

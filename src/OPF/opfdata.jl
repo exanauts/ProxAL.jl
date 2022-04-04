@@ -22,14 +22,15 @@ function parse_file(datafile)
     if endswith(datafile, ".raw")
         data_raw = ParsePSSE.parse_raw(datafile)
         data = ParsePSSE.raw_to_exapf(data_raw)
+        return data_raw, data
     elseif endswith(datafile, ".m")
         data_mat = ParseMAT.parse_mat(datafile)
         data = ParseMAT.mat_to_exapf(data_mat)
+        return data_mat, data
     else
         error("Unsupported format in file $(datafile): supported extensions are " *
               "Matpower (.m) or PSSE (.raw)")
     end
-    return data
 end
 
 struct Bus
@@ -106,6 +107,7 @@ struct OPFData
     BusGenerators::Dict{Int, Array{Int}}     #list of generators for each bus (Array of Array)
     Pd::Array                #2d array of active power demands over a time horizon
     Qd::Array                #2d array of reactive power demands
+    Pgmax::Array             #2d array of maximum possible active generation over a time horizon
 end
 
 
@@ -119,8 +121,10 @@ Specifies the ACOPF instance data.
 - `branch_arr`: imported with ExaPF parser
 - `gen_arr`: imported with ExaPF parser
 - `costgen_arr`: imported with ExaPF parser
+- `genfuel_arr`: imported with ExaPF parser
 - `pd_arr`: read from `.Pd` file
 - `qd_arr`: read from `.Qd` file
+- `pgmax_arr`: read from `.Pgmax` file
 - `ctgs_arr`: read from `.Ctgs` file
 """
 mutable struct RawData
@@ -129,8 +133,10 @@ mutable struct RawData
     branch_arr::Array{Float64, 2}
     gen_arr::Array{Float64, 2}
     costgen_arr::Array{Float64, 2}
+    genfuel_arr::Vector{String}
     pd_arr::Array{Float64, 2}
     qd_arr::Array{Float64, 2}
+    pgmax_arr::Array{Float64, 2}
     ctgs_arr
 end
 
@@ -142,7 +148,7 @@ end
 ##
 
 function RawData(case_name, scen_file::String="")
-    data = parse_file(case_name)
+    data_mat, data = parse_file(case_name)
     bus_arr = data["bus"]
     branch_arr = data["branch"]
     gen_arr = data["gen"]
@@ -152,20 +158,28 @@ function RawData(case_name, scen_file::String="")
     # Sanity checks
     @assert size(gen_arr, 1) == size(costgen_arr, 1)
 
-    pd_arr = Array{Float64, 2}(undef, 0, 0)
-    qd_arr = Array{Float64, 2}(undef, 0, 0)
-    ctgs_arr = Array{Int64, 2}(undef, 0, 0)
+    pd_arr = Array{Float64,2}(undef, 0, 0)
+    qd_arr = Array{Float64,2}(undef, 0, 0)
+    pgmax_arr = Array{Float64,2}(undef, 0, 0)
+    ctgs_arr = Array{Int64,2}(undef, 0, 0)
+    genfuel_arr = Vector{String}(undef, size(gen_arr, 1))
 
+    if haskey(data_mat, "genfuel")
+        genfuel_arr .= [data_mat["genfuel"][i]["col_1"] for i in 1:size(gen_arr, 1)]
+    end
     if isfile(scen_file * ".Pd")
         pd_arr = readdlm(scen_file * ".Pd")
     end
     if isfile(scen_file * ".Qd")
         qd_arr = readdlm(scen_file * ".Qd")
     end
+    if isfile(scen_file * ".Pgmax")
+        pgmax_arr = readdlm(scen_file * ".Pgmax")
+    end
     if isfile(scen_file * ".Ctgs")
         ctgs_arr = readdlm(scen_file * ".Ctgs", Int)
     end
-    return RawData(baseMVA, bus_arr, branch_arr, gen_arr, costgen_arr, pd_arr, qd_arr, ctgs_arr)
+    return RawData(baseMVA, bus_arr, branch_arr, gen_arr, costgen_arr, genfuel_arr, pd_arr, qd_arr, pgmax_arr, ctgs_arr)
 end
 
 # UTILS
@@ -193,14 +207,28 @@ Note that `time_horizon_end = 0` indicates as many
 as possible (the number of columns in `raw.pd_arr`).
 
 All loads in all time periods will be multiplied by `load_scale`.
-The `ramp_scale` is the factor which multiplies ``p_{g}^{max}``
-to get generator ramping ``r_g``.
+The `ramp_scale` is the factor which multiplies the ramp rate
+to get generator ramping ``r_g`` (see NOTE below).
 The `corr_scale` is the factor which multiplies ``r_g``
 to get generator ramping for corrective control.
 These are set in `ModelInfo`.  See [Model parameters](@ref).
 
 `lineOff` is a transmission line that can be deleted to
 represent a contingency.
+
+NOTE: If `raw.genfuel_arr` is undefined for generator ``g``,
+then the ramp rate is set equal to ``p_{g}^{max}``.
+Otherwise, the ramp rate is set based on the genfuel type as follows.
+    coal => 3
+    wind => 45
+    solar => 200
+    ng => 35
+    nuclear => 20
+    hydro => 150
+    default => 3 (same as coal)
+
+All values in MW/min. Taken from:
+https://www.researchgate.net/post/What_is_the_typical_MW_minute_ramping_capability_for_each_type_of_reserve
 """
 function opf_loaddata(raw::RawData;
                       time_horizon_start::Int=1,
@@ -277,6 +305,7 @@ function opf_loaddata(raw::RawData;
     #
     gen_arr = raw.gen_arr
     costgen_arr = raw.costgen_arr
+    genfuel_arr = raw.genfuel_arr
     num_gens = size(gen_arr, 1)
     ncols_gens = size(gen_arr, 2)
 
@@ -290,6 +319,14 @@ function opf_loaddata(raw::RawData;
     baseMVA = raw.baseMVA
     generators = Array{Gener}(undef, num_on)
     R = 0.04 # Droop regulation
+    default_ramp_rate = Dict(
+        "coal" => 3.0,
+        "wind" => 45.0,
+        "solar" => 200.0,
+        "ng" => 35.0,
+        "nuclear" => 20.0,
+        "hydro" => 150.0,
+    )
     for (i, git) in enumerate(gens_on)
 
         generators[i] = Gener(0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,Array{Int}(undef, 0),0)
@@ -329,6 +366,16 @@ function opf_loaddata(raw::RawData;
                 error("Invalid generator cost model in the data.")
             end
         end
+        if isassigned(genfuel_arr, git)
+            generators[i].ramp_agc = get(default_ramp_rate, genfuel_arr[git], default_ramp_rate["coal"]) * ramp_scale / baseMVA
+            generators[i].scen_agc = generators[i].ramp_agc * corr_scale
+            if genfuel_arr[git] ∈ ["wind", "solar"]
+                generators[i].Pmin = 0
+            end
+        end
+        if size(raw.pgmax_arr, 1) > 0 && time_horizon_start == time_horizon_end
+            generators[i].Pmax = raw.pgmax_arr[git, time_horizon_start] / baseMVA
+        end
     end
 
     # build a dictionary between buses ids and their indexes
@@ -363,7 +410,24 @@ function opf_loaddata(raw::RawData;
         Qd = Qd[:,time_horizon_start:time_horizon_end] .* load_scale
     end
 
-    return OPFData(buses, lines, generators, bus_ref, baseMVA, Ybus, busIdx, BusGeners, Pd, Qd)
+    # Pgmax for multiperiod renewable data
+    Pgmax = zeros(num_on, size(Pd, 2))
+    for i in 1:num_on
+        Pgmax[i, :] .= generators[i].Pmax
+    end
+    if size(raw.pgmax_arr, 1) > 0
+        if time_horizon_end > 0
+            for (i, git) in enumerate(gens_on)
+                Pgmax[i, :] .= raw.pgmax_arr[git, time_horizon_start:time_horizon_end] ./ baseMVA
+            end
+        else
+            for (i, git) in enumerate(gens_on)
+                Pgmax[i, :] .= raw.pgmax_arr[git, :] ./ baseMVA
+            end
+        end
+    end
+
+    return OPFData(buses, lines, generators, bus_ref, baseMVA, Ybus, busIdx, BusGeners, Pd, Qd, Pgmax)
 end
 
 function computeAdmitances(lines, buses, baseMVA; lossless::Bool=false, fixedtaps::Bool=false, zeroshunts::Bool=false)
