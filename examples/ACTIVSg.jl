@@ -16,6 +16,7 @@ MPI.Init()
 case = "case118"
 case = "case_ACTIVSg10k"
 resolution = 30 #in minutes
+summit = true
 
 # choose backend
 backend = ProxAL.JuMPBackend()
@@ -31,7 +32,8 @@ modelinfo.num_time_periods = 12
 modelinfo.load_scale = 1.0
 if starswith(case, "case_ACTIVSg")
     tfile = Int(24 * 7 * (60 / resolution))
-    load_file = joinpath("/scratch/ACTIVSg_Time_Series/mp_demand/$(case)_Jun_oneweek_$(tfile)_$(resolution)min")
+    load_file = summit ? "/gpfs/alpine/proj-shared/csc359" : "/scratch"
+    load_file = joinpath(load_file, "ACTIVSg_Time_Series/mp_demand/$(case)_Jun_oneweek_$(tfile)_$(resolution)min")
     modelinfo.ramp_scale = Float64(resolution)
 else
     load_file = joinpath(artifact"ExaData", "ExaData", "mp_demand", "$(case)_oneweek_168")
@@ -65,7 +67,7 @@ algparams.num_sweeps = 2
 if isa(backend, ProxAL.ExaTronBackend)
     algparams.device = ProxAL.CUDADevice
 end
-algparams.optimizer = optimizer_with_attributes(Ipopt.Optimizer, "linear_solver" => "ma27", "print_level" => 0, "tol" => 1e-6)
+algparams.optimizer = optimizer_with_attributes(Ipopt.Optimizer, "print_level" => 0, "tol" => 1e-6) # "linear_solver" => "ma27"
 algparams.init_opf = false
 
 # Set up and solve problem
