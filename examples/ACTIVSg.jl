@@ -14,7 +14,7 @@ MPI.Init()
 
 solver     = length(ARGS) > 0 ? ARGS[1] : "exatron"
 num_sweeps = length(ARGS) > 1 ? parse(Int, ARGS[2]) : 2
-rho0       = length(ARGS) > 2 ? parse(Float64, ARGS[3]) : 1e-3
+rho0       = length(ARGS) > 2 ? parse(Float64, ARGS[3]) : 1e-4
 obj_scale  = length(ARGS) > 3 ? parse(Float64, ARGS[4]) : 1e-3
 
 # choose case
@@ -67,11 +67,12 @@ algparams.tron_rho_pa = 4e4
 algparams.tron_outer_iterlim = 30
 algparams.tron_inner_iterlim = 1000
 algparams.tron_scale = 1e-4
+algparams.tron_outer_eps = 1e-5
 algparams.num_sweeps = num_sweeps
 if isa(backend, ProxAL.ExaTronBackend)
     algparams.device = ProxAL.CUDADevice
 end
-algparams.optimizer = optimizer_with_attributes(Ipopt.Optimizer, "print_level" => 0, "tol" => 1e-6) # "linear_solver" => "ma27"
+algparams.optimizer = optimizer_with_attributes(Ipopt.Optimizer, "print_level" => 0, "tol" => 1e-4) # "linear_solver" => "ma27"
 algparams.init_opf = false
 
 # Set up and solve problem
