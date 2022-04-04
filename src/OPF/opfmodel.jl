@@ -323,7 +323,7 @@ function compute_objective_function(
         obj_gencost = 0
     end
     if modelinfo.allow_constr_infeas
-        obj_constr_infeas = 0.5*opfdict[:sigma]^2
+        obj_constr_infeas = 0.5*opfdict[:sigma][k,t]^2
         obj_constr_infeas = (kIdx > 1 ? modelinfo.weight_ctgs : 1.0)*obj_constr_infeas
     else
         obj_constr_infeas = 0
