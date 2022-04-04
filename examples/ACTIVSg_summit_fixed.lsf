@@ -10,7 +10,7 @@ RANKS=12
 cd $PROJWORK/csc359/anirudh/FY22Q2/ProxAL.jl
 date
 module load cuda
-module load cuda/11.4.2
+module load cuda/11.4.0
 export JULIA_CUDA_VERBOSE=1
 export JULIA_DEPOT_PATH=$PROJWORK/csc359/anirudh/FY22Q2/julia_depot
 export JULIA_MPI_BINARY=system
