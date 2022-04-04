@@ -14,11 +14,11 @@ case = "case_ACTIVSg2000"
 
 # choose backend
 backend = ProxAL.JuMPBackend()
-#backend = ProxAL.ExaTronBackend()
+backend = ProxAL.ExaTronBackend()
 
 # Load case
 case_file = joinpath(artifact"ExaData", "ExaData/matpower/case_ACTIVSg2000.m")
-load_file = joinpath(@__DIR__, "../data/mp_demand/", "$(case)_Jul_oneweek_168_60min")
+load_file = joinpath("/scratch/ACTIVSg_Time_Series/mp_demand/case_ACTIVSg2000_Jun_oneweek_168_60min")
 #load_file = joinpath(DATA_DIR, "mp_demand", "$(case)_oneweek_168")
 
 # Model/formulation settings
@@ -50,13 +50,13 @@ algparams.tron_scale = 1e-4
 if isa(backend, ProxAL.ExaTronBackend)
     algparams.device = ProxAL.CUDADevice
 end
-algparams.optimizer = optimizer_with_attributes(Ipopt.Optimizer, "print_level" => 5) #,  "tol" => 1e-1*algparams.tol)
-algparams.mode = :nondecomposed
+algparams.optimizer = optimizer_with_attributes(Ipopt.Optimizer, "linear_solver" => "ma27", "print_level" => 0) #,  "tol" => 1e-1*algparams.tol)
+algparams.mode = :coldstart
 algparams.init_opf = false
 
 # Set up and solve problem
 nlp = ProxALEvaluator(case_file, load_file, modelinfo, algparams, backend, nothing)
-nlp = NonDecomposedModel(case_file, load_file, modelinfo, algparams)
+#nlp = NonDecomposedModel(case_file, load_file, modelinfo, algparams)
 info = ProxAL.optimize!(nlp);
 
-# @show(info.maxviol_t_actual)
+@show(info.maxviol_t_actual)
