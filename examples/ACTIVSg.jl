@@ -30,7 +30,7 @@ modelinfo = ModelInfo()
 modelinfo.case_name = case
 modelinfo.num_time_periods = 12
 modelinfo.load_scale = 1.0
-if starswith(case, "case_ACTIVSg")
+if startswith(case, "case_ACTIVSg")
     tfile = Int(24 * 7 * (60 / resolution))
     load_file = summit ? "/gpfs/alpine/proj-shared/csc359" : "/scratch"
     load_file = joinpath(load_file, "ACTIVSg_Time_Series/mp_demand/$(case)_Jun_oneweek_$(tfile)_$(resolution)min")
