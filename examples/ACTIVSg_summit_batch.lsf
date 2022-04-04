@@ -1,0 +1,23 @@
+#!/bin/bash
+# Begin LSF Directives
+#BSUB -P CSC359
+#BSUB -W 0:30
+#BSUB -nnodes 2
+#BSUB -J case_ACTIVSg10k_exatron
+ 
+# RANKS = nodes * 6
+RANKS=12
+cd $PROJWORK/csc359/anirudh/FY22Q2/ProxAL.jl
+date
+module load cuda
+module load cuda/11.4.0
+export JULIA_CUDA_VERBOSE=1
+export JULIA_DEPOT_PATH=$PROJWORK/csc359/anirudh/FY22Q2/julia_depot
+export JULIA_MPI_BINARY=system
+export JULIA_CUDA_USE_BINARYBUILDER=false
+jsrun -n $RANKS -r 6 -c 1 -a 1 -g 1 $PROJWORK/csc359/anirudh/julia-1.7.1/bin/julia --color=no --project ./examples/ACTIVSg.jl exatron 1 1e-3 1e-3 &
+jsrun -n $RANKS -r 6 -c 1 -a 1 -g 1 $PROJWORK/csc359/anirudh/julia-1.7.1/bin/julia --color=no --project ./examples/ACTIVSg.jl exatron 2 1e-3 1e-3 &
+jsrun -n $RANKS -r 6 -c 1 -a 1 -g 1 $PROJWORK/csc359/anirudh/julia-1.7.1/bin/julia --color=no --project ./examples/ACTIVSg.jl exatron 2 1e+0 1e-3 &
+jsrun -n $RANKS -r 6 -c 1 -a 1 -g 1 $PROJWORK/csc359/anirudh/julia-1.7.1/bin/julia --color=no --project ./examples/ACTIVSg.jl exatron 2 1e+0 1e+0 &
+jsrun -n 1 -r 1 -c 12 -a 12 -g 1 $PROJWORK/csc359/anirudh/julia-1.7.1/bin/julia --color=no --project ./examples/ACTIVSg.jl ipopt 2 1e-3 1e-3 &
+wait

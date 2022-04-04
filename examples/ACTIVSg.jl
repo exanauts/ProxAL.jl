@@ -12,6 +12,11 @@ using MPI, CUDA
 
 MPI.Init()
 
+solver     = length(ARGS) > 0 ? ARGS[1] : "exatron"
+num_sweeps = length(ARGS) > 1 ? parse(Int, ARGS[2]) : 2
+rho0       = length(ARGS) > 2 ? parse(Float64, ARGS[3]) : 1e-3
+obj_scale  = length(ARGS) > 3 ? parse(Float64, ARGS[4]) : 1e-3
+
 # choose case
 case = "case118"
 case = "case_ACTIVSg10k"
@@ -19,8 +24,7 @@ resolution = 30 #in minutes
 summit = true
 
 # choose backend
-backend = ProxAL.JuMPBackend()
-backend = ProxAL.ExaTronBackend()
+backend = (solver == "ipopt") ? ProxAL.JuMPBackend() : ProxAL.ExaTronBackend()
 
 # case file
 case_file = joinpath(artifact"ExaData", "ExaData/matpower/$(case).m")
@@ -51,19 +55,20 @@ modelinfo.time_link_constr_type = :penalty
 modelinfo.ctgs_link_constr_type = :corrective_penalty
 modelinfo.allow_line_limits = false
 modelinfo.num_ctgs = 0
+modelinfo.obj_scale = obj_scale
 
 # Algorithm settings
 algparams = AlgParams()
 algparams.verbose = 1
 algparams.tol = 1e-3
 algparams.decompCtgs = false
-algparams.iterlim = 100
+algparams.iterlim = (solver == "ipopt") ? 100 : 500
 algparams.tron_rho_pq = 4e3
 algparams.tron_rho_pa = 4e4
 algparams.tron_outer_iterlim = 30
 algparams.tron_inner_iterlim = 1000
 algparams.tron_scale = 1e-4
-algparams.num_sweeps = 2
+algparams.num_sweeps = num_sweeps
 if isa(backend, ProxAL.ExaTronBackend)
     algparams.device = ProxAL.CUDADevice
 end
@@ -84,7 +89,7 @@ if MPI.Comm_rank(MPI.COMM_WORLD) == 0
     println("Creating problem: $elapsed_t")
     np = MPI.Comm_size(MPI.COMM_WORLD)
     elapsed_t = @elapsed begin
-        info = ProxAL.optimize!(nlp)
+        info = ProxAL.optimize!(nlp; ρ_t_initial = rho0)
     end
 
     @show(info.iter)
@@ -94,7 +99,7 @@ if MPI.Comm_rank(MPI.COMM_WORLD) == 0
     @show(info.wall_time_elapsed_actual)
     @show(info.wall_time_elapsed_ideal)
 else
-    info = ProxAL.optimize!(nlp)
+    info = ProxAL.optimize!(nlp; ρ_t_initial = rho0)
 end
 
 MPI.Finalize()
