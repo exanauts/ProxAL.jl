@@ -13,8 +13,8 @@ using MPI, CUDA
 MPI.Init()
 
 solver     = length(ARGS) > 0 ? ARGS[1] : "exatron"
-num_sweeps = length(ARGS) > 1 ? parse(Int, ARGS[2]) : 2
-rho0       = length(ARGS) > 2 ? parse(Float64, ARGS[3]) : 1e-2
+num_sweeps = length(ARGS) > 1 ? parse(Int, ARGS[2]) : (solver == "exatron" ? 3 : 2)
+rho0       = length(ARGS) > 2 ? parse(Float64, ARGS[3]) : 1e-1
 obj_scale  = length(ARGS) > 3 ? parse(Float64, ARGS[4]) : 1e-3
 t_start    = length(ARGS) > 4 ? parse(Int, ARGS[5]) : 21
 
@@ -46,12 +46,7 @@ else
 end
 modelinfo.corr_scale = 0.5
 modelinfo.allow_obj_gencost = true
-if isa(backend, ProxAL.ExaTronBackend)
-    modelinfo.allow_constr_infeas = false
-else
-    modelinfo.allow_constr_infeas = false
-    modelinfo.weight_constr_infeas = 1e4
-end
+modelinfo.allow_constr_infeas = false
 modelinfo.time_link_constr_type = :penalty
 modelinfo.ctgs_link_constr_type = :corrective_penalty
 modelinfo.allow_line_limits = false
