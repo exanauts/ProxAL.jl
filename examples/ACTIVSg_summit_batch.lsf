@@ -1,7 +1,7 @@
 #!/bin/bash
 # Begin LSF Directives
 #BSUB -P CSC359
-#BSUB -W 30:00
+#BSUB -W 0:30
 #BSUB -nnodes 1
 #BSUB -J case_ACTIVSg10k_batch
  
