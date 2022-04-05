@@ -76,10 +76,6 @@ if isa(backend, ProxAL.ExaTronBackend)
 end
 algparams.optimizer = optimizer_with_attributes(Ipopt.Optimizer, "print_level" => 0, "tol" => 1e-4) # "linear_solver" => "ma27"
 algparams.init_opf = false
-if !update_par
-    algparams.updateρ_t = false
-    algparams.updateτ = false
-end
 
 # Set up and solve problem
 algparams.mode = :coldstart
