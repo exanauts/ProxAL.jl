@@ -91,7 +91,7 @@ if MPI.Comm_rank(MPI.COMM_WORLD) == 0
     println("Creating problem: $elapsed_t")
     np = MPI.Comm_size(MPI.COMM_WORLD)
     elapsed_t = @elapsed begin
-        info = ProxAL.optimize!(nlp; ρ_t_initial = rho0; τ_factor = 2.5)
+        info = ProxAL.optimize!(nlp; ρ_t_initial = rho0, τ_factor = 2.5)
     end
 
     @show(ARGS)
@@ -102,7 +102,7 @@ if MPI.Comm_rank(MPI.COMM_WORLD) == 0
     @show(info.wall_time_elapsed_actual)
     @show(info.wall_time_elapsed_ideal)
 else
-    info = ProxAL.optimize!(nlp; ρ_t_initial = rho0; τ_factor = 2.5)
+    info = ProxAL.optimize!(nlp; ρ_t_initial = rho0, τ_factor = 2.5)
 end
 
 MPI.Finalize()
