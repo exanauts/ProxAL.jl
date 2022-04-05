@@ -14,7 +14,7 @@ MPI.Init()
 
 solver     = length(ARGS) > 0 ? ARGS[1] : "exatron"
 num_sweeps = length(ARGS) > 1 ? parse(Int, ARGS[2]) : (solver == "exatron" ? 3 : 2)
-rho0       = length(ARGS) > 2 ? parse(Float64, ARGS[3]) : 1e-1
+rho0       = length(ARGS) > 2 ? parse(Float64, ARGS[3]) : (solver == "exatron" ? 1e-1 : 1e-2)
 obj_scale  = length(ARGS) > 3 ? parse(Float64, ARGS[4]) : 1e-3
 T_init     = length(ARGS) > 4 ? parse(Int, ARGS[5]) : 21
 
