@@ -15,4 +15,4 @@ export JULIA_CUDA_VERBOSE=1
 export JULIA_DEPOT_PATH=$PROJWORK/csc359/anirudh/FY22Q2/julia_depot
 export JULIA_MPI_BINARY=system
 export JULIA_CUDA_USE_BINARYBUILDER=false
-jsrun -n 1 -r 1 -c 12 -a 12 -g 1 $PROJWORK/csc359/anirudh/julia-1.7.1/bin/julia --color=no --project ./examples/ACTIVSg.jl ipopt 2 1e-1 1e-3 21
+jsrun -n 1 -r 1 -c 12 -a 12 -g 1 $PROJWORK/csc359/anirudh/julia-1.7.1/bin/julia --color=no --project ./examples/ACTIVSg.jl ipopt 2 1e-2 1e-3 21
