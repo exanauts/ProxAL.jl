@@ -3,7 +3,7 @@
 #BSUB -P CSC359
 #BSUB -W 0:15
 #BSUB -nnodes 2
-#BSUB -J case_ACTIVSg10k_exatron
+#BSUB -J case_ACTIVSg10k_final
  
 # RANKS = nodes * 6
 RANKS=12
