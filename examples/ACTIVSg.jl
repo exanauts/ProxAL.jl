@@ -16,7 +16,7 @@ solver     = length(ARGS) > 0 ? ARGS[1] : "exatron"
 num_sweeps = length(ARGS) > 1 ? parse(Int, ARGS[2]) : 2
 rho0       = length(ARGS) > 2 ? parse(Float64, ARGS[3]) : 1e-3
 obj_scale  = length(ARGS) > 3 ? parse(Float64, ARGS[4]) : 1e-3
-update_par = length(ARGS) > 4 ? parse(Bool, ARGS[5]) : true
+t_start    = length(ARGS) > 4 ? parse(Int, ARGS[5]) : 20
 
 # choose case
 case = "case118"
@@ -32,7 +32,7 @@ case_file = joinpath(artifact"ExaData", "ExaData/matpower/$(case).m")
 # Model/formulation settings
 modelinfo = ModelInfo()
 modelinfo.case_name = case
-modelinfo.time_horizon_start = 20
+modelinfo.time_horizon_start = t_start
 modelinfo.num_time_periods = 12
 modelinfo.load_scale = 1.0
 if startswith(case, "case_ACTIVSg")
