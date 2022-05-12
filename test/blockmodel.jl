@@ -113,7 +113,7 @@ load_file = joinpath(DATA_DIR, "mp_demand", "$(case)_oneweek_168")
         # end
 
         @testset "ExaTron BlockModel" begin
-            blockmodel = ProxAL.TronBlockBackend(
+            blockmodel = ProxAL.AdmmBlockBackend(
                 blkid, opfdata_c, nlp.rawdata, algparams, modelinfo_local, t, 1, T;
             )
             ProxAL.init!(blockmodel, nlp.algparams)
