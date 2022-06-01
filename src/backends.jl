@@ -608,6 +608,11 @@ function AdmmBlockBackend(
         verbose=algparams.verbose_inner, use_twolevel=true,
     )
 
+    env.params.obj_scale = algparams.tron_scale
+    env.params.outer_eps = algparams.tron_outer_eps
+    env.params.outer_iterlim = algparams.tron_outer_iterlim
+    env.params.inner_iterlim = algparams.tron_inner_iterlim
+
     model = ExaAdmmBackend.ModelProxAL(env, t, T)
     # TODO
     return AdmmBlockBackend(env, model, blk, k, t, T, opfdata, modelinfo, scale, modelinfo.obj_scale)
