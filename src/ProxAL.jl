@@ -201,7 +201,8 @@ function ProxALProblem(
     modelinfo::ModelInfo,
     algparams::AlgParams,
     backend::AbstractBackend,
-    comm::Union{MPI.Comm,Nothing},
+    comm::Union{MPI.Comm,Nothing};
+    genOff::Union{Dict{Int, Vector{Int}},Nothing} = nothing,
 )
     # initial values
     x = OPFPrimalSolution(opfdata, modelinfo)
@@ -217,7 +218,7 @@ function ProxALProblem(
     blocks = OPFBlocks(
         opfdata, rawdata;
         modelinfo=modelinfo, algparams=algparams,
-        backend=backend, comm
+        backend=backend, comm, genOff=genOff,
     )
     blkLinIndex = LinearIndices(blocks.blkIndex)
     for blk in blkLinIndex

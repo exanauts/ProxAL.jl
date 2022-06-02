@@ -52,7 +52,8 @@ function OPFBlocks(
     modelinfo::ModelInfo = ModelInfo(),
     backend=JuMPBlockBackend,
     algparams::AlgParams = AlgParams(),
-    comm::Union{MPI.Comm,Nothing}
+    comm::Union{MPI.Comm,Nothing},
+    genOff::Union{Dict{Int, Vector{Int}},Nothing} = nothing,
 )
     ngen  = length(opfdata.generators)
     nbus  = length(opfdata.buses)
@@ -73,7 +74,14 @@ function OPFBlocks(
         return info
     end
 
-    function load_local_data(rawdata, opfdata, modelinfo, t, k; decompCtgs=false)
+    function load_local_data(
+        rawdata,
+        opfdata,
+        modelinfo,
+        t, k;
+        decompCtgs=false,
+        genOff::Union{Nothing,Vector{Int}}=nothing,
+    )
         lineOff = Line()
         if length(rawdata.ctgs_arr) < k - 1
             error("Not enough contingencies in .ctg file while trying to read contingency $(k-1).")
@@ -91,6 +99,7 @@ function OPFBlocks(
             ramp_scale=modelinfo.ramp_scale,
             corr_scale=modelinfo.corr_scale,
             lineOff=lineOff,
+            genOff=genOff,
         )
         return data
     end
@@ -106,8 +115,14 @@ function OPFBlocks(
                 @assert k > 0
                 localinfo.num_ctgs = 0
             end
+            _genOff = nothing
+            if genOff != nothing
+                _genOff = haskey(genOff,t) ? genOff[t] : nothing
+            end
             localdata = load_local_data(rawdata, opfdata, localinfo, t, k;
-                                        decompCtgs=algparams.decompCtgs)
+                                        decompCtgs=algparams.decompCtgs,
+                                        genOff=_genOff,
+                                        )
             # Create block model
             localmodel = backend(blk, localdata, rawdata, algparams, localinfo, t, k, T)
         else
