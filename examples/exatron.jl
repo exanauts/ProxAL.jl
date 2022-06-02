@@ -86,9 +86,10 @@ ranks = MPI.Comm_size(MPI.COMM_WORLD)
 if MPI.Comm_rank(MPI.COMM_WORLD) == 0
    println("ProxAL/ExaTron $ranks ranks, $T periods, $K contingencies")
 end
-genOff = Dict{Int,Vector{Int}}()
-# At time period 1 switch generator 3 off
-genOff[2] = [3]
+# Tuple(genid, Pmin, Pmax)
+genOff = Dict{Int,Vector{Tuple{Int,Float64,Float64}}}()
+# At time period 2 switch generator 3 off by setting Pmin = Pmax = 0.0
+genOff[2] = [(3, 0.0, 0.0)]
 cur_logger = global_logger(NullLogger())
 elapsed_t = @elapsed begin
     global nlp = ProxALEvaluator(

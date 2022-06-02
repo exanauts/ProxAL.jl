@@ -202,7 +202,7 @@ function ProxALProblem(
     algparams::AlgParams,
     backend::AbstractBackend,
     comm::Union{MPI.Comm,Nothing};
-    genOff::Union{Dict{Int, Vector{Int}},Nothing} = nothing,
+    genOff::Union{Dict{Int,Vector{Tuple{Int,Float64,Float64}}},Nothing} = nothing,
 )
     # initial values
     x = OPFPrimalSolution(opfdata, modelinfo)

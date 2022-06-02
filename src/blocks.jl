@@ -53,7 +53,7 @@ function OPFBlocks(
     backend=JuMPBlockBackend,
     algparams::AlgParams = AlgParams(),
     comm::Union{MPI.Comm,Nothing},
-    genOff::Union{Dict{Int, Vector{Int}},Nothing} = nothing,
+    genOff::Union{Dict{Int,Vector{Tuple{Int,Float64,Float64}}},Nothing} = nothing,
 )
     ngen  = length(opfdata.generators)
     nbus  = length(opfdata.buses)
@@ -80,7 +80,7 @@ function OPFBlocks(
         modelinfo,
         t, k;
         decompCtgs=false,
-        genOff::Union{Nothing,Vector{Int}}=nothing,
+        genOff::Union{Nothing,Vector{Tuple{Int,Float64,Float64}}}=nothing,
     )
         lineOff = Line()
         if length(rawdata.ctgs_arr) < k - 1

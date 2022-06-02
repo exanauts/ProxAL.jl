@@ -31,7 +31,7 @@ function ProxALEvaluator(
     algparams::AlgParams,
     space::AbstractBackend=JuMPBackend(),
     comm::Union{MPI.Comm,Nothing} = MPI.COMM_WORLD;
-    genOff::Union{Dict{Int, Vector{Int}},Nothing} = nothing,
+    genOff::Union{Dict{Int,Vector{Tuple{Int,Float64,Float64}}},Nothing} = nothing,
 )
     rawdata = RawData(case_file, load_file)
     opfdata = opf_loaddata(
