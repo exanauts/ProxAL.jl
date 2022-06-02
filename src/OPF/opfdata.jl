@@ -208,7 +208,8 @@ function opf_loaddata(raw::RawData;
                       load_scale::Float64=1.0,
                       ramp_scale::Float64=0.0,
                       corr_scale::Float64=0.1,
-                      lineOff=Line())
+                      lineOff=Line(),
+                      genOff::Union{Nothing,Vector{Int}} = nothing)
     #
     # load buses
     #
@@ -303,8 +304,14 @@ function opf_loaddata(raw::RawData;
         generators[i].mBase    = gen_arr[git,7]
         generators[i].status   = gen_arr[git,8]
         @assert generators[i].status==1
-        generators[i].Pmax     = gen_arr[git,9]  / baseMVA
-        generators[i].Pmin     = gen_arr[git,10] / baseMVA
+        if !isa(genOff, Nothing) && i ∈ genOff
+            generators[i].Pmax     = 0.0
+            generators[i].Pmin     = 0.0
+            println("Switched generator $i off")
+        else
+            generators[i].Pmax     = gen_arr[git,9]  / baseMVA
+            generators[i].Pmin     = gen_arr[git,10] / baseMVA
+        end
         generators[i].Pc1      = gen_arr[git,11]
         generators[i].Pc2      = gen_arr[git,12]
         generators[i].Qc1min   = gen_arr[git,13]

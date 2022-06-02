@@ -30,7 +30,8 @@ function ProxALEvaluator(
     modelinfo::ModelInfo,
     algparams::AlgParams,
     space::AbstractBackend=JuMPBackend(),
-    comm::Union{MPI.Comm,Nothing} = MPI.COMM_WORLD
+    comm::Union{MPI.Comm,Nothing} = MPI.COMM_WORLD;
+    genOff::Union{Dict{Int, Vector{Int}},Nothing} = nothing,
 )
     rawdata = RawData(case_file, load_file)
     opfdata = opf_loaddata(
@@ -64,7 +65,7 @@ function ProxALEvaluator(
     end
 
     # ctgs_arr = deepcopy(rawdata.ctgs_arr)
-    problem = ProxALProblem(opfdata, rawdata, modelinfo, algparams, space, comm)
+    problem = ProxALProblem(opfdata, rawdata, modelinfo, algparams, space, comm; genOff=genOff)
     return ProxALEvaluator(problem, modelinfo, algparams, opfdata, rawdata, space, comm)
 end
 

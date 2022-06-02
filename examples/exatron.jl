@@ -23,7 +23,7 @@ demandfiles = "$(case)_oneweek_168"
 
 # choose one of the following (K*T subproblems in each case)
 if length(ARGS) == 0
-    (T, K) = (2, 1)
+    (T, K) = (2, 0)
 elseif length(ARGS) == 4
     case = ARGS[1]
     demandfiles = ARGS[2]
@@ -37,9 +37,9 @@ else
 end
 
 # choose backend
-# backend = ProxAL.JuMPBackend()
+backend = ProxAL.JuMPBackend()
 # With ExaTronBackend(), CUDADevice will used
-backend = ProxAL.ExaTronBackend()
+# backend = ProxAL.ExaTronBackend()
 
 
 # Load case
@@ -86,11 +86,19 @@ ranks = MPI.Comm_size(MPI.COMM_WORLD)
 if MPI.Comm_rank(MPI.COMM_WORLD) == 0
    println("ProxAL/ExaTron $ranks ranks, $T periods, $K contingencies")
 end
+genOff = Dict{Int,Vector{Int}}()
+# At time period 1 switch generator 3 off
+genOff[2] = [3]
 cur_logger = global_logger(NullLogger())
 elapsed_t = @elapsed begin
-  redirect_stdout(devnull) do
-    global nlp = ProxALEvaluator(case_file, load_file, modelinfo, algparams, backend)
-  end
+    global nlp = ProxALEvaluator(
+      case_file,
+      load_file,
+      modelinfo,
+      algparams,
+      backend;
+      genOff=genOff
+  )
 end
 if MPI.Comm_rank(MPI.COMM_WORLD) == 0
     global_logger(cur_logger)
