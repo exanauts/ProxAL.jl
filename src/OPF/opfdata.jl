@@ -209,7 +209,7 @@ function opf_loaddata(raw::RawData;
                       ramp_scale::Float64=0.0,
                       corr_scale::Float64=0.1,
                       lineOff=Line(),
-                      genOff::Union{Nothing,Vector{Int}} = nothing)
+                      genOff::Union{Vector{Tuple{Int,Float64,Float64}},Nothing} = nothing)
     #
     # load buses
     #
@@ -304,10 +304,14 @@ function opf_loaddata(raw::RawData;
         generators[i].mBase    = gen_arr[git,7]
         generators[i].status   = gen_arr[git,8]
         @assert generators[i].status==1
-        if !isa(genOff, Nothing) && i ∈ genOff
-            generators[i].Pmax     = 0.0
-            generators[i].Pmin     = 0.0
-            println("Switched generator $i off")
+        if !isa(genOff, Nothing) && i ∈ getindex.(genOff,1)
+            # Pmax is stored at 3rd entry of Tuple
+            Pmax                   = genOff[findfirst(x -> x[1] == i, genOff)][3]
+            # Pmin is stored at 2nd entry of Tuple
+            Pmin                   = genOff[findfirst(x -> x[1] == i, genOff)][2]
+            generators[i].Pmax     = Pmax
+            generators[i].Pmin     = Pmin
+            println("Switched generator $i to Pmin = $Pmin and Pmax = $Pmax")
         else
             generators[i].Pmax     = gen_arr[git,9]  / baseMVA
             generators[i].Pmin     = gen_arr[git,10] / baseMVA
