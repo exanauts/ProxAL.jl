@@ -23,7 +23,7 @@ demandfiles = "$(case)_oneweek_168"
 
 # choose one of the following (K*T subproblems in each case)
 if length(ARGS) == 0
-    (T, K) = (2, 0)
+    (T, K) = (2, 1)
 elseif length(ARGS) == 4
     case = ARGS[1]
     demandfiles = ARGS[2]
@@ -37,9 +37,9 @@ else
 end
 
 # choose backend
-backend = ProxAL.JuMPBackend()
+# backend = ProxAL.JuMPBackend()
 # With ExaTronBackend(), CUDADevice will used
-# backend = ProxAL.ExaTronBackend()
+backend = ProxAL.ExaTronBackend()
 
 
 # Load case
@@ -67,7 +67,7 @@ algparams = AlgParams()
 algparams.verbose = 1
 algparams.tol = 1e-3
 algparams.decompCtgs = (K > 0)
-algparams.iterlim = 100
+algparams.iterlim = 500
 if isa(backend, ProxAL.ExaTronBackend)
     algparams.device = ProxAL.CUDADevice
 end
@@ -84,7 +84,7 @@ tron_outer_eps = 1e-6
 
 ranks = MPI.Comm_size(MPI.COMM_WORLD)
 if MPI.Comm_rank(MPI.COMM_WORLD) == 0
-   println("ProxAL/ExaTron $ranks ranks, $T periods, $K contingencies")
+    println("ProxAL/ExaTron $ranks ranks, $T periods, $K contingencies")
 end
 # Tuple(genid, Pmin, Pmax)
 genOff = Dict{Int,Vector{Tuple{Int,Float64,Float64}}}()
@@ -92,14 +92,16 @@ genOff = Dict{Int,Vector{Tuple{Int,Float64,Float64}}}()
 genOff[2] = [(3, 0.0, 0.0)]
 cur_logger = global_logger(NullLogger())
 elapsed_t = @elapsed begin
-    global nlp = ProxALEvaluator(
-      case_file,
-      load_file,
-      modelinfo,
-      algparams,
-      backend;
-      genOff=genOff
-  )
+    # redirect_stdout(devnull) do
+        global nlp = ProxALEvaluator(
+        case_file,
+        load_file,
+        modelinfo,
+        algparams,
+        backend;
+        genOff=genOff
+    )
+    # end
 end
 if MPI.Comm_rank(MPI.COMM_WORLD) == 0
     global_logger(cur_logger)
@@ -107,11 +109,11 @@ if MPI.Comm_rank(MPI.COMM_WORLD) == 0
     println("Benchmark Start")
     np = MPI.Comm_size(MPI.COMM_WORLD)
     elapsed_t = @elapsed begin
-      info = ProxAL.optimize!(nlp)
+        info = ProxAL.optimize!(nlp)
     end
     println("AugLag iterations: $(info.iter) with $np ranks in $elapsed_t seconds")
 else
-  info = ProxAL.optimize!(nlp)
+    info = ProxAL.optimize!(nlp)
 end
 
 MPI.Finalize()
