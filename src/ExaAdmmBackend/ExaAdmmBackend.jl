@@ -104,16 +104,11 @@ function ModelProxAL(
     model.nvar_u_padded = model.nvar_u + 8*(model.nline_padded - model.grid_data.nline)
     model.nvar_v = 2*model.grid_data.ngen + 4*model.grid_data.nline + 2*model.grid_data.nbus
     model.bus_start = 2*model.grid_data.ngen + 4*model.grid_data.nline + 1
-    if env.use_twolevel
-        model.nvar = model.nvar_u + model.nvar_v
-        model.nvar_padded = model.nvar_u_padded + model.nvar_v
-    end
 
     # Memory space is allocated based on the padded size.
     # XXX
-    model.solution = #ifelse(env.use_twolevel,
-        # ExaAdmm.SolutionTwoLevel{T,TD}(model.nvar_padded, model.nvar_v, model.nline_padded),
-        ExaAdmm.SolutionOneLevel{T,TD}(model.nvar_padded)
+    model.solution =
+        ExaAdmm.Solution{T,TD}(model.nvar_padded)
     ExaAdmm.init_solution!(model, model.solution, env.initial_rho_pq, env.initial_rho_va)
     model.gen_solution = ExaAdmm.EmptyGeneratorSolution{T,TD}()
 

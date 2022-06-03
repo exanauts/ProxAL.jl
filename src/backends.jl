@@ -605,7 +605,7 @@ function AdmmBlockBackend(
     rho_va = algparams.tron_rho_pa
     env = ExaAdmm.AdmmEnv(
         exadata, rho_pq, rho_va;
-        verbose=algparams.verbose_inner, use_twolevel=true,
+        verbose=algparams.verbose_inner,
     )
 
     env.params.obj_scale = algparams.tron_scale
