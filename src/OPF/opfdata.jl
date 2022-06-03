@@ -309,9 +309,17 @@ function opf_loaddata(raw::RawData;
             Pmax                   = genOff[findfirst(x -> x[1] == i, genOff)][3]
             # Pmin is stored at 2nd entry of Tuple
             Pmin                   = genOff[findfirst(x -> x[1] == i, genOff)][2]
-            generators[i].Pmax     = Pmax
-            generators[i].Pmin     = Pmin
-            println("Switched generator $i to Pmin = $Pmin and Pmax = $Pmax")
+            if Pmax == 0.0 && Pmin == 0.0
+                generators[i].Pmax     = 0.0
+                generators[i].Pmin     = 0.0
+                generators[i].Qmax     = 0.0
+                generators[i].Qmin     = 0.0
+                println("Switched generator $i off Pmax = Pmin = Qmax = Qmin = 0.0")
+            else
+                generators[i].Pmax     = Pmax
+                generators[i].Pmin     = Pmin
+                println("Changed generator $i to Pmin = $Pmin and Pmax = $Pmax")
+            end
         else
             generators[i].Pmax     = gen_arr[git,9]  / baseMVA
             generators[i].Pmin     = gen_arr[git,10] / baseMVA
