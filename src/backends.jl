@@ -597,7 +597,6 @@ function AdmmBlockBackend(
     opfdata::OPFData, raw_data::RawData, algparams::AlgParams,
     modelinfo::ModelInfo, t::Int, k::Int, T::Int
 )
-    scale = 1e-4
     use_gpu = (algparams.device == CUDADevice)
     # TODO
     exadata = ExaAdmm.OPFData(opfdata)
@@ -615,7 +614,7 @@ function AdmmBlockBackend(
 
     model = ExaAdmmBackend.ModelProxAL(env, t, T)
     # TODO
-    return AdmmBlockBackend(env, model, blk, k, t, T, opfdata, modelinfo, scale, modelinfo.obj_scale)
+    return AdmmBlockBackend(env, model, blk, k, t, T, opfdata, modelinfo, algparams.tron_scale, modelinfo.obj_scale)
 end
 
 function init!(block::AdmmBlockBackend, algparams::AlgParams)
