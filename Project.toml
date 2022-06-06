@@ -20,6 +20,7 @@ SparseArrays = "2f01184e-e22b-5df5-ae63-d93ebab69eaf"
 [compat]
 CUDA = "3.4"
 CatViews = "1"
+ExaAdmm = "0.1"
 ExaPF = "0.6"
 ExaTron = "1"
 Ipopt = "1"
