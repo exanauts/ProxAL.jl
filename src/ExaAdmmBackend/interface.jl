@@ -45,41 +45,19 @@ end
     GETTERS
 =#
 
-# / SolutionTwoLevel
-
-function active_power_generation(model::ModelProxAL, sol::ExaAdmm.SolutionTwoLevel)
-    ngen = model.grid_data.ngen
-    return sol.xbar_curr[1:2:2*ngen]
-end
-function reactive_power_generation(model::ModelProxAL, sol::ExaAdmm.SolutionTwoLevel)
-    ngen = model.grid_data.ngen
-    return sol.xbar_curr[2:2:2*ngen]
-end
-function voltage_magnitude(model::ModelProxAL, sol::ExaAdmm.SolutionTwoLevel)
-    bus_start = model.bus_start
-    return sol.xbar_curr[bus_start:2:bus_start-1+2*model.nbus]
-end
-function voltage_angle(model::ModelProxAL, sol::ExaAdmm.SolutionTwoLevel)
-    bus_start = model.bus_start
-    nbus = model.grid_data.nbus
-    return sol.xbar_curr[bus_start+1:2:bus_start-1+2*model.nbus]
-end
-
-# / SolutionOneLevel
-
-function active_power_generation(model::ModelProxAL, sol::ExaAdmm.SolutionOneLevel)
+function active_power_generation(model::ModelProxAL, sol::ExaAdmm.Solution)
     ngen = model.grid_data.ngen
     return sol.u_curr[1:2:2*ngen]
 end
-function reactive_power_generation(model::ModelProxAL, sol::ExaAdmm.SolutionOneLevel)
+function reactive_power_generation(model::ModelProxAL, sol::ExaAdmm.Solution)
     ngen = model.grid_data.ngen
     return sol.u_curr[2:2:2*ngen]
 end
-function voltage_magnitude(model::ModelProxAL, sol::ExaAdmm.SolutionOneLevel)
+function voltage_magnitude(model::ModelProxAL, sol::ExaAdmm.Solution)
     nbus = model.grid_data.nbus
     return zeros(nbus)
 end
-function voltage_angle(model::ModelProxAL, sol::ExaAdmm.SolutionOneLevel)
+function voltage_angle(model::ModelProxAL, sol::ExaAdmm.Solution)
     nbus = model.grid_data.nbus
     return zeros(nbus)
 end
