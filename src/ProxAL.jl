@@ -6,7 +6,7 @@ module ProxAL
 using Ipopt, JuMP
 using Printf, CatViews
 using ExaPF
-using ExaTron
+using ExaAdmm
 using LinearAlgebra
 using SparseArrays
 using MPI
@@ -41,6 +41,7 @@ mutable struct ProxALProblem
 end
 
 include("Evaluators/Evaluators.jl")
+include("ExaAdmmBackend/ExaAdmmBackend.jl")
 include("params.jl")
 include("OPF/opfdata.jl")
 include("OPF/opfsolution.jl")
@@ -54,7 +55,7 @@ include("Evaluators/NonDecomposedModel.jl")
 export ModelInfo, AlgParams
 export ProxALEvaluator, NonDecomposedModel
 export optimize!
-export JuMPBackend, ExaPFBackend, ExaTronBackend
+export JuMPBackend, ExaPFBackend, AdmmBackend
 
 function update_primal_nlpvars(
     x::AbstractPrimalSolution,
@@ -211,8 +212,8 @@ function ProxALProblem(
         JuMPBlockBackend
     elseif isa(backend, ExaPFBackend)
         ExaBlockBackend
-    elseif isa(backend, ExaTronBackend)
-        TronBlockBackend
+    elseif isa(backend, AdmmBackend)
+        AdmmBlockBackend
     end
     # NLP blocks
     blocks = OPFBlocks(

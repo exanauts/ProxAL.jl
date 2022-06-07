@@ -13,11 +13,11 @@ Solve OPF in full-space with JuMP/MOI.
 struct JuMPBackend <: AbstractBackend end
 
 """
-    ExaTronBackend <: AbstractBackend
+    ExaAdmmBackend <: AbstractBackend
 
-Solve OPF by decomposition using ExaTron.
+Solve OPF by decomposition using ExaAdmm.
 """
-struct ExaTronBackend <: AbstractBackend end
+struct AdmmBackend <: AbstractBackend end
 
 
 """
@@ -523,8 +523,9 @@ of the structure `OPFBlocks`, used for decomposition purpose.
 
 
 ### Implementation of TronBlockBackend
-struct TronBlockBackend <: AbstractBlockModel
-    env::ExaTron.AdmmEnv
+struct AdmmBlockBackend <: AbstractBlockModel
+    env::ExaAdmm.AdmmEnv
+    model::ExaAdmmBackend.ModelProxAL
     id::Int
     k::Int
     t::Int
@@ -536,37 +537,40 @@ struct TronBlockBackend <: AbstractBlockModel
 end
 
 # Map ProxAL's data to ExaTron's data
-Base.convert(::Type{ExaTron.Bus}, b::Bus) =
-    ExaTron.Bus(
+Base.convert(::Type{ExaAdmm.Bus}, b::Bus) =
+    ExaAdmm.Bus(
         b.bus_i, b.bustype, b.Pd, b.Qd, b.Gs, b.Bs, b.area,
         b.Vm, b.Va, b.baseKV, b.zone, b.Vmax, b.Vmin,
     )
 
-Base.convert(::Type{ExaTron.Line}, l::Line) =
-    ExaTron.Line(
+Base.convert(::Type{ExaAdmm.Line}, l::Line) =
+    ExaAdmm.Line(
         l.from, l.to, l.r, l.x, l.b, l.rateA, l.rateB, l.rateC,
         l.ratio, l.angle, l.status, l.angmin, l.angmax,
     )
 
-Base.convert(::Type{ExaTron.Gener}, g::Gener) =
-    ExaTron.Gener(
+Base.convert(::Type{ExaAdmm.Gener}, g::Gener) =
+    ExaAdmm.Gener(
         g.bus, g.Pg, g.Qg, g.Qmax, g.Qmin, g.Vg, g.mBase, g.status,
         g.Pmax, g.Pmin, g.Pc1, g.Pc2, g.Qc1min, g.Qc1max,
         g.Qc2min, g.Qc2max, g.ramp_agc, g.gentype, g.startup,
         g.shutdown, g.n, g.coeff,
     )
 
-function ExaTron.OPFData(data::OPFData)
-    fromlines, tolines = ExaTron.mapLinesToBuses(data.buses, data.lines, data.BusIdx)
-    busGenerators = ExaTron.mapGenersToBuses(data.buses, data.generators, data.BusIdx)
-    return ExaTron.OPFData(
-        data.buses, data.lines, data.generators, data.bus_ref, data.baseMVA,
-        data.BusIdx, fromlines, tolines, busGenerators,
+function ExaAdmm.OPFData(data::OPFData)
+    fromlines, tolines = ExaAdmm.mapLinesToBuses(data.buses, data.lines, data.BusIdx)
+    busGenerators = ExaAdmm.mapGenersToBuses(data.buses, data.generators, data.BusIdx)
+    storages = ExaAdmm.Storage[]
+    busStorages = ExaAdmm.mapStoragesToBuses(data.buses, storages, data.BusIdx)
+    return ExaAdmm.OPFData(
+        Dict{String, Any}(), data.buses, data.lines, data.generators,
+        storages, data.bus_ref, data.baseMVA,
+        data.BusIdx, fromlines, tolines, busGenerators, busStorages,
     )
 end
 
 """
-    TronBlockBackend(
+    AdmmBlockBackend(
         blk::Int,
         opfdata::OPFData,
         raw_data::RawData,
@@ -588,24 +592,33 @@ end
 - `T::Int`: final time period index
 
 """
-function TronBlockBackend(
+function AdmmBlockBackend(
     blk::Int,
     opfdata::OPFData, raw_data::RawData, algparams::AlgParams,
-    modelinfo::ModelInfo, t::Int, k::Int, T::Int;
+    modelinfo::ModelInfo, t::Int, k::Int, T::Int
 )
-    scale = 1e-4
     use_gpu = (algparams.device == CUDADevice)
-    trondata = ExaTron.OPFData(opfdata)
-    env = ExaTron.ProxALAdmmEnv(
-        trondata, use_gpu, t, T, algparams.tron_rho_pq, algparams.tron_rho_pa;
-        allow_infeas=modelinfo.allow_constr_infeas, rho_sigma=modelinfo.weight_constr_infeas,
-        verbose=algparams.verbose_inner, use_twolevel=true, outer_eps=algparams.tron_outer_eps,
+    # TODO
+    exadata = ExaAdmm.OPFData(opfdata)
+    rho_pq = algparams.tron_rho_pq
+    rho_va = algparams.tron_rho_pa
+    env = ExaAdmm.AdmmEnv(
+        exadata, rho_pq, rho_va;
+        verbose=algparams.verbose_inner,
     )
-    return TronBlockBackend(env, blk, k, t, T, opfdata, modelinfo, scale, modelinfo.obj_scale)
+
+    env.params.obj_scale = algparams.tron_scale
+    env.params.outer_eps = algparams.tron_outer_eps
+    env.params.outer_iterlim = algparams.tron_outer_iterlim
+    env.params.inner_iterlim = algparams.tron_inner_iterlim
+
+    model = ExaAdmmBackend.ModelProxAL(env, t, T)
+    # TODO
+    return AdmmBlockBackend(env, model, blk, k, t, T, opfdata, modelinfo, algparams.tron_scale, modelinfo.obj_scale)
 end
 
-function init!(block::TronBlockBackend, algparams::AlgParams)
-    opfmodel = block.env
+function init!(block::AdmmBlockBackend, algparams::AlgParams)
+    opfmodel = block.model
     baseMVA = block.data.baseMVA
 
     # Get params
@@ -625,22 +638,22 @@ function init!(block::TronBlockBackend, algparams::AlgParams)
     pd = opfdata.Pd[:, 1]
     qd = opfdata.Qd[:, 1]
     # Pass load to exatron
-    ExaTron.set_active_load!(opfmodel, pd)
-    ExaTron.set_reactive_load!(opfmodel, qd)
+    ExaAdmmBackend.set_active_load!(opfmodel, pd)
+    ExaAdmmBackend.set_reactive_load!(opfmodel, qd)
 
     # Set bounds on slack variables s
     if algparams.decompCtgs && modelinfo.ctgs_link_constr_type == :corrective_penalty && k > 1
-        ExaTron.set_upper_bound_slack!(opfmodel, 2 .* [g.scen_agc for g in gens])
+        ExaAdmmBackend.set_upper_bound_slack!(opfmodel, 2 .* [g.scen_agc for g in gens])
     else
-        ExaTron.set_upper_bound_slack!(opfmodel, 2 .* [g.ramp_agc for g in gens])
+        ExaAdmmBackend.set_upper_bound_slack!(opfmodel, 2 .* [g.ramp_agc for g in gens])
     end
 
     return opfmodel
 end
 
-function set_objective!(block::TronBlockBackend, algparams::AlgParams,
+function set_objective!(block::AdmmBlockBackend, algparams::AlgParams,
                         primal::AbstractPrimalSolution, dual::AbstractDualSolution)
-    examodel = block.env
+    model = block.model
     opfdata = block.data
     modelinfo = block.params
     # Generators
@@ -681,14 +694,14 @@ function set_objective!(block::TronBlockBackend, algparams::AlgParams,
 
     # Set ExaTron's internal penalties to 0
     # (we are defining the penalties manually)
-    examodel.model.gen_mod.rho = 0.0
-    examodel.model.gen_mod.tau = 0.0
+    model.rho = 0.0
+    model.tau = 0.0
     # Reset Q_ref and c_ref
-    examodel.model.gen_mod.Q_ref .= 0.0
-    examodel.model.gen_mod.c_ref .= 0.0
+    model.Q_ref .= 0.0
+    model.c_ref .= 0.0
 
-    Q_ref = zeros(size(examodel.model.gen_mod.Q_ref))
-    c_ref = zeros(size(examodel.model.gen_mod.c_ref))
+    Q_ref = zeros(size(model.Q_ref))
+    c_ref = zeros(size(model.c_ref))
 
     index_geners_Q = 1:4:4*ngen
     index_geners_c = 1:2:2*ngen
@@ -749,17 +762,17 @@ function set_objective!(block::TronBlockBackend, algparams::AlgParams,
         end
     end
     # Copy to GPU
-    copyto!(examodel.model.gen_mod.Q_ref, Q_ref)
-    copyto!(examodel.model.gen_mod.c_ref, c_ref)
+    copyto!(model.Q_ref, Q_ref)
+    copyto!(model.c_ref, c_ref)
 end
 
-function get_solution(block::TronBlockBackend, output)
-
-    # TODO: parse ExaTron solution
-    exatron_status = output.status
-    status = if exatron_status == ExaTron.HAS_CONVERGED
+function get_solution(block::AdmmBlockBackend)
+    model = block.model
+    solution = model.solution
+    exatron_status = model.info.status
+    status = if exatron_status == :Solved
         MOI.OPTIMAL
-    elseif exatron_status == ExaTron.MAXIMUM_ITERATIONS
+    elseif exatron_status == :IterationLimit
         MOI.ITERATION_LIMIT
     end
 
@@ -767,15 +780,14 @@ function get_solution(block::TronBlockBackend, output)
         @warn("Block $(block.id) subproblem not solved to optimality. status: $status")
     end
 
-    s = ExaTron.slack_values(block.env) |> Array
-    model = block.env.model
+    s = ExaAdmmBackend.slack_values(model) |> Array
     solution = (
         status=status,
-        minimum=block.objective_scaling * output.objval,
-        pg=ExaTron.active_power_generation(model, output) |> Array,
-        qg=ExaTron.reactive_power_generation(model, output) |> Array,
-        vm=ExaTron.voltage_magnitude(model, output) |> Array,
-        va=ExaTron.voltage_angle(model, output) |> Array,
+        minimum=block.objective_scaling * model.info.objval,
+        pg=ExaAdmmBackend.active_power_generation(model, model.solution) |> Array,
+        qg=ExaAdmmBackend.reactive_power_generation(model, model.solution) |> Array,
+        vm=ExaAdmmBackend.voltage_magnitude(model, model.solution) |> Array,
+        va=ExaAdmmBackend.voltage_angle(model, model.solution) |> Array,
         ωt=[0.0], # At the moment, no frequency variable in ExaTron
         st=(block.k > 1) ? (s .* 0) : s,
         sk=(block.k > 1) ? s : (s .* 0),
@@ -783,7 +795,7 @@ function get_solution(block::TronBlockBackend, output)
     return solution
 end
 
-function set_start_values!(block::TronBlockBackend, x0)
+function set_start_values!(block::AdmmBlockBackend, x0)
     ngen = length(block.data.generators)
     nbus = length(block.data.buses)
     # Only one contingency, at the moment
@@ -794,23 +806,21 @@ function set_start_values!(block::TronBlockBackend, x0)
     vm = x0[2*ngen*K+1:2*ngen*K+nbus*K]
     va = x0[2*ngen*K+nbus*K+1:2*ngen*K+2*nbus*K]
     # Pass to ExaTron
-    ExaTron.set_active_power_generation!(block.env, pg)
-    ExaTron.set_reactive_power_generation!(block.env, qg)
-    ExaTron.set_voltage_magnitude!(block.env, vm)
-    ExaTron.set_voltage_angle!(block.env, va)
+    ExaAdmmBackend.set_active_power_generation!(block.env, pg)
+    ExaAdmmBackend.set_reactive_power_generation!(block.env, qg)
+    ExaAdmmBackend.set_voltage_magnitude!(block.env, vm)
+    ExaAdmmBackend.set_voltage_angle!(block.env, va)
     return
 end
 
-function optimize!(block::TronBlockBackend, x0::Union{Nothing, AbstractArray}, algparams::AlgParams)
+function optimize!(block::AdmmBlockBackend, x0::Union{Nothing, AbstractArray}, algparams::AlgParams)
     if isa(x0, Array)
         set_start_values!(block, x0)
     end
     # Optimize with optimizer, using ExaPF model
-    ExaTron.admm_restart!(block.env;
-        scale=algparams.tron_scale, outer_iterlim=algparams.tron_outer_iterlim, inner_iterlim=algparams.tron_inner_iterlim
-    )
+    ExaAdmm.admm_two_level(block.env, block.model)
     # Recover solution in ProxAL format
-    solution = get_solution(block, block.env.solution)
+    solution = get_solution(block)
 
     return solution
 end

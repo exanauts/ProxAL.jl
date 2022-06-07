@@ -34,7 +34,7 @@ modelinfo.time_link_constr_type = :penalty
 algparams = AlgParams()
 algparams.verbose = 0
 
-solver_list = ["Ipopt", "ExaTron"]
+solver_list = ["Ipopt", "ExaAdmm"]
 # TODO: MadNLP broken currently
 # solver_list = ["Ipopt", "MadNLP"]
 # if CUDA.has_cuda_gpu()
@@ -59,9 +59,8 @@ end
                 optimizer_with_attributes(Ipopt.Optimizer,
                     "print_level" => Int64(algparams.verbose > 0)*5)
         end
-        if solver == "ExaTron"
-            using ExaTron
-            backend = ExaTronBackend()
+        if solver == "ExaAdmm"
+            backend = AdmmBackend()
             algparams.tron_outer_iterlim=2000
             algparams.tron_outer_eps=1e-6
         end
@@ -124,7 +123,7 @@ end
                     OPTIMAL_WT = [0.0, 0.0, 0.0, 0.0]
                     proxal_ctgs_link = :corrective_penalty
                 end
-                if solver == "ExaTron" && proxal_ctgs_link != :corrective_penalty
+                if solver == "ExaAdmm" && proxal_ctgs_link != :corrective_penalty
                     continue
                 end
 

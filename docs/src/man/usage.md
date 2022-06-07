@@ -3,7 +3,7 @@
 ```shell
 $ git clone https://github.com/exanauts/ProxAL.jl.git
 $ cd ProxAL.jl
-$ julia --project deps/deps.jl
+$ julia --project "using Pkg ; Pkg.instantiate()"
 ```
 
 ## Example

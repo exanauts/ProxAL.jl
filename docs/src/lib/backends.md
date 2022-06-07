@@ -30,8 +30,8 @@ get_solution
 ```@docs
 JuMPBackend
 JuMPBlockBackend
-ExaTronBackend
-TronBlockBackend
+AdmmBackend
+AdmmBlockBackend
 ExaPFBackend
 
 ```

@@ -7,6 +7,9 @@ testdir = @__DIR__
     @testset "Integration tests" begin
         include("blockmodel.jl")
     end
+    @testset "ExaAdmm backend" begin
+        include("exaadmm.jl")
+    end
 
     # We can finalize here as now we launch external processes
 

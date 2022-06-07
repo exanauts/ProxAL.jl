@@ -38,6 +38,7 @@ load_file = joinpath(DATA_DIR, "mp_demand", "$(case)_oneweek_168")
     algparams.ρ_t = maxρ
     algparams.ρ_c = maxρ
     algparams.τ = 3.0*maxρ
+    algparams.tron_outer_iterlim = 30
 
     modelinfo.case_name = case
     algparams.optimizer = optimizer_with_attributes(
@@ -113,7 +114,7 @@ load_file = joinpath(DATA_DIR, "mp_demand", "$(case)_oneweek_168")
         # end
 
         @testset "ExaTron BlockModel" begin
-            blockmodel = ProxAL.TronBlockBackend(
+            blockmodel = ProxAL.AdmmBlockBackend(
                 blkid, opfdata_c, nlp.rawdata, algparams, modelinfo_local, t, 1, T;
             )
             ProxAL.init!(blockmodel, nlp.algparams)
