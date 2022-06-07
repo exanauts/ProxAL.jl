@@ -86,8 +86,8 @@ has_cuda_gpu() && push!(USE_GPUS, true)
     pg = AB.active_power_generation(model)
     qg = AB.reactive_power_generation(model)
 
-    @test Array(pg) ≈ [0.898281257259199, 1.3402461278961415, 0.940057474370767] rtol=1e-5
-    @test Array(qg) ≈ [0.13441293341552688, 0.07454842846214903, -0.15922687685240058] rtol=1e-5
+    @test Array(pg) ≈ [0.898281257259199, 1.3402461278961415, 0.940057474370767] rtol=1e-3
+    @test Array(qg) ≈ [0.13441293341552688, 0.07454842846214903, -0.15922687685240058] rtol=1e-3
 
     # TODO
     @test model.info.status == :Solved
