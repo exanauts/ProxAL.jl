@@ -604,6 +604,7 @@ function AdmmBlockBackend(
     rho_va = algparams.tron_rho_pa
     env = ExaAdmm.AdmmEnv(
         exadata, rho_pq, rho_va;
+        use_gpu=use_gpu,
         verbose=algparams.verbose_inner,
     )
 
