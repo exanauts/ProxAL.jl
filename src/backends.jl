@@ -608,7 +608,8 @@ function AdmmBlockBackend(
         verbose=algparams.verbose_inner,
     )
 
-    env.params.obj_scale = algparams.tron_scale
+    env.params.scale = algparams.tron_scale
+    env.params.obj_scale = modelinfo.obj_scale
     env.params.outer_eps = algparams.tron_outer_eps
     env.params.outer_iterlim = algparams.tron_outer_iterlim
     env.params.inner_iterlim = algparams.tron_inner_iterlim
