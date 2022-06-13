@@ -26,6 +26,7 @@ Specifies ProxAL's algorithmic parameters.
 | :--- | :--- | :--- |
 | `decompCtgs::Bool` | if true: decompose across contingencies (along with time) | false
 | `jacobi::Bool` |     if true: do Jacobi updates, else do Gauss-Siedel updates | true
+| `num_sweeps::Int` |  number of jacobi/gauss-seidel sweeps per primal update step | 1
 | `iterlim::Int` |     maximum number of ProxAL iterations | 100
 | `nlpiterlim::Int` |  maximum number of NLP subproblem iterations | 100
 | `tol::Float64` |     tolerance used for ProxAL termination | 1.0e-4
@@ -56,6 +57,7 @@ Specifies ProxAL's algorithmic parameters.
 Base.@kwdef mutable struct AlgParams
     decompCtgs::Bool = false # decompose contingencies (along with time)
     jacobi::Bool     = true  # if true: do jacobi, else do gauss-siedel
+    num_sweeps::Int  = 1     # Number of jacobi/gauss-seidel sweeps per primal update step
     iterlim::Int     = 100   # maximum number of ADMM iterations
     nlpiterlim::Int  = 100   # maximum number of NLP subproblem iterations
     tol::Float64     = 1e-3  # tolerance used for ADMM termination

@@ -383,7 +383,9 @@ function optimize!(
         runinfo.λprev = deepcopy(λ)
 
         # Primal update
-        primal_update()
+        for _ in 1:algparams.num_sweeps
+            primal_update()
+        end
 
         # Dual update
         dual_update()
