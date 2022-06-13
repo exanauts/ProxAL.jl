@@ -204,7 +204,7 @@ Loads the multi-period ACOPF instance data from `raw`
 with the time horizon defined to be
 [`time_horizon_start`,  `time_horizon_end`].
 Note that `time_horizon_end = 0` indicates as many
-as possible (the number of columns in `raw.pd_arr`).
+as possible (the number of columns in `raw.pd_arr` minus `time_horizon_start - 1`).
 
 All loads in all time periods will be multiplied by `load_scale`.
 The `ramp_scale` is the factor which multiplies the ramp rate
@@ -427,6 +427,9 @@ function opf_loaddata(raw::RawData;
         end
         Pd = Pd[:,time_horizon_start:time_horizon_end] .* load_scale
         Qd = Qd[:,time_horizon_start:time_horizon_end] .* load_scale
+    else
+        Pd = Pd[:,time_horizon_start:end] .* load_scale
+        Qd = Qd[:,time_horizon_start:end] .* load_scale
     end
 
     # Pgmax for multiperiod renewable data
@@ -441,7 +444,7 @@ function opf_loaddata(raw::RawData;
             end
         else
             for (i, git) in enumerate(gens_on)
-                Pgmax[i, :] .= raw.pgmax_arr[git, :] ./ baseMVA
+                Pgmax[i, :] .= raw.pgmax_arr[git, time_horizon_start:end] ./ baseMVA
             end
         end
     end
