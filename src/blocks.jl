@@ -94,7 +94,7 @@ function OPFBlocks(
         data = opf_loaddata(
             rawdata;
             time_horizon_start=modelinfo.time_horizon_start + t - 1,
-            time_horizon_end=modelinfo.time_horizon_start+t-1,
+            time_horizon_end=modelinfo.time_horizon_start + t - 1,
             load_scale=modelinfo.load_scale,
             ramp_scale=modelinfo.ramp_scale,
             corr_scale=modelinfo.corr_scale,
