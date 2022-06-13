@@ -197,7 +197,8 @@ end
         load_scale::Float64=1.0,
         ramp_scale::Float64=0.0,
         corr_scale::Float64=0.1,
-        lineOff=Line()
+        lineOff=Line(),
+        genOff::Vector{Int}=Int[],
     )
 
 Loads the multi-period ACOPF instance data from `raw`
@@ -215,6 +216,9 @@ These are set in `ModelInfo`.  See [Model parameters](@ref).
 
 `lineOff` is a transmission line that can be deleted to
 represent a contingency.
+
+`genOff` is a vector of generator indices that can be turned off
+to represent a contingency.
 
 NOTE: If `raw.genfuel_arr` is undefined for generator ``g``,
 then the ramp rate is set equal to ``p_{g}^{max}``.
@@ -237,7 +241,7 @@ function opf_loaddata(raw::RawData;
                       ramp_scale::Float64=0.0,
                       corr_scale::Float64=0.1,
                       lineOff=Line(),
-                      genOff::Union{Vector{Tuple{Int,Float64,Float64}},Nothing} = nothing)
+                      genOff::Vector{Int}=Int[])
     #
     # load buses
     #
@@ -311,7 +315,8 @@ function opf_loaddata(raw::RawData;
     ncols_gens = size(gen_arr, 2)
 
 
-    gens_on = findall(gen_arr[:, 8].!=0); num_on = length(gens_on)
+    gens_on = findall(gen_arr[:, 8].!=0); setdiff!(gens_on, genOff)
+    num_on = length(gens_on)
     num_off = num_gens-num_on
     if num_off > 0
         @warn("loaddata: $(num_off) generators are off and will be discarded (out of $(num_gens))", maxlog=1)
@@ -341,26 +346,8 @@ function opf_loaddata(raw::RawData;
         generators[i].mBase    = gen_arr[git,7]
         generators[i].status   = gen_arr[git,8]
         @assert generators[i].status==1
-        if !isa(genOff, Nothing) && i ∈ getindex.(genOff,1)
-            # Pmax is stored at 3rd entry of Tuple
-            Pmax                   = genOff[findfirst(x -> x[1] == i, genOff)][3]
-            # Pmin is stored at 2nd entry of Tuple
-            Pmin                   = genOff[findfirst(x -> x[1] == i, genOff)][2]
-            if Pmax == 0.0 && Pmin == 0.0
-                generators[i].Pmax     = 0.0
-                generators[i].Pmin     = 0.0
-                generators[i].Qmax     = 0.0
-                generators[i].Qmin     = 0.0
-                println("Switched generator $i off Pmax = Pmin = Qmax = Qmin = 0.0")
-            else
-                generators[i].Pmax     = Pmax
-                generators[i].Pmin     = Pmin
-                println("Changed generator $i to Pmin = $Pmin and Pmax = $Pmax")
-            end
-        else
-            generators[i].Pmax     = gen_arr[git,9]  / baseMVA
-            generators[i].Pmin     = gen_arr[git,10] / baseMVA
-        end
+        generators[i].Pmax     = gen_arr[git,9]  / baseMVA
+        generators[i].Pmin     = gen_arr[git,10] / baseMVA
         generators[i].Pc1      = gen_arr[git,11]
         generators[i].Pc2      = gen_arr[git,12]
         generators[i].Qc1min   = gen_arr[git,13]

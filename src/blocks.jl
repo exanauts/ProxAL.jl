@@ -53,7 +53,6 @@ function OPFBlocks(
     backend=JuMPBlockBackend,
     algparams::AlgParams = AlgParams(),
     comm::Union{MPI.Comm,Nothing},
-    genOff::Union{Dict{Int,Vector{Tuple{Int,Float64,Float64}}},Nothing} = nothing,
 )
     ngen  = length(opfdata.generators)
     nbus  = length(opfdata.buses)
@@ -80,7 +79,6 @@ function OPFBlocks(
         modelinfo,
         t, k;
         decompCtgs=false,
-        genOff::Union{Nothing,Vector{Tuple{Int,Float64,Float64}}}=nothing,
     )
         lineOff = Line()
         if length(rawdata.ctgs_arr) < k - 1
@@ -99,7 +97,6 @@ function OPFBlocks(
             ramp_scale=modelinfo.ramp_scale,
             corr_scale=modelinfo.corr_scale,
             lineOff=lineOff,
-            genOff=genOff,
         )
         return data
     end
@@ -115,14 +112,8 @@ function OPFBlocks(
                 @assert k > 0
                 localinfo.num_ctgs = 0
             end
-            _genOff = nothing
-            if genOff != nothing
-                _genOff = haskey(genOff,t) ? genOff[t] : nothing
-            end
             localdata = load_local_data(rawdata, opfdata, localinfo, t, k;
-                                        decompCtgs=algparams.decompCtgs,
-                                        genOff=_genOff,
-                                        )
+                                        decompCtgs=algparams.decompCtgs)
             # Create block model
             localmodel = backend(blk, localdata, rawdata, algparams, localinfo, t, k, T)
         else
