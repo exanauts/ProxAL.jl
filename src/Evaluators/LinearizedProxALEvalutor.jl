@@ -1,4 +1,4 @@
-struct ProxALEvaluator <: AbstractNLPEvaluator
+struct LinearizedProxALEvaluator <: AbstractNLPEvaluator
     problem::ProxALProblem
     modelinfo::ModelInfo
     algparams::AlgParams
@@ -9,13 +9,13 @@ struct ProxALEvaluator <: AbstractNLPEvaluator
 end
 
 """
-    ProxALEvaluator(
+    LinearizedProxALEvaluator(
         case_file::String,
         load_file::String,
         modelinfo::ModelInfo,
         algparams::AlgParams,
-        space::AbstractBackend = JuMPBackend(),
-        comm::Union{MPI.Comm,Nothing} = MPI.COMM_WORLD
+        space::AbstractBackend=JuMPBackend(),
+        comm::MPI.Comm = MPI.COMM_WORLD
     )
 
 Instantiate multi-period ACOPF
@@ -24,23 +24,23 @@ specified in `case_file` with loads in `load_file` with model parameters
 a MPI communicator `comm`.
 
 """
-function ProxALEvaluator(
+function LinearizedProxALEvaluator(
     case_file::String,
     load_file::String,
     modelinfo::ModelInfo,
     algparams::AlgParams,
     space::AbstractBackend=JuMPBackend(),
-    comm::Union{MPI.Comm,Nothing} = MPI.COMM_WORLD;
-    genOff::Union{Dict{Int,Vector{Tuple{Int,Float64,Float64}}},Nothing} = nothing,
+    opt_sol::Dict = Dict(),
+    lyapunov_sol::Dict = Dict(),
+    comm::Union{MPI.Comm,Nothing} = MPI.COMM_WORLD
 )
     rawdata = RawData(case_file, load_file)
     opfdata = opf_loaddata(
         rawdata;
-        time_horizon_start = modelinfo.time_horizon_start,
-        time_horizon_end = modelinfo.time_horizon_start + modelinfo.num_time_periods - 1,
+        time_horizon_start = 1,
+        time_horizon_end = modelinfo.num_time_periods,
         load_scale = modelinfo.load_scale,
-        ramp_scale = modelinfo.ramp_scale,
-        corr_scale = modelinfo.corr_scale
+        ramp_scale = modelinfo.ramp_scale
     )
     if modelinfo.time_link_constr_type != :penalty
         @warn("ProxAL is guaranteed to converge only when time_link_constr_type = :penalty\n"*
@@ -48,9 +48,9 @@ function ProxALEvaluator(
         modelinfo.time_link_constr_type = :penalty
     end
     if modelinfo.num_ctgs > 1 && algparams.decompCtgs
-        if modelinfo.ctgs_link_constr_type ∉ [:frequency_penalty, :preventive_penalty, :corrective_penalty]
+        if modelinfo.ctgs_link_constr_type ∉ [:frequency_ctrl, :preventive_penalty, :corrective_penalty]
             str = "ProxAL is guaranteed to converge only when "*
-                  "ctgs_link_constr_type ∈ [:frequency_penalty, :preventive_penalty, :corrective_penalty]\n"
+                  "ctgs_link_constr_type ∈ [:frequency_ctrl, :preventive_penalty, :corrective_penalty]\n"
             if modelinfo.ctgs_link_constr_type == :preventive_equality
                 @warn(str * "         Forcing ctgs_link_constr_type = :preventive_penalty\n")
                 modelinfo.ctgs_link_constr_type = :preventive_penalty
@@ -58,15 +58,15 @@ function ProxALEvaluator(
                 @warn(str * "         Forcing ctgs_link_constr_type = :corrective_penalty\n")
                 modelinfo.ctgs_link_constr_type = :corrective_penalty
             else
-                @warn(str * "         Forcing ctgs_link_constr_type = :frequency_penalty\n")
-                modelinfo.ctgs_link_constr_type = :frequency_penalty
+                @warn(str * "         Forcing ctgs_link_constr_type = :frequency_ctrl\n")
+                modelinfo.ctgs_link_constr_type = :frequency_ctrl
             end
         end
     end
 
     # ctgs_arr = deepcopy(rawdata.ctgs_arr)
-    problem = ProxALProblem(opfdata, rawdata, modelinfo, algparams, space, comm; genOff=genOff)
-    return ProxALEvaluator(problem, modelinfo, algparams, opfdata, rawdata, space, comm)
+    problem = ProxALProblem(opfdata, rawdata, modelinfo, algparams, space, comm, opt_sol, lyapunov_sol)
+    return LinearizedProxALEvaluator(problem, modelinfo, algparams, opfdata, rawdata, space, comm)
 end
 
 """
@@ -76,38 +76,18 @@ Solve problem using the `nlp` evaluator
 of the decomposition algorithm.
 
 """
-function optimize!(
-    nlp::ProxALEvaluator;
-    print_timings::Bool=false,
-    θ_t_initial::Union{Real,Nothing}=nothing,
-    θ_c_initial::Union{Real,Nothing}=nothing,
-    ρ_t_initial::Union{Real,Nothing}=nothing,
-    ρ_c_initial::Union{Real,Nothing}=nothing,
-    τ_initial::Union{Real,Nothing}=nothing,
-    τ_factor::Float64 = 2.0
-)
+function optimize!(nlp::LinearizedProxALEvaluator; print_timings=false)
     algparams = nlp.algparams
     modelinfo = nlp.modelinfo
     runinfo   = nlp.problem
     opfdata   = nlp.opfdata
     comm      = nlp.comm
 
-    has_ctgs(modelinfo, algparams) = (algparams.decompCtgs && modelinfo.num_ctgs > 0)
-    maxρ(modelinfo, algparams) = has_ctgs(modelinfo, algparams) ? max(algparams.ρ_t, algparams.ρ_c) : algparams.ρ_t
-    τ_default(modelinfo, algparams) = τ_factor*maxρ(modelinfo, algparams)
-
     algparams.θ_t = algparams.θ_c = (1/algparams.tol^2)
     algparams.ρ_t = algparams.ρ_c = modelinfo.obj_scale
-    algparams.τ = τ_default(modelinfo, algparams)
-    !isnothing(θ_t_initial) && (algparams.θ_t = θ_t_initial)
-    !isnothing(θ_c_initial) && (algparams.θ_c = θ_c_initial)
-    !isnothing(ρ_t_initial) && (algparams.ρ_t = ρ_t_initial)
-    !isnothing(ρ_c_initial) && (algparams.ρ_c = ρ_c_initial)
-    !isnothing(τ_initial) && (algparams.τ = τ_initial)
-    if (!isnothing(ρ_t_initial) || !isnothing(ρ_c_initial)) && isnothing(τ_initial)
-        algparams.τ = τ_default(modelinfo, algparams)
-    end
-
+    algparams.τ = 2.0*max(algparams.ρ_t, algparams.ρ_c)
+    runinfo.initial_solve &&
+        (algparams_copy = deepcopy(algparams))
     opfBlockData = runinfo.opfBlockData
     nlp_opt_sol = runinfo.nlp_opt_sol
     nlp_soltime = runinfo.nlp_soltime
@@ -135,28 +115,15 @@ function optimize!(
         @views opt_sol[fr:to, blk] .= solution.va[:]
         # wt
         fr = to +1  ; to = fr + k_per_block -1
-        @views opt_sol[fr:to, blk] .= solution.ωt[:]
+        if !algparams.decompCtgs
+            @views opt_sol[fr:to, blk] .= solution.ωt[:]
+        end
         # St
         fr = to +1  ; to = fr + ngen - 1
         @views opt_sol[fr:to, blk] .= solution.st[:]
-        # zt
-        fr = to +1  ; to = fr + ngen -1
-        if haskey(solution, :zt)
-            @views opt_sol[fr:to, blk] .= solution.zt[:]
-        end
-        # sk
-        fr = to +1  ; to = fr + ngen * k_per_block - 1
-        if haskey(solution, :sk)
-            @views opt_sol[fr:to, blk] .= solution.sk[:]
-        end
-        # zk
-        fr = to +1  ; to = fr + ngen * k_per_block - 1
-        if haskey(solution, :zk)
-            @views opt_sol[fr:to, blk] .= solution.zk[:]
-        end
     end
     #------------------------------------------------------------------------------------
-    function blocknlp_optimize(blk, x_ref, λ_ref, alg_ref)
+    function blocknlp_copy(blk, x_ref, λ_ref, alg_ref)
         model = opfBlockData.blkModel[blk]
         # Update objective
         set_objective!(model, alg_ref, x_ref, λ_ref)
@@ -165,11 +132,15 @@ function optimize!(
         transfer!(blk, nlp_opt_sol, solution)
     end
     #------------------------------------------------------------------------------------
-    function blocknlp_init_and_optimize(blk, x_ref, λ_ref, alg_ref)
+    function blocknlp_recreate(blk, x_ref, λ_ref, alg_ref)
         model = opfBlockData.blkModel[blk]
         init!(model, alg_ref)
         # Update objective
-        set_objective!(model, alg_ref, x_ref, λ_ref)
+        obj_expr = compute_objective_function(model.model, model.data, model.params, alg_ref, model.k, model.t)
+        auglag_penalty = opf_block_get_auglag_penalty_expr_linearized(
+            model.model, model.params, model.data, model.k, model.t, alg_ref, x_ref, λ_ref)
+        @objective(model.model, Min, obj_expr + auglag_penalty)
+        #
         x0 = @view opfBlockData.colValue[:, blk]
         solution = optimize!(model, x0, alg_ref)
         transfer!(blk, nlp_opt_sol, solution)
@@ -180,11 +151,11 @@ function optimize!(
             # Primal update except penalty vars
             nlp_soltime .= 0.0
             nlp_soltime_local = 0.0
-            for blk in runinfo.blkLinIndex
-                if is_my_work(blk, comm)
+            for blk in runinfo.par_order
+                if ismywork(blk, comm)
                     nlp_opt_sol[:,blk] .= 0.0
-                    nlp_soltime[blk] = @elapsed blocknlp_optimize(blk, x, λ, algparams)
-                    # nlp_soltime[blk] = @elapsed blocknlp_init_and_optimize(blk, x, λ, algparams)
+                    # nlp_soltime[blk] = @elapsed blocknlp_copy(blk; x_ref = x, λ_ref = λ, alg_ref = algparams)
+                    nlp_soltime[blk] = @elapsed blocknlp_recreate(blk, x, λ, algparams)
                     nlp_soltime_local += nlp_soltime[blk]
                 end
             end
@@ -194,7 +165,7 @@ function optimize!(
 
             print_timings && comm_barrier(comm)
             elapsed_t = @elapsed begin
-                requests = comm_neighbors!(nlp_opt_sol, opfBlockData, runinfo, CommPatternTK(), comm)
+                requests = comm_neighbors!(nlp_opt_sol, opfBlockData, runinfo, comm)
                 # Every worker sends his contribution
                 comm_sum!(nlp_soltime, comm)
                 comm_wait!(requests)
@@ -206,20 +177,20 @@ function optimize!(
 
             # Update primal values
             elapsed_t = @elapsed begin
-                for blk in runinfo.blkLinIndex
+                for blk in runinfo.par_order
                     block = opfBlockData.blkIndex[blk]
                     k = block[1]
                     t = block[2]
-                    if is_my_work(blk, comm)
+                    if ismywork(blk, comm)
                         # Updating my own primal values
                         opfBlockData.colValue[:,blk] .= nlp_opt_sol[:,blk]
                         update_primal_nlpvars(x, opfBlockData, blk, modelinfo, algparams)
-                        for blkn in runinfo.blkLinIndex
+                        for blkn in runinfo.par_order
                             blockn = opfBlockData.blkIndex[blkn]
                             kn = blockn[1]
                             tn = blockn[2]
                             # Updating the received neighboring primal values
-                            if is_comm_pattern(t, tn, k, kn, CommPatternTK()) && !is_my_work(blkn, comm)
+                            if (tn == t-1 || tn == t+1) && !ismywork(blkn, comm)
                                 opfBlockData.colValue[:,blkn] .= nlp_opt_sol[:,blkn]
                                 update_primal_nlpvars(x, opfBlockData, blkn, modelinfo, algparams)
                             end
@@ -236,8 +207,8 @@ function optimize!(
 
             # Primal update of penalty vars
             elapsed_t = @elapsed begin
-                for blk in runinfo.blkLinIndex
-                    if is_my_work(blk, comm)
+                for blk in runinfo.par_order
+                    if ismywork(blk, comm)
                         update_primal_penalty(x, opfdata, opfBlockData, blk, x, λ, modelinfo, algparams)
                     end
                 end
@@ -250,29 +221,25 @@ function optimize!(
 
         print_timings && comm_barrier(comm)
         elapsed_t = @elapsed begin
-            requests_zt = comm_neighbors!(x.Zt, opfBlockData, runinfo, CommPatternT(), comm)
-            if algparams.decompCtgs
-                requests_zk = comm_neighbors!(x.Zk, opfBlockData, runinfo, CommPatternK(), comm)
-                comm_wait!(requests_zk)
-            end
-            comm_wait!(requests_zt)
+            requests = comm_neighbors!(x.Zt, opfBlockData, runinfo, comm)
+            comm_wait!(requests)
             print_timings && comm_barrier(comm)
         end
         if comm_rank(comm) == 0
             print_timings && println("Comm penalty: $elapsed_t")
         end
-        runinfo.wall_time_elapsed_ideal += isempty(runinfo.blkLinIndex) ? 0.0 : maximum([nlp_soltime[blk] for blk in runinfo.blkLinIndex])
+        runinfo.wall_time_elapsed_ideal += isempty(runinfo.par_order) ? 0.0 : maximum([nlp_soltime[blk] for blk in runinfo.par_order])
         runinfo.wall_time_elapsed_ideal += elapsed_t
     end
     #------------------------------------------------------------------------------------
     function dual_update()
         elapsed_t = @elapsed begin
             maxviol_t = 0.0; maxviol_c = 0.0
-            for blk in runinfo.blkLinIndex
+            for blk in runinfo.par_order
                 block = opfBlockData.blkIndex[blk]
                 k = block[1]
                 t = block[2]
-                if is_my_work(blk, comm)
+                if ismywork(blk, comm)
                     lmaxviol_t, lmaxviol_c = update_dual_vars(λ, opfdata, opfBlockData, blk, x, modelinfo, algparams)
                     maxviol_t = max(maxviol_t, lmaxviol_t)
                     maxviol_c = max(maxviol_c, lmaxviol_c)
@@ -284,16 +251,12 @@ function optimize!(
           print_timings && println("update_dual_vars(): $elapsed_t")
         end
         elapsed_t = @elapsed begin
-            requests_ramp = comm_neighbors!(λ.ramping, opfBlockData, runinfo, CommPatternT(), comm)
-            if algparams.decompCtgs
-                requests_ctgs = comm_neighbors!(λ.ctgs, opfBlockData, runinfo, CommPatternK(), comm)
-                comm_wait!(requests_ctgs)
-            end
-            comm_wait!(requests_ramp)
+            requests = comm_neighbors!(λ.ramping, opfBlockData, runinfo, comm)
             maxviol_t = comm_max(maxviol_t, comm)
             maxviol_c = comm_max(maxviol_c, comm)
             push!(runinfo.maxviol_t, maxviol_t)
             push!(runinfo.maxviol_c, maxviol_c)
+            comm_wait!(requests)
             print_timings && comm_barrier(comm)
         end
         if comm_rank(comm) == 0
@@ -306,8 +269,9 @@ function optimize!(
     function proximal_parameter_update()
         elapsed_t = @elapsed begin
             if algparams.updateτ && runinfo.iter > 1
+                maxθ = algparams.decompCtgs  ? max(algparams.θ_t, algparams.θ_c) : algparams.θ_t
                 delta = (runinfo.lyapunov[end-1] - runinfo.lyapunov[end])/abs(runinfo.lyapunov[end])
-                if delta < -1e-4 && algparams.τ < ((2*k_per_block*T) - 1)*maxρ(modelinfo, algparams)
+                if delta < -1e-4 && algparams.τ < 320.0*maxθ
                     algparams.τ *= 2.0
                 end
             end
@@ -350,10 +314,10 @@ function optimize!(
             if algparams.updateρ_t
                 if runinfo.maxviol_t[end] > 10.0*runinfo.maxviol_d[end] && algparams.ρ_t < 32.0*algparams.θ_t
                     algparams.ρ_t = min(2.0*algparams.ρ_t, 32.0*algparams.θ_t)
-                    algparams.τ = τ_default(modelinfo, algparams)
+                    algparams.τ = 2.0*algparams.ρ_t
                 elseif runinfo.maxviol_d[end] > 10.0*runinfo.maxviol_t[end]
                     algparams.ρ_t *= 0.5
-                    algparams.τ = τ_default(modelinfo, algparams)
+                    algparams.τ = 2.0*algparams.ρ_t
                 end
             end
 
@@ -362,10 +326,10 @@ function optimize!(
                 @info "tau-update not finalized when decompCtgs = true" maxlog=1
                 if runinfo.maxviol_c[end] > 10.0*runinfo.maxviol_d[end] && algparams.ρ_c < 32.0*algparams.θ_c
                     algparams.ρ_c = min(2.0*algparams.ρ_c, 32.0*algparams.θ_c)
-                    algparams.τ = τ_default(modelinfo, algparams)
+                    algparams.τ = 2.0*max(algparams.ρ_t, algparams.ρ_c)
                 elseif runinfo.maxviol_d[end] > 10*runinfo.maxviol_c[end]
                     algparams.ρ_c *= 0.5
-                    algparams.τ = τ_default(modelinfo, algparams)
+                    algparams.τ = 2.0*max(algparams.ρ_t, algparams.ρ_c)
                 end
             end
         end
@@ -377,6 +341,16 @@ function optimize!(
     algparams.init_opf && opf_initialization!(nlp)
 
     function iteration()
+
+        if runinfo.initial_solve
+            if runinfo.iter == 1
+                algparams.ρ_t = 0.0
+                algparams.ρ_c = 0.0
+                algparams.τ = 0.0
+            elseif runinfo.iter == 2
+                algparams = deepcopy(algparams_copy)
+            end
+        end
 
         # use this to compute the KKT error at the end of the loop
         runinfo.xprev = deepcopy(x)
@@ -419,7 +393,7 @@ function optimize!(
     return runinfo
 end
 
-function opf_initialization!(nlp::ProxALEvaluator)
+function opf_initialization!(nlp::LinearizedProxALEvaluator)
     runinfo   = nlp.problem
     modelinfo = nlp.modelinfo
     opfdata   = nlp.opfdata
