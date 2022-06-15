@@ -266,7 +266,7 @@ function opf_model_add_ctgs_linking_constraints(opfmodel::JuMP.Model, opfdata::O
 
         if modelinfo.ctgs_link_constr_type == :corrective_inequality
             @constraint(opfmodel, ctgs_p[g=1:ngen,k=2:K,t=1:T], link[:ctgs_p][g,k,t] <= 0)
-            @constraint(opfmodel, ctgs_n[g=1:ngen,k=2:K,t=1:T], link[:ctgs_p][g,k,t] <= 0)
+            @constraint(opfmodel, ctgs_n[g=1:ngen,k=2:K,t=1:T], link[:ctgs_n][g,k,t] <= 0)
         else
             @constraint(opfmodel, ctgs[g=1:ngen,k=2:K,t=1:T], link[:ctgs][g,k,t] == 0)
         end
