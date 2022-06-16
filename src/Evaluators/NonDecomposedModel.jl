@@ -28,6 +28,28 @@ function NonDecomposedModel(
     space::AbstractBackend=JuMPBackend(),
 )
     rawdata = RawData(case_file, load_file)
+    return NonDecomposedModel(rawdata, modelinfo, algparams, space)
+end
+
+"""
+    NonDecomposedModel(
+        rawdata::RawData
+        modelinfo::ModelInfo,
+        algparams::AlgParams,
+        space::AbstractBackend=JuMPBackend(),
+    )
+
+Instantiate non-decomposed multi-period ACOPF instance
+using `rawdata` with model parameters
+`modelinfo` and algorithm parameters `algparams`.
+
+"""
+function NonDecomposedModel(
+    rawdata::RawData,
+    modelinfo::ModelInfo,
+    algparams::AlgParams,
+    space::AbstractBackend=JuMPBackend(),
+)
     opfdata = opf_loaddata(
         rawdata;
         time_horizon_start = modelinfo.time_horizon_start,

@@ -33,6 +33,30 @@ function ProxALEvaluator(
     comm::Union{MPI.Comm,Nothing} = MPI.COMM_WORLD
 )
     rawdata = RawData(case_file, load_file)
+    return ProxALEvaluator(rawdata, modelinfo, algparams, space, comm)
+end
+
+"""
+    ProxALEvaluator(
+        rawdata::RawData,
+        modelinfo::ModelInfo,
+        algparams::AlgParams,
+        space::AbstractBackend = JuMPBackend(),
+        comm::Union{MPI.Comm,Nothing} = MPI.COMM_WORLD
+    )
+
+Instantiate multi-period ACOPF using `rawdata` with model parameters
+`modelinfo`, algorithm parameters `algparams`, modeling backend `space`, and
+a MPI communicator `comm`.
+
+"""
+function ProxALEvaluator(
+    rawdata::RawData,
+    modelinfo::ModelInfo,
+    algparams::AlgParams,
+    space::AbstractBackend=JuMPBackend(),
+    comm::Union{MPI.Comm,Nothing} = MPI.COMM_WORLD
+)
     opfdata = opf_loaddata(
         rawdata;
         time_horizon_start = modelinfo.time_horizon_start,
