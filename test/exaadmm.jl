@@ -53,15 +53,8 @@ has_cuda_gpu() && push!(USE_GPUS, true)
     env.params.inner_iterlim = 1000
     env.params.verbose = 0
 
-    rho = rand()
-    tau = rand()
-    AB.set_proximal_term!(model, tau)
-    @test model.tau == tau
-    AB.set_penalty!(model, rho)
-    @test model.rho == rho
-
-    smax = RAMP_AGC
-    AB.set_upper_bound_slack!(model, smax)
+    copyto!(model.smin, zeros(3))
+    copyto!(model.smax, RAMP_AGC)
     AB.set_active_load!(model, LOADS[t]["pd"])
     AB.set_reactive_load!(model, LOADS[t]["qd"])
 
