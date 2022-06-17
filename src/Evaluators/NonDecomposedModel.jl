@@ -73,9 +73,11 @@ function optimize!(nlp::NonDecomposedModel)
 
     opfmodel = opf_model_nondecomposed(nlp.opfdata, nlp.rawdata, nlp.modelinfo, nlp.algparams)
     result = opf_solve_nondecomposed(opfmodel, nlp.opfdata, nlp.modelinfo, nlp.algparams)
-    nlp.problem.x = result["primal"]
-    nlp.problem.wall_time_elapsed_actual = result["solve_time"]
-    push!(nlp.problem.objvalue, objective_value(opfmodel))
+    if !isa(result, Nothing)
+        nlp.problem.x = result["primal"]
+        nlp.problem.wall_time_elapsed_actual = result["solve_time"]
+        push!(nlp.problem.objvalue, objective_value(opfmodel))
+    end
     return nlp.problem
 end
 
