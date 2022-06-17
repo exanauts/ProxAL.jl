@@ -65,8 +65,8 @@ function ProxALEvaluator(
         ramp_scale = modelinfo.ramp_scale,
         corr_scale = modelinfo.corr_scale
     )
-    if modelinfo.time_link_constr_type != :penalty
-        @warn("ProxAL is guaranteed to converge only when time_link_constr_type = :penalty\n"*
+    if modelinfo.time_link_constr_type ∉ [:frequency_recovery, :penalty]
+        @warn("ProxAL is guaranteed to converge only when time_link_constr_type ∈ [:frequency_recovery, :penalty]\n"*
               "         Forcing time_link_constr_type = :penalty\n")
         modelinfo.time_link_constr_type = :penalty
     end
@@ -146,6 +146,7 @@ function optimize!(
         algparams.τ = τ_default(modelinfo, algparams)
     end
 
+    pgref_model = nothing
     opfBlockData = runinfo.opfBlockData
     nlp_opt_sol = runinfo.nlp_opt_sol
     nlp_soltime = runinfo.nlp_soltime
@@ -410,6 +411,62 @@ function optimize!(
         runinfo.wall_time_elapsed_actual += elapsed_t
         runinfo.wall_time_elapsed_ideal += elapsed_t
     end
+    #------------------------------------------------------------------------------------
+    function pgref_update()
+        elapsed_t = @elapsed begin
+            if modelinfo.time_link_constr_type == :frequency_recovery
+                requests = comm_neighbors!(λ.ramping, opfBlockData, runinfo, CommPatternA(), comm); comm_wait!(requests)
+                requests = comm_neighbors!(x.Pg[:,1,:], opfBlockData, runinfo, CommPatternA(), comm); comm_wait!(requests)
+                requests = comm_neighbors!(x.Zt, opfBlockData, runinfo, CommPatternA(), comm); comm_wait!(requests)
+
+                for blk in runinfo.blkLinIndex
+                    block = opfBlockData.blkIndex[blk]
+                    k = block[1]
+                    t = block[2]
+                    if is_my_work(blk, comm) && k == 1 # only do this work for the base case
+                        if isa(pgref_model, Nothing)
+                            pgref_model = JuMP.Model(algparams.optimizer)
+
+                            @variable(pgref_model, Pr[1:ngen,1:T])
+                            @variable(pgref_model, -1 <= ωt[1:T] <= 1, start = 0)
+                            for g=1:ngen,t=1:T
+                                set_upper_bound(Pr[g,t], opfdata.Pgmax[g,t])
+                                set_lower_bound(Pr[g,t], opfdata.generators[g].Pmin)
+                                set_start_value(Pr[g,t], 0.5*(opfdata.Pgmax[g,t] + opfdata.generators[g].Pmin))
+                            end
+
+                            @constraint(pgref_model, [g=1:ngen,t=2:T], +Pr[g,t-1] - Pr[g,t] <= opfdata.generators[g].ramp_agc)
+                            @constraint(pgref_model, [g=1:ngen,t=2:T], -Pr[g,t-1] + Pr[g,t] <= opfdata.generators[g].ramp_agc)
+                        end
+                        Pr = pgref_model[:Pr]
+                        ωt = pgref_model[:ωt]
+
+
+                        # objective
+                        @objective(pgref_model, Min,
+                            sum(    λ.ramping[g,t]*(x.Pg[g,1,t] - Pr[g,t] - (opfdata.generators[g].alpha*ωt[t]) + x.Zt[g,t])
+                                +0.5*algparams.ρ_t*(x.Pg[g,1,t] - Pr[g,t] - (opfdata.generators[g].alpha*ωt[t]) + x.Zt[g,t])^2
+                                +0.5*algparams.τ*(Pr[g,t] - x.Pr[g,t])^2
+                                for g=1:ngen, t=1:T)
+                            +0.5*modelinfo.obj_scale*modelinfo.weight_freq_ctrl*sum(ωt[t]^2 for t=1:T)
+                        )
+
+                        JuMP.optimize!(pgref_model)
+                        if termination_status(pgref_model) ∉ MOI_OPTIMAL_STATUSES
+                            @warn("pgref_update() subproblem not solved to optimality. status: $status")
+                        end
+                        if !has_values(pgref_model)
+                            error("no solution vector available in pgref_update() subproblem")
+                        end
+
+                        x.Pr .= JuMP.value.(pgref_model[:Pr])
+                        x.ωt[1,:] .= JuMP.value.(pgref_model[:ωt])
+                    end
+                end
+            end
+        end
+
+    end
 
     # Initialization of Pg, Qg, Vm, Va via a OPF solve
     algparams.init_opf && opf_initialization!(nlp)
@@ -419,6 +476,9 @@ function optimize!(
         # use this to compute the KKT error at the end of the loop
         runinfo.xprev = deepcopy(x)
         runinfo.λprev = deepcopy(λ)
+
+        # Primal update of pg_ref (frequency_recovery)
+        pgref_update()
 
         # Primal update
         for _ in 1:algparams.num_sweeps

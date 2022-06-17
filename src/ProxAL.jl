@@ -87,7 +87,11 @@ function update_primal_nlpvars(
 
     from = 1+to
     to = to + length(range_k)
-    @views x.ωt[range_k,t] .= opfBlockData.colValue[from:to,blk]
+    if modelinfo.time_link_constr_type != :frequency_recovery || (algparams.decompCtgs && k > 1)
+        @views x.ωt[range_k,t] .= opfBlockData.colValue[from:to,blk]
+    elseif !algparams.decompCtgs && modelinfo.num_ctgs > 0
+        @views x.ωt[2:end,t] .= opfBlockData.colValue[1+from:to,blk]
+    end
 
     from = 1+to
     to = to + size(x.St, 1)
@@ -129,6 +133,12 @@ function update_primal_penalty(
     k = block[1]
     t = block[2]
 
+    if k == 1 && modelinfo.time_link_constr_type == :frequency_recovery
+        β = [opfdata.generators[g].alpha*x.ωt[1,t] for g=1:ngen]
+        @views x.Zt[:,t] .= (((algparams.ρ_t/32.0)*primal.Zt[:,t]) .- dual.ramping[:,t] .-
+                                (algparams.ρ_t*(x.Pg[:,1,t] .- x.Pr[:,t] .- β))
+                            ) ./  max(algparams.zero, (algparams.ρ_t/32.0) + algparams.ρ_t + (modelinfo.obj_scale*algparams.θ_t))
+    end
     if t > 1 && k == 1 && modelinfo.time_link_constr_type == :penalty
         β = [opfdata.generators[g].ramp_agc for g=1:ngen]
         @views x.Zt[:,t] .= (((algparams.ρ_t/32.0)*primal.Zt[:,t]) .- dual.ramping[:,t] .-
@@ -170,8 +180,9 @@ function update_dual_vars(
 
     maxviol_t, maxviol_c = 0.0, 0.0
 
-    if t > 1 || (k > 1 && algparams.decompCtgs)
+    if true
         d = Dict(:Pg => primal.Pg,
+                 :Pr => primal.Pr,
                  :ωt => primal.ωt,
                  :St => primal.St,
                  :Zt => primal.Zt,
@@ -179,8 +190,8 @@ function update_dual_vars(
                  :Zk => primal.Zk)
     end
 
-    if t > 1 && k == 1
-        @assert modelinfo.time_link_constr_type == :penalty
+    if k == 1 && ((t > 1 && modelinfo.time_link_constr_type == :penalty) ||  modelinfo.time_link_constr_type == :frequency_recovery)
+        # @assert modelinfo.time_link_constr_type == :penalty
         link_constr = compute_time_linking_constraints(d, opfdata, modelinfo, t)
         λ.ramping[:,t] += algparams.ρ_t*link_constr[:ramping][:]
         maxviol_t = maximum(abs.(link_constr[:ramping][:]))

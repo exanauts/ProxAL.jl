@@ -32,6 +32,7 @@ abstract type AbstractCommPattern end
 struct CommPatternTK <: AbstractCommPattern end
 struct CommPatternT <: AbstractCommPattern end
 struct CommPatternK <: AbstractCommPattern end
+struct CommPatternA <: AbstractCommPattern end
 
 """
     is_comm_pattern(t, tn, k, kn, pattern)
@@ -54,6 +55,13 @@ function is_comm_pattern(t, tn, k, kn, ::CommPatternT)
     return (
         # Neighboring periods and base case (k == 1)
         ((tn == t-1 || tn == t+1) && kn == 1 && k == 1)
+    )
+end
+
+function is_comm_pattern(t, tn, k, kn, ::CommPatternA)
+    return (
+        # All periods and base case (k == 1)
+        (tn != t && kn == 1 && k == 1)
     )
 end
 
@@ -88,7 +96,7 @@ function comm_neighbors!(data::AbstractArray{T,2}, blocks::AbstractBlocks, runin
                     if isa(pattern, CommPatternTK)
                         sbuf = @view data[:,blk]
                         rbuf = @view data[:,blkn]
-                    elseif isa(pattern, CommPatternT)
+                    elseif isa(pattern, CommPatternT) || isa(pattern, CommPatternA)
                         sbuf = @view data[:,t]
                         rbuf = @view data[:,tn]
                     else
