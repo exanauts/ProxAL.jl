@@ -1,4 +1,3 @@
-using Revise
 using Test
 using ProxAL
 using DelimitedFiles, Printf
@@ -35,7 +34,7 @@ modelinfo.obj_scale = 1e-4
 
 # Algorithm settings
 algparams = AlgParams()
-algparams.verbose = 1
+algparams.verbose = 0
 algparams.optimizer =
                 optimizer_with_attributes(Ipopt.Optimizer,
                     "print_level" => 0)
@@ -78,24 +77,18 @@ end
                 modelinfo.num_ctgs = K
                 OPTIMAL_OBJVALUE = 11258.31609659974*modelinfo.obj_scale
                 OPTIMAL_PG = round.([0.8979870696290546, 1.3432060116663056, 0.9418738104926565, 0.9840203270260095, 1.4480400985949127, 1.014963887857111], digits = 5)
-                ALPHA = zeros(3,T)
 
                 if solver == "Ipopt"
                     @testset "Non-decomposed formulation" begin
                         algparams.mode = :nondecomposed
                         algparams.θ_t = algparams.θ_c = (1/algparams.tol)^2
                         nlp = NonDecomposedModel(case_file, load_file, modelinfo, algparams)
-                        result = ProxAL.optimize!(nlp)
-                        # for g=1:3,t=1:T
-                        #     ALPHA[g,t] = nlp.opfdata.generators[g].alpha
-                        # end
-                        # CHECK = result["primal"].Pg[:,1,:] .- result["primal"].Pr .- (ALPHA.*result["primal"].ωt)
-                        # @show(result["objective_value_nondecomposed"], result["primal"].Pg[:], result["primal"].Pr[:], result["primal"].ωt[:])
-                        @test isapprox(result["objective_value_nondecomposed"], OPTIMAL_OBJVALUE, rtol = rtol)
-                        @test isapprox(result["primal"].Pg[:], OPTIMAL_PG, rtol = rtol)
-                        @test isapprox(result["primal"].Pr[:], OPTIMAL_PG, rtol = rtol)
-                        @test norm(result["primal"].ωt[:], Inf) <= 1e-4
-                        @test norm(result["primal"].Zt[:], Inf) <= algparams.tol
+                        runinfo = ProxAL.optimize!(nlp)
+                        @test isapprox(runinfo.objvalue[end], OPTIMAL_OBJVALUE, rtol = rtol)
+                        @test isapprox(runinfo.x.Pg[:], OPTIMAL_PG, rtol = rtol)
+                        @test isapprox(runinfo.x.Pr[:], OPTIMAL_PG, rtol = rtol)
+                        @test norm(runinfo.x.ωt[:], Inf) <= 1e-4
+                        @test norm(runinfo.x.Zt[:], Inf) <= algparams.tol
                     end
                 end
 
@@ -103,9 +96,6 @@ end
                     algparams.mode = :coldstart
                     nlp = ProxALEvaluator(case_file, load_file, modelinfo, algparams, backend, use_MPI ? MPI.COMM_WORLD : nothing)
                     runinfo = ProxAL.optimize!(nlp)
-                    # CHECK = runinfo.x.Pg[:,1,:] .- runinfo.x.Pr .- (ALPHA.*runinfo.x.ωt)
-                    # @show(runinfo.objvalue[end], runinfo.x.Pg[:], runinfo.x.ωt[:])
-                    # @show(maximum(abs.(runinfo.x.Pr[:] .- OPTIMAL_PR)))
                     @test isapprox(runinfo.objvalue[end], OPTIMAL_OBJVALUE, rtol = rtol)
                     if !use_MPI || is_my_work(1, MPI.COMM_WORLD)
                         @test isapprox(runinfo.x.Pg[:], OPTIMAL_PG, rtol = rtol)
@@ -151,12 +141,12 @@ end
                             algparams.mode = :nondecomposed
                             algparams.θ_t = algparams.θ_c = (1/algparams.tol)^2
                             nlp = NonDecomposedModel(case_file, load_file, modelinfo, algparams)
-                            result = ProxAL.optimize!(nlp)
-                            @test isapprox(result["objective_value_nondecomposed"], OPTIMAL_OBJVALUE, rtol = rtol)
-                            @test isapprox(result["primal"].Pg[:,1,:][:], OPTIMAL_PG, rtol = rtol)
-                            @test isapprox(result["primal"].Pr[:], OPTIMAL_PG, rtol = rtol)
-                            @test norm(result["primal"].ωt[:], Inf) <= 1e-4
-                            @test norm(result["primal"].Zt[:], Inf) <= algparams.tol
+                            runinfo = ProxAL.optimize!(nlp)
+                            @test isapprox(runinfo.objvalue[end], OPTIMAL_OBJVALUE, rtol = rtol)
+                            @test isapprox(runinfo.x.Pg[:,1,:][:], OPTIMAL_PG, rtol = rtol)
+                            @test isapprox(runinfo.x.Pr[:], OPTIMAL_PG, rtol = rtol)
+                            @test norm(runinfo.x.ωt[:], Inf) <= 1e-4
+                            @test norm(runinfo.x.Zt[:], Inf) <= algparams.tol
                         end
 
                         @testset "ProxAL" begin
@@ -188,13 +178,13 @@ end
                             algparams.mode = :nondecomposed
                             algparams.θ_t = algparams.θ_c = (10/algparams.tol)^2
                             nlp = NonDecomposedModel(case_file, load_file, modelinfo, algparams)
-                            result = ProxAL.optimize!(nlp)
-                            @test isapprox(result["objective_value_nondecomposed"], OPTIMAL_OBJVALUE, rtol = rtol)
-                            @test isapprox(result["primal"].Pg[:,1,:][:], OPTIMAL_PG, rtol = rtol)
-                            @test isapprox(result["primal"].Pr[:], OPTIMAL_PG, rtol = rtol)
-                            @test norm(result["primal"].ωt[:], Inf) <= 1e-4
-                            @test norm(result["primal"].Zt[:], Inf) <= algparams.tol
-                            @test norm(result["primal"].Zk[:], Inf) <= algparams.tol
+                            runinfo = ProxAL.optimize!(nlp)
+                            @test isapprox(runinfo.objvalue[end], OPTIMAL_OBJVALUE, rtol = rtol)
+                            @test isapprox(runinfo.x.Pg[:,1,:][:], OPTIMAL_PG, rtol = rtol)
+                            @test isapprox(runinfo.x.Pr[:], OPTIMAL_PG, rtol = rtol)
+                            @test norm(runinfo.x.ωt[:], Inf) <= 1e-4
+                            @test norm(runinfo.x.Zt[:], Inf) <= algparams.tol
+                            @test norm(runinfo.x.Zk[:], Inf) <= algparams.tol
                         end
                     end
 
