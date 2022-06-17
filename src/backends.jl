@@ -194,21 +194,7 @@ function init!(block::JuMPBlockBackend, algparams::AlgParams)
     end
 
     # Add block constraints
-    if !modelinfo.allow_constr_infeas
-        zb = zeros(length(opfdata.buses))
-        zl = zeros(length(opfdata.lines))
-        σ_re = zb
-        σ_im = zb
-        σ_fr = zl
-        σ_to = zl
-    end
     @views for j=1:Kblock
-        if modelinfo.allow_constr_infeas
-            σ_re = opfmodel[:sigma_real][:,j,1]
-            σ_im = opfmodel[:sigma_imag][:,j,1]
-            σ_fr = opfmodel[:sigma_lineFr][:,j,1]
-            σ_to = opfmodel[:sigma_lineTo][:,j,1]
-        end
         opfdata_c = (j == 1) ? opfdata :
             opf_loaddata(block.rawdata;
             lineOff = opfdata.lines[block.rawdata.ctgs_arr[j - 1]],
@@ -217,10 +203,20 @@ function init!(block::JuMPBlockBackend, algparams::AlgParams)
             load_scale = modelinfo.load_scale,
             ramp_scale = modelinfo.ramp_scale,
             corr_scale = modelinfo.corr_scale)
-        opf_model_add_real_power_balance_constraints(opfmodel, opfdata_c, opfmodel[:Pg][:,j,1], opfdata_c.Pd[:,1], opfmodel[:Vm][:,j,1], opfmodel[:Va][:,j,1], σ_re)
-        opf_model_add_imag_power_balance_constraints(opfmodel, opfdata_c, opfmodel[:Qg][:,j,1], opfdata_c.Qd[:,1], opfmodel[:Vm][:,j,1], opfmodel[:Va][:,j,1], σ_im)
-        if modelinfo.allow_line_limits
-            opf_model_add_line_power_constraints(opfmodel, opfdata_c, opfmodel[:Vm][:,j,1], opfmodel[:Va][:,j,1], σ_fr, σ_to)
+        if !modelinfo.allow_constr_infeas
+            zb = zeros(length(opfdata.buses))
+            zl = zeros(length(opfdata.lines))
+            opf_model_add_real_power_balance_constraints(opfmodel, opfdata_c, opfmodel[:Pg][:,j,1], opfdata_c.Pd[:,1], opfmodel[:Vm][:,j,1], opfmodel[:Va][:,j,1], zb)
+            opf_model_add_imag_power_balance_constraints(opfmodel, opfdata_c, opfmodel[:Qg][:,j,1], opfdata_c.Qd[:,1], opfmodel[:Vm][:,j,1], opfmodel[:Va][:,j,1], zb)
+            if modelinfo.allow_line_limits
+                opf_model_add_line_power_constraints(opfmodel, opfdata_c, opfmodel[:Vm][:,j,1], opfmodel[:Va][:,j,1], zl, zl)
+            end
+        else
+            if modelinfo.allow_line_limits
+                opf_model_add_squared_penalty_constraints(opfmodel, opfdata_c, opfmodel[:Pg][:,j,1], opfmodel[:Qg][:,j,1], opfdata_c.Pd[:,1], opfdata_c.Qd[:,1], opfmodel[:Vm][:,j,1], opfmodel[:Va][:,j,1], opfmodel[:sigma][j,1], opfmodel[:sigma_lineFr][:,j,1], opfmodel[:sigma_lineTo][:,j,1])
+            else
+                opf_model_add_squared_penalty_constraints(opfmodel, opfdata_c, opfmodel[:Pg][:,j,1], opfmodel[:Qg][:,j,1], opfdata_c.Pd[:,1], opfdata_c.Qd[:,1], opfmodel[:Vm][:,j,1], opfmodel[:Va][:,j,1], opfmodel[:sigma][j,1], nothing, nothing)
+            end
         end
     end
     return opfmodel
@@ -245,7 +241,7 @@ function get_solution(block::JuMPBlockBackend)
     opfmodel = block.model
     blk = block.id
     status = termination_status(opfmodel)
-    if status ∉ MOI_OPTIMAL_STATUSES
+    if status ∉ MOI_OPTIMAL_STATUSES # && status != MOI.ITERATION_LIMIT
         @warn("Block $blk subproblem not solved to optimality. status: $status")
     end
     if !has_values(opfmodel)
