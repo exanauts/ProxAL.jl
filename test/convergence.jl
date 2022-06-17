@@ -29,17 +29,18 @@ modelinfo.allow_obj_gencost = true
 modelinfo.allow_constr_infeas = false
 modelinfo.weight_freq_ctrl = 0.1
 modelinfo.time_link_constr_type = :penalty
+modelinfo.obj_scale = 1e-4
 
 # Algorithm settings
 algparams = AlgParams()
 algparams.verbose = 0
 
-solver_list = ["Ipopt", "ExaAdmm"]
-# TODO: MadNLP broken currently
-# solver_list = ["Ipopt", "MadNLP"]
-# if CUDA.has_cuda_gpu()
-#     push!(solver_list, "MadNLPGPU")
-# end
+solver_list = ["Ipopt", "ExaAdmmCPU"]
+if CUDA.has_cuda_gpu()
+    # TODO: MadNLP broken currently
+    # push!(solver_list, "MadNLPGPU")
+    push!(solver_list, "ExaAdmmGPU")
+end
 if isfile(joinpath(dirname(@__FILE__), "..", "build/libhiop.so"))
     push!(solver_list, "Hiop")
     ENV["JULIA_HIOP_LIBRARY_PATH"] = joinpath(dirname(@__FILE__), "..", "build")
@@ -59,10 +60,16 @@ end
                 optimizer_with_attributes(Ipopt.Optimizer,
                     "print_level" => Int64(algparams.verbose > 0)*5)
         end
-        if solver == "ExaAdmm"
+        if solver == "ExaAdmmCPU"
             backend = AdmmBackend()
             algparams.tron_outer_iterlim=2000
             algparams.tron_outer_eps=1e-6
+        end
+        if solver == "ExaAdmmGPU"
+            backend = AdmmBackend()
+            algparams.tron_outer_iterlim=2000
+            algparams.tron_outer_eps=1e-6
+            algparams.device = ProxAL.CUDADevice
         end
 
 
@@ -80,10 +87,10 @@ end
                         algparams.mode = :nondecomposed
                         algparams.θ_t = algparams.θ_c = (1/algparams.tol)^2
                         nlp = NonDecomposedModel(case_file, load_file, modelinfo, algparams)
-                        result = ProxAL.optimize!(nlp)
-                        @test isapprox(result["objective_value_nondecomposed"], OPTIMAL_OBJVALUE, rtol = rtol)
-                        @test isapprox(result["primal"].Pg[:], OPTIMAL_PG, rtol = rtol)
-                        @test norm(result["primal"].Zt[:], Inf) <= algparams.tol
+                        runinfo = ProxAL.optimize!(nlp)
+                        @test isapprox(runinfo.objvalue[end], OPTIMAL_OBJVALUE, rtol = rtol)
+                        @test isapprox(runinfo.x.Pg[:], OPTIMAL_PG, rtol = rtol)
+                        @test norm(runinfo.x.Zt[:], Inf) <= algparams.tol
                     end
                 end
 
@@ -123,7 +130,7 @@ end
                     OPTIMAL_WT = [0.0, 0.0, 0.0, 0.0]
                     proxal_ctgs_link = :corrective_penalty
                 end
-                if solver == "ExaAdmm" && proxal_ctgs_link != :corrective_penalty
+                if contains(solver, "ExaAdmm") && proxal_ctgs_link == :frequency_penalty
                     continue
                 end
 
@@ -135,11 +142,11 @@ end
                             algparams.mode = :nondecomposed
                             algparams.θ_t = algparams.θ_c = (1/algparams.tol)^2
                             nlp = NonDecomposedModel(case_file, load_file, modelinfo, algparams)
-                            result = ProxAL.optimize!(nlp)
-                            @test isapprox(result["objective_value_nondecomposed"], OPTIMAL_OBJVALUE, rtol = rtol)
-                            @test isapprox(result["primal"].Pg[:,1,:][:], OPTIMAL_PG, rtol = rtol)
-                            @test norm(result["primal"].Zt[:], Inf) <= algparams.tol
-                            @test isapprox(result["primal"].ωt[:], OPTIMAL_WT, rtol = 1e-1)
+                            runinfo = ProxAL.optimize!(nlp)
+                            @test isapprox(runinfo.objvalue[end], OPTIMAL_OBJVALUE, rtol = rtol)
+                            @test isapprox(runinfo.x.Pg[:,1,:][:], OPTIMAL_PG, rtol = rtol)
+                            @test isapprox(runinfo.x.ωt[:], OPTIMAL_WT, rtol = 1e-1)
+                            @test norm(runinfo.x.Zt[:], Inf) <= algparams.tol
                         end
 
                         @testset "ProxAL" begin
@@ -169,11 +176,11 @@ end
                             algparams.mode = :nondecomposed
                             algparams.θ_t = algparams.θ_c = (10/algparams.tol)^2
                             nlp = NonDecomposedModel(case_file, load_file, modelinfo, algparams)
-                            result = ProxAL.optimize!(nlp)
-                            @test isapprox(result["objective_value_nondecomposed"], OPTIMAL_OBJVALUE, rtol = rtol)
-                            @test isapprox(result["primal"].Pg[:,1,:][:], OPTIMAL_PG, rtol = rtol)
-                            @test norm(result["primal"].Zt[:], Inf) <= algparams.tol
-                            @test norm(result["primal"].Zk[:], Inf) <= algparams.tol
+                            runinfo = ProxAL.optimize!(nlp)
+                            @test isapprox(runinfo.objvalue[end], OPTIMAL_OBJVALUE, rtol = rtol)
+                            @test isapprox(runinfo.x.Pg[:,1,:][:], OPTIMAL_PG, rtol = rtol)
+                            @test norm(runinfo.x.Zt[:], Inf) <= algparams.tol
+                            @test norm(runinfo.x.Zk[:], Inf) <= algparams.tol
                         end
                     end
 

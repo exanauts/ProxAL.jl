@@ -25,10 +25,5 @@ testdir = @__DIR__
             run(`$cmd -n 2 $(Base.julia_cmd()) --project=$testdir/.. $testdir/convergence.jl 1`)
         end
         @test true
-
-        mpiexec() do cmd
-            run(`$cmd -n 1 $(Base.julia_cmd()) --project=$testdir/.. $testdir/convergence.jl 1`)
-        end
-        @test true
     end
 end

@@ -49,7 +49,6 @@ Specifies ProxAL's algorithmic parameters.
 | `verbose_inner::Int` | Verbose level for `ExaTronBackend()` | 0
 | `tron_rho_pq::Float64` | Parameter for `ExaTronBackend()` | 4e2
 | `tron_rho_pa::Float64` | Parameter for `ExaTronBackend()` | 4e4
-| `tron_scale::Float64` | Parameter for `ExaTronBackend()` | 1e-4
 | `tron_inner_iterlim::Int` | Parameter for `ExaTronBackend()` | 800
 | `tron_outer_iterlim::Int` | Parameter for `ExaTronBackend()` | 20
 | `tron_outer_eps::Float64` | Parameter for `ExaTronBackend()` | 1e-4
@@ -80,7 +79,6 @@ Base.@kwdef mutable struct AlgParams
     verbose_inner::Int      = 0
     tron_rho_pq::Float64    = 4e2
     tron_rho_pa::Float64    = 4e4
-    tron_scale::Float64     = 1.0
     tron_inner_iterlim::Int = 800
     tron_outer_iterlim::Int = 20
     tron_outer_eps::Float64 = 1e-4

@@ -33,6 +33,30 @@ function ProxALEvaluator(
     comm::Union{MPI.Comm,Nothing} = MPI.COMM_WORLD
 )
     rawdata = RawData(case_file, load_file)
+    return ProxALEvaluator(rawdata, modelinfo, algparams, space, comm)
+end
+
+"""
+    ProxALEvaluator(
+        rawdata::RawData,
+        modelinfo::ModelInfo,
+        algparams::AlgParams,
+        space::AbstractBackend = JuMPBackend(),
+        comm::Union{MPI.Comm,Nothing} = MPI.COMM_WORLD
+    )
+
+Instantiate multi-period ACOPF using `rawdata` with model parameters
+`modelinfo`, algorithm parameters `algparams`, modeling backend `space`, and
+a MPI communicator `comm`.
+
+"""
+function ProxALEvaluator(
+    rawdata::RawData,
+    modelinfo::ModelInfo,
+    algparams::AlgParams,
+    space::AbstractBackend=JuMPBackend(),
+    comm::Union{MPI.Comm,Nothing} = MPI.COMM_WORLD
+)
     opfdata = opf_loaddata(
         rawdata;
         time_horizon_start = modelinfo.time_horizon_start,
@@ -46,20 +70,35 @@ function ProxALEvaluator(
               "         Forcing time_link_constr_type = :penalty\n")
         modelinfo.time_link_constr_type = :penalty
     end
+    if modelinfo.num_ctgs > 1 && !algparams.decompCtgs
+        if isa(space, ExaAdmmBackend)
+            @warn("ProxAL with multiple contingencies and $space "*
+                  "is guaranteed to converge only when AlgParams.decompCtgs = true\n"*
+                  "     Forcing AlgParams.decompCtgs = true\n")
+            algparams.decompCtgs = true
+        else
+            error("Multiple contingencies not supported by backend: $space")
+        end
+    end
     if modelinfo.num_ctgs > 1 && algparams.decompCtgs
-        if modelinfo.ctgs_link_constr_type ∉ [:frequency_penalty, :preventive_penalty, :corrective_penalty]
-            str = "ProxAL is guaranteed to converge only when "*
-                  "ctgs_link_constr_type ∈ [:frequency_penalty, :preventive_penalty, :corrective_penalty]\n"
-            if modelinfo.ctgs_link_constr_type == :preventive_equality
-                @warn(str * "         Forcing ctgs_link_constr_type = :preventive_penalty\n")
-                modelinfo.ctgs_link_constr_type = :preventive_penalty
+        if isa(space, JuMPBackend)
+            allowed = [:frequency_penalty, :preventive_penalty, :corrective_penalty]
+        elseif isa(space, AdmmBackend)
+            allowed = [:preventive_penalty, :corrective_penalty]
+        else
+            error("Multiple contingencies not supported by backend: $space")
+        end
+        if modelinfo.ctgs_link_constr_type ∉ allowed
+            if modelinfo.ctgs_link_constr_type == :frequency_equality
+                modelinfo.ctgs_link_constr_type = :frequency_penalty
             elseif modelinfo.ctgs_link_constr_type ∈ [:corrective_equality, :corrective_inequality]
-                @warn(str * "         Forcing ctgs_link_constr_type = :corrective_penalty\n")
                 modelinfo.ctgs_link_constr_type = :corrective_penalty
             else
-                @warn(str * "         Forcing ctgs_link_constr_type = :frequency_penalty\n")
-                modelinfo.ctgs_link_constr_type = :frequency_penalty
+                modelinfo.ctgs_link_constr_type = :preventive_penalty
             end
+            @warn("ProxAL with $space is guaranteed to converge only when "*
+                  "ctgs_link_constr_type in $allowed\n"*
+                  "     Forcing ctgs_link_constr_type = $(modelinfo.ctgs_link_constr_type)\n")
         end
     end
 

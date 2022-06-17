@@ -532,8 +532,6 @@ struct AdmmBlockBackend <: AbstractBlockModel
     T::Int
     data::OPFData
     params::ModelInfo
-    tron_scale::Float64
-    objective_scaling::Float64
 end
 
 # Map ProxAL's data to ExaTron's data
@@ -608,45 +606,43 @@ function AdmmBlockBackend(
         verbose=algparams.verbose_inner,
     )
 
-    env.params.obj_scale = algparams.tron_scale
     env.params.outer_eps = algparams.tron_outer_eps
     env.params.outer_iterlim = algparams.tron_outer_iterlim
     env.params.inner_iterlim = algparams.tron_inner_iterlim
 
     model = ExaAdmmBackend.ModelProxAL(env, t, T)
-    # TODO
-    return AdmmBlockBackend(env, model, blk, k, t, T, opfdata, modelinfo, algparams.tron_scale, modelinfo.obj_scale)
+    return AdmmBlockBackend(env, model, blk, k, t, T, opfdata, modelinfo)
 end
 
 function init!(block::AdmmBlockBackend, algparams::AlgParams)
     opfmodel = block.model
     baseMVA = block.data.baseMVA
-
-    # Get params
     opfdata = block.data
     modelinfo = block.params
     Kblock = modelinfo.num_ctgs + 1
     t, k = block.t, block.k
-    # Generators
     gens = block.data.generators
 
-    # Sanity check
     @assert modelinfo.num_time_periods == 1
     @assert !algparams.decompCtgs || Kblock == 1
 
-    # TODO: currently, only one contingency is supported
-    j = 1
-    pd = opfdata.Pd[:, 1]
-    qd = opfdata.Qd[:, 1]
-    # Pass load to exatron
-    ExaAdmmBackend.set_active_load!(opfmodel, pd)
-    ExaAdmmBackend.set_reactive_load!(opfmodel, qd)
+    # Set loads
+    ExaAdmmBackend.set_active_load!(opfmodel, opfdata.Pd[:, 1])
+    ExaAdmmBackend.set_reactive_load!(opfmodel, opfdata.Qd[:, 1])
 
     # Set bounds on slack variables s
-    if algparams.decompCtgs && modelinfo.ctgs_link_constr_type == :corrective_penalty && k > 1
-        ExaAdmmBackend.set_upper_bound_slack!(opfmodel, 2 .* [g.scen_agc for g in gens])
+    if algparams.decompCtgs && k > 1
+        if modelinfo.ctgs_link_constr_type == :corrective_penalty
+            copyto!(opfmodel.smin, zeros(length(gens)))
+            copyto!(opfmodel.smax, 2.0.*[g.scen_agc for g in gens])
+        else
+            @assert modelinfo.ctgs_link_constr_type == :preventive_penalty
+            copyto!(opfmodel.smin, zeros(length(gens)))
+            copyto!(opfmodel.smax, zeros(length(gens)))
+        end
     else
-        ExaAdmmBackend.set_upper_bound_slack!(opfmodel, 2 .* [g.ramp_agc for g in gens])
+        copyto!(opfmodel.smin, zeros(length(gens)))
+        copyto!(opfmodel.smax, 2.0.*[g.ramp_agc for g in gens])
     end
 
     return opfmodel
@@ -657,111 +653,97 @@ function set_objective!(block::AdmmBlockBackend, algparams::AlgParams,
     model = block.model
     opfdata = block.data
     modelinfo = block.params
-    # Generators
     gens = block.data.generators
     ngen = length(gens)
+    scale = modelinfo.obj_scale
 
     t, k = block.t, block.k
-    ramp_agc = [g.ramp_agc for g in gens]
-
-    # NOTE: ExaTron is solving the unscaled problem.
-    # Need to prescale the penalty and the multipliers
-    σ = block.objective_scaling
-
-    #=
-    # Old interface: this dead code block will be removed eventually
-    # Update current values
-    pgc = primal.Pg[:, k, t]
-    ExaTron.set_proximal_ref!(examodel, pgc)
-    ExaTron.set_proximal_term!(examodel, algparams.τ / σ)
-    ExaTron.set_penalty!(examodel, algparams.ρ_t / σ)
-
-    # Update previous values
-    if t > 1
-        λf = dual.ramping[:, t] ./ σ
-        ExaTron.set_multiplier_last!(examodel, λf)
-        pgf = primal.Pg[:, 1, t-1] .+ primal.Zt[:, t] .- ramp_agc
-        ExaTron.set_proximal_last!(examodel, pgf)
-    end
-
-    # Update next values
-    if t < block.T
-        λt = dual.ramping[:, t+1] ./ σ
-        pgt = primal.Pg[:, 1, t+1] .- primal.St[:, t+1] .- primal.Zt[:, t+1] .+ ramp_agc
-        ExaTron.set_multiplier_next!(examodel, λt)
-        ExaTron.set_proximal_next!(examodel, pgt)
-    end
-    =#
-
-    # Set ExaTron's internal penalties to 0
-    # (we are defining the penalties manually)
-    model.rho = 0.0
-    model.tau = 0.0
-    # Reset Q_ref and c_ref
-    model.Q_ref .= 0.0
-    model.c_ref .= 0.0
-
-    Q_ref = zeros(size(model.Q_ref))
-    c_ref = zeros(size(model.c_ref))
+    ramp = [g.ramp_agc for g in gens]
+    Q_ref = zeros(4*ngen)
+    c_ref = zeros(2*ngen)
 
     index_geners_Q = 1:4:4*ngen
     index_geners_c = 1:2:2*ngen
     index_slacks_c = 2:2:2*ngen
 
     # proximal terms
-    pg_ref = primal.Pg[:, k, t]
-    Q_ref[index_geners_Q] .+= algparams.τ / σ
-    # Move to the GPU
-    c_ref[index_geners_c] .-= algparams.τ .* pg_ref ./ σ
+    Q_ref[index_geners_Q] .+= algparams.τ / scale
+    c_ref[index_geners_c] .-= algparams.τ .* primal.Pg[:,k,t] ./ scale
 
-    # remove generation cost
-    if (k == 1 && !modelinfo.allow_obj_gencost) ||
-        (algparams.decompCtgs && modelinfo.ctgs_link_constr_type == :corrective_penalty && k > 1)
+    # generation cost
+    if k == 1 && modelinfo.allow_obj_gencost
         alpha = [g.coeff[g.n-2]*opfdata.baseMVA^2 for g in gens]
         beta = [g.coeff[g.n-1]*opfdata.baseMVA for g in gens]
-        Q_ref[index_geners_Q] .-= 2.0 * alpha
-        c_ref[index_geners_c] .-= beta
+        Q_ref[index_geners_Q] .+= 2.0 * alpha
+        c_ref[index_geners_c] .+= beta
     end
 
-    # Ramping constraints (t-1, t)
-    if t > 1 && k == 1
-        λf = dual.ramping[:, t] ./ σ
-        pgf = primal.Pg[:, 1, t-1] .+ primal.Zt[:, t] .- ramp_agc
-        Q_ref .+= algparams.ρ_t*repeat([1., -1., -1., 1.], ngen)/σ
-        c_ref[index_geners_c] .-= (pgf .* algparams.ρ_t ./ σ) .+ λf
-        c_ref[index_slacks_c] .+= (pgf .* algparams.ρ_t ./ σ) .+ λf
-    end
+    if modelinfo.time_link_constr_type == :penalty && k == 1
+        # Ramping constraints (t-1, t)
+        if t > 1
+            λf = dual.ramping[:,t] ./ scale
+            pgf = primal.Pg[:,1,t-1] .+ primal.Zt[:,t] .- ramp
+            Q_ref .+= algparams.ρ_t*repeat([1., -1., -1., 1.], ngen)/scale
+            c_ref[index_geners_c] .-= (pgf .* algparams.ρ_t ./ scale) .+ λf
+            c_ref[index_slacks_c] .+= (pgf .* algparams.ρ_t ./ scale) .+ λf
+        end
 
-    # Ramping constraints (t, t+1)
-    if t < block.T && k == 1
-        λt = dual.ramping[:, t+1] ./ σ
-        pgt = primal.Pg[:, 1, t+1] .- primal.St[:, t+1] .- primal.Zt[:, t+1] .+ ramp_agc
-        Q_ref[index_geners_Q] .+= algparams.ρ_t / σ
-        c_ref[index_geners_c] .+= -(pgt .*algparams.ρ_t ./ σ) .+ λt
+        # Ramping constraints (t, t+1)
+        if t < block.T
+            λt = dual.ramping[:,t+1] ./ scale
+            pgt = primal.Pg[:,1,t+1] .- primal.St[:,t+1] .- primal.Zt[:,t+1] .+ ramp
+            Q_ref[index_geners_Q] .+= algparams.ρ_t / scale
+            c_ref[index_geners_c] .+= -(pgt .*algparams.ρ_t ./ scale) .+ λt
+        end
     end
 
     # Contingency linking constraints
-    if algparams.decompCtgs && modelinfo.ctgs_link_constr_type == :corrective_penalty
-        scen_agc = [g.scen_agc for g in gens]
-        K = size(primal.Pg, 2)
+    if algparams.decompCtgs
 
-        # base case
-        if k == 1 && K > 1
-            λc = dropdims(sum(dual.ctgs[:, 2:K, t] ./ σ; dims = 2); dims=2)
-            pgc = dropdims(sum(primal.Pg[:, 2:K, t] .- primal.Sk[:, 2:K, t] .- primal.Zk[:, 2:K, t] .+ scen_agc; dims = 2); dims=2)
-            Q_ref[index_geners_Q] .+= (K - 1)*algparams.ρ_c / σ
-            c_ref[index_geners_c] .+= -(pgc .* algparams.ρ_c ./ σ) .+ λc
+        if modelinfo.ctgs_link_constr_type == :corrective_penalty
+            K = size(primal.Pg, 2)
+            ramp = [g.scen_agc for g in gens]
+
+            # base case
+            if k == 1 && K > 1
+                λc = dropdims(sum(dual.ctgs[:,2:K,t] ./ scale; dims = 2); dims=2)
+                pgc = dropdims(sum(primal.Pg[:,2:K,t] .- primal.Sk[:,2:K,t] .- primal.Zk[:,2:K,t] .+ ramp; dims = 2); dims=2)
+                Q_ref[index_geners_Q] .+= (K - 1)*algparams.ρ_c / scale
+                c_ref[index_geners_c] .+= -(pgc .* algparams.ρ_c ./ scale) .+ λc
+            end
+
+            # contingencies
+            if k > 1
+                λf = dual.ctgs[:,k,t] ./ scale
+                pgf = primal.Pg[:,1,t] .+ primal.Zk[:,k,t] .- ramp
+                Q_ref .+= algparams.ρ_c .* repeat([1., -1., -1., 1.], ngen) ./ scale
+                c_ref[index_geners_c] .-= (pgf .* algparams.ρ_c ./ scale) .+ λf
+                c_ref[index_slacks_c] .+= (pgf .* algparams.ρ_c ./ scale) .+ λf
+            end
         end
 
-        # contingencies
-        if k > 1
-            λf = dual.ctgs[:, k, t] ./ σ
-            pgf = primal.Pg[:, 1, t] .+ primal.Zk[:, k, t] .- scen_agc
-            Q_ref .+= algparams.ρ_c .* repeat([1., -1., -1., 1.], ngen) ./ σ
-            c_ref[index_geners_c] .-= (pgf .* algparams.ρ_c ./ σ) .+ λf
-            c_ref[index_slacks_c] .+= (pgf .* algparams.ρ_c ./ σ) .+ λf
+        if modelinfo.ctgs_link_constr_type == :preventive_penalty
+            K = size(primal.Pg, 2)
+
+            # base case
+            if k == 1 && K > 1
+                λc = dropdims(sum(dual.ctgs[:,2:K,t] ./ scale; dims = 2); dims=2)
+                pgc = dropdims(sum(primal.Pg[:,2:K,t] .- primal.Zk[:,2:K,t]; dims = 2); dims=2)
+                Q_ref[index_geners_Q] .+= (K - 1)*algparams.ρ_c / scale
+                c_ref[index_geners_c] .+= -(pgc .* algparams.ρ_c ./ scale) .+ λc
+            end
+
+            # contingencies
+            if k > 1
+                λf = dual.ctgs[:,k,t] ./ scale
+                pgf = primal.Pg[:,1,t] .+ primal.Zk[:,k,t]
+                Q_ref[index_geners_Q] .+= algparams.ρ_c / scale
+                c_ref[index_geners_c] .-= (pgf .* algparams.ρ_c ./ scale) .+ λf
+            end
         end
     end
+
+
     # Copy to GPU
     copyto!(model.Q_ref, Q_ref)
     copyto!(model.c_ref, c_ref)
@@ -784,7 +766,7 @@ function get_solution(block::AdmmBlockBackend)
     s = ExaAdmmBackend.slack_values(model) |> Array
     solution = (
         status=status,
-        minimum=block.objective_scaling * model.info.objval,
+        minimum=block.params.obj_scale*model.info.objval,
         pg=ExaAdmmBackend.active_power_generation(model, model.solution) |> Array,
         qg=ExaAdmmBackend.reactive_power_generation(model, model.solution) |> Array,
         vm=ExaAdmmBackend.voltage_magnitude(model, model.solution) |> Array,
