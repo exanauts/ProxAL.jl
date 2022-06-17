@@ -641,9 +641,12 @@ function init!(block::AdmmBlockBackend, algparams::AlgParams)
             copyto!(opfmodel.smin, zeros(length(gens)))
             copyto!(opfmodel.smax, zeros(length(gens)))
         end
-    else
+    elseif modelinfo.time_link_constr_type == :penalty
         copyto!(opfmodel.smin, zeros(length(gens)))
         copyto!(opfmodel.smax, 2.0.*[g.ramp_agc for g in gens])
+    else
+        copyto!(opfmodel.smin, zeros(length(gens)))
+        copyto!(opfmodel.smax, zeros(length(gens)))
     end
 
     return opfmodel
@@ -696,6 +699,13 @@ function set_objective!(block::AdmmBlockBackend, algparams::AlgParams,
             Q_ref[index_geners_Q] .+= algparams.ρ_t / scale
             c_ref[index_geners_c] .+= -(pgt .*algparams.ρ_t ./ scale) .+ λt
         end
+    end
+
+    if modelinfo.time_link_constr_type == :frequency_recovery && k == 1
+        λt = dual.ramping[:,t] ./ scale
+        pgt = primal.Pr[:,t] .+ [gens[g].alpha*primal.ωt[1,t] for g=1:ngen] .- primal.Zt[:,t]
+        Q_ref[index_geners_Q] .+= algparams.ρ_t / scale
+        c_ref[index_geners_c] .+= -(pgt .*algparams.ρ_t ./ scale) .+ λt
     end
 
     # Contingency linking constraints
