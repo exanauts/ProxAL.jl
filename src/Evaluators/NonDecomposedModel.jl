@@ -4,7 +4,6 @@ struct NonDecomposedModel <: AbstractNLPEvaluator
     algparams::AlgParams
     opfdata::OPFData
     rawdata::RawData
-    space::AbstractBackend
 end
 
 """
@@ -13,22 +12,22 @@ end
         load_file::String,
         modelinfo::ModelInfo,
         algparams::AlgParams,
-        space::AbstractBackend=JuMPBackend(),
     )
 
 Instantiate non-decomposed multi-period ACOPF instance
 specified in `case_file` with loads in `load_file` with model parameters
 `modelinfo` and algorithm parameters `algparams`.
+The model is solved with the `JuMPBackend`,
+see [NLP blocks and backends](@ref).
 
 """
 function NonDecomposedModel(
     case_file::String, load_file::String,
     modelinfo::ModelInfo,
     algparams::AlgParams,
-    space::AbstractBackend=JuMPBackend(),
 )
     rawdata = RawData(case_file, load_file)
-    return NonDecomposedModel(rawdata, modelinfo, algparams, space)
+    return NonDecomposedModel(rawdata, modelinfo, algparams)
 end
 
 """
@@ -36,19 +35,19 @@ end
         rawdata::RawData
         modelinfo::ModelInfo,
         algparams::AlgParams,
-        space::AbstractBackend=JuMPBackend(),
     )
 
 Instantiate non-decomposed multi-period ACOPF instance
 using `rawdata` with model parameters
 `modelinfo` and algorithm parameters `algparams`.
+The model is solved with the `JuMPBackend`,
+see [NLP blocks and backends](@ref).
 
 """
 function NonDecomposedModel(
     rawdata::RawData,
     modelinfo::ModelInfo,
     algparams::AlgParams,
-    space::AbstractBackend=JuMPBackend(),
 )
     opfdata = opf_loaddata(
         rawdata;
@@ -59,9 +58,8 @@ function NonDecomposedModel(
         corr_scale = modelinfo.corr_scale
     )
 
-    # ctgs_arr = deepcopy(rawdata.ctgs_arr)
-    problem = ProxALProblem(opfdata, rawdata, modelinfo, algparams, space, nothing)
-    return NonDecomposedModel(problem, modelinfo, algparams, opfdata, rawdata, space)
+    problem = ProxALProblem(opfdata, rawdata, modelinfo, algparams, JuMPBackend(), nothing)
+    return NonDecomposedModel(problem, modelinfo, algparams, opfdata, rawdata)
 end
 
 """
@@ -74,7 +72,11 @@ of the nondecomposed model.
 function optimize!(nlp::NonDecomposedModel)
 
     opfmodel = opf_model_nondecomposed(nlp.opfdata, nlp.rawdata, nlp.modelinfo, nlp.algparams)
-    return opf_solve_nondecomposed(opfmodel, nlp.opfdata, nlp.modelinfo, nlp.algparams)
+    result = opf_solve_nondecomposed(opfmodel, nlp.opfdata, nlp.modelinfo, nlp.algparams)
+    nlp.problem.x = result["primal"]
+    nlp.problem.wall_time_elapsed_actual = result["solve_time"]
+    push!(nlp.problem.objvalue, objective_value(opfmodel))
+    return nlp.problem
 end
 
 function opf_model_nondecomposed(opfdata::OPFData, rawdata::RawData, modelinfo::ModelInfo, algparams::AlgParams)
