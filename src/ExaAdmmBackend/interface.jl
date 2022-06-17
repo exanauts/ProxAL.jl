@@ -28,6 +28,16 @@ end
 function set_reactive_load!(model::ModelProxAL, values::AbstractVector)
     copyto!(model.grid_data.Qd, values)
 end
+function set_generator_cost!(model::ModelProxAL)
+    ngen = model.grid_data.ngen
+    baseMVA = model.grid_data.baseMVA
+    Q_ref = zero(model.Q_ref)
+    c_ref = zero(model.c_ref)
+    Q_ref[1:4:4*ngen] .= 2.0 * model.grid_data.c2[:] * baseMVA^2
+    c_ref[1:2:2*ngen] .= model.grid_data.c1[:] * baseMVA
+    copyto!(model.Q_ref, Q_ref)
+    copyto!(model.c_ref, c_ref)
+end
 
 #=
     GETTERS

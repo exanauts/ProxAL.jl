@@ -57,6 +57,7 @@ has_cuda_gpu() && push!(USE_GPUS, true)
     copyto!(model.smax, RAMP_AGC)
     AB.set_active_load!(model, LOADS[t]["pd"])
     AB.set_reactive_load!(model, LOADS[t]["qd"])
+    AB.set_generator_cost!(model)
 
     # Test ExaAdmm interface
     # / preprocess
