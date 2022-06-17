@@ -112,6 +112,7 @@ function opf_solve_nondecomposed(opfmodel::JuMP.Model, opfdata::OPFData,
 
 
     x = OPFPrimalSolution(opfdata, modelinfo)
+    x.Pr .= value.(opfmodel[:Pr])
     x.Pg .= value.(opfmodel[:Pg])
     x.Qg .= value.(opfmodel[:Qg])
     x.Vm .= value.(opfmodel[:Vm])

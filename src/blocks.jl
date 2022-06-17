@@ -63,7 +63,7 @@ function OPFBlocks(
     blkCount = algparams.decompCtgs ? (T*K) : T
     blkIndex = algparams.decompCtgs ? CartesianIndices((1:K,1:T)) : CartesianIndices((1:1,1:T))
     colCount = ((algparams.decompCtgs ? 1 : K)*(
-                    2*nbus + 4*ngen + 1)) + 2*ngen
+                    2*nbus + 4*ngen + 1)) + 3*ngen
     colValue = zeros(colCount,blkCount)
     blkModel = AbstractBlockModel[]
 

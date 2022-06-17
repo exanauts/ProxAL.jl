@@ -187,6 +187,7 @@ function init!(block::JuMPBlockBackend, algparams::AlgParams)
     t, k = block.t, block.k
 
     # Fix penalty vars to 0
+    fix.(opfmodel[:Pr], 0; force = true)
     fix.(opfmodel[:Zt], 0; force = true)
     if algparams.decompCtgs
         fix.(opfmodel[:Zk], 0; force = true)

@@ -11,6 +11,7 @@ mutable struct OPFPrimalSolution <: AbstractPrimalSolution
     Zt
     Sk
     Zk
+    Pr
     sigma_real
     sigma_imag
     sigma_lineFr
@@ -36,6 +37,7 @@ mutable struct OPFPrimalSolution <: AbstractPrimalSolution
         Zt = zeros(ngen,T)
         Sk = zeros(ngen,K,T)
         Zk = zeros(ngen,K,T)
+        Pr = zeros(ngen,T)
         if modelinfo.allow_constr_infeas
             sigma_real = zeros(nbus,K,T)
             sigma_imag = zeros(nbus,K,T)
@@ -49,6 +51,7 @@ mutable struct OPFPrimalSolution <: AbstractPrimalSolution
         end
 
         for i=1:ngen
+            Pr[i,:] .= 0.5*(gens[i].Pmax + gens[i].Pmin)
             Pg[i,:,:] .= 0.5*(gens[i].Pmax + gens[i].Pmin)
             Qg[i,:,:] .= 0.5*(gens[i].Qmax + gens[i].Qmin)
         end
@@ -67,7 +70,7 @@ mutable struct OPFPrimalSolution <: AbstractPrimalSolution
             end
         end
 
-        new(Pg,Qg,Vm,Va,ωt,St,Zt,Sk,Zk,sigma_real,sigma_imag,sigma_lineFr,sigma_lineTo)
+        new(Pg,Qg,Vm,Va,ωt,St,Zt,Sk,Zk,Pr,sigma_real,sigma_imag,sigma_lineFr,sigma_lineTo)
     end
 end
 
@@ -113,8 +116,9 @@ function get_block_view(x::OPFPrimalSolution,
     Zt = view(x.Zt, :, t)
     Sk = view(x.Sk, :, range_k, t)
     Zk = view(x.Zk, :, range_k, t)
+    Pr = view(x.Pr, :, t)
 
-    return CatView(Pg, Qg, Vm, Va, ωt, St, Zt, Sk, Zk)
+    return CatView(Pg, Qg, Vm, Va, ωt, St, Zt, Sk, Zk, Pr)
 end
 
 function get_coupling_view(x::OPFPrimalSolution,

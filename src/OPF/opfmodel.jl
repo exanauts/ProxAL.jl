@@ -27,6 +27,7 @@ function opf_model_add_variables(opfmodel::JuMP.Model, opfdata::OPFData,
     @variable(opfmodel, Zt[1:ngen,1:T])     # slack for ramp constraints to guarantee ADMM converges
     @variable(opfmodel, Sk[1:ngen,1:K,1:T]) # slack for ctgs_link_constr
     @variable(opfmodel, Zk[1:ngen,1:K,1:T]) # slack for ctgs_link_constr to guarantee ADMM converges
+    @variable(opfmodel, Pr[1:ngen,1:T])
     if modelinfo.allow_constr_infeas
         @variable(opfmodel, sigma_real[1:nbus,1:K,1:T], start = 0)
         @variable(opfmodel, sigma_imag[1:nbus,1:K,1:T], start = 0)
@@ -49,6 +50,17 @@ function opf_model_add_variables(opfmodel::JuMP.Model, opfdata::OPFData,
         set_upper_bound.(Qg[i,:,:], gens[i].Qmax)
         set_start_value.(Qg[i,:,:], 0.5*(gens[i].Qmax + gens[i].Qmin))
     end
+    for i=1:ngen
+        set_lower_bound.(Pr[i,:], gens[i].Pmin)
+        set_upper_bound.(Pr[i,:], gens[i].Pmax)
+        set_start_value.(Pr[i,:], 0.5*(gens[i].Pmax + gens[i].Pmin))
+        if tIdx == 0
+            for t=1:T
+                set_upper_bound(Pr[i,t], opfdata.Pgmax[i,t])
+                set_start_value(Pr[i,t], 0.5*(opfdata.Pgmax[i,t] + gens[i].Pmin))
+            end
+        end
+    end
 
     fix.(Va[opfdata.bus_ref,:,:], buses[opfdata.bus_ref].Va)
     for i=1:nbus
@@ -57,11 +69,13 @@ function opf_model_add_variables(opfmodel::JuMP.Model, opfdata::OPFData,
         set_start_value.(Vm[i,:,:], 0.5*(buses[i].Vmax + buses[i].Vmin))
         set_start_value.(Va[i,:,:], buses[opfdata.bus_ref].Va)
     end
-    fix.(Zt[:,1], 0)
+    if modelinfo.time_link_constr_type != :frequency_recovery
+        fix.(Zt[:,1], 0)
+    end
     fix.(Zk[:,1,:], 0)
     set_start_value.(Zt, 0)
     set_start_value.(Zk, 0)
-    for k=2:K
+    for k=1:K
         set_lower_bound.(ωt[k,:], -1)
         set_upper_bound.(ωt[k,:], +1)
         set_start_value.(ωt[k,:], 0)
@@ -75,7 +89,9 @@ function opf_model_add_variables(opfmodel::JuMP.Model, opfdata::OPFData,
         set_start_value.(Sk[i,:,:],  gens[i].scen_agc)
     end
     if algparams.mode ∈ [:nondecomposed, :lyapunov_bound]
-        fix.(ωt[1,:], 0)
+        if modelinfo.time_link_constr_type != :frequency_recovery
+            fix.(ωt[1,:], 0; force = true)
+        end
         fix.(St[:,1], 0; force = true)
         fix.(Sk[:,1,:], 0; force = true)
         if modelinfo.time_link_constr_type == :inequality && algparams.mode == :nondecomposed
@@ -86,14 +102,19 @@ function opf_model_add_variables(opfmodel::JuMP.Model, opfdata::OPFData,
             fix.(St[:,1], 0; force = true)
         end
         if !algparams.decompCtgs || kIdx == 1
-            fix.(ωt[1,:], 0)
+            fix.(ωt[1,:], 0; force = true)
             fix.(Sk[:,1,:], 0; force = true)
         end
+    end
+    if modelinfo.time_link_constr_type == :frequency_recovery
+        fix.(St, 0; force = true)
+    else
+        fix.(Pr, 0; force = true)
     end
     if modelinfo.ctgs_link_constr_type ∉ [:frequency_equality, :frequency_penalty]
         fix.(ωt, 0; force = true)
     end
-    if modelinfo.time_link_constr_type != :penalty
+    if modelinfo.time_link_constr_type ∉ [:penalty, :frequency_recovery]
         fix.(Zt, 0; force = true)
     end
     if modelinfo.ctgs_link_constr_type ∈ [:frequency_equality, :frequency_penalty, :preventive_equality, :preventive_penalty] ||
@@ -244,14 +265,14 @@ end
 function opf_model_add_time_linking_constraints(opfmodel::JuMP.Model, opfdata::OPFData, modelinfo::ModelInfo)
     (ngen, K, T) = size(opfmodel[:Pg])
 
-    if T > 1
+    if T > 1 || modelinfo.time_link_constr_type == :frequency_recovery
         link = compute_time_linking_constraints(opfmodel, opfdata, modelinfo)
 
         if modelinfo.time_link_constr_type == :inequality
             @constraint(opfmodel, ramping_p[g=1:ngen,t=2:T], link[:ramping_p][g,t] <= 0)
             @constraint(opfmodel, ramping_n[g=1:ngen,t=2:T], link[:ramping_n][g,t] <= 0)
         else
-            @constraint(opfmodel, ramping[g=1:ngen,t=2:T], link[:ramping][g,t] == 0)
+            @constraint(opfmodel, ramping[g=1:ngen,t=1:T], link[:ramping][g,t] == 0)
         end
     end
 
@@ -318,10 +339,12 @@ function compute_objective_function(
     end
     if modelinfo.ctgs_link_constr_type ∈ [:frequency_penalty, :frequency_equality]
         obj_freq_ctrl = 0.5*ωt[k,t]^2
+    elseif kIdx == 1 && modelinfo.time_link_constr_type == :frequency_recovery
+        obj_freq_ctrl = 0.5*ωt[k,t]^2
     else
         obj_freq_ctrl = 0
     end
-    if kIdx == 1 && modelinfo.time_link_constr_type == :penalty
+    if kIdx == 1 && modelinfo.time_link_constr_type ∈ [:penalty, :frequency_recovery]
         obj_bigM_penalty_time = 0.5*sum(Zt[:,t].^2)
     else
         obj_bigM_penalty_time = 0
@@ -348,6 +371,8 @@ function compute_time_linking_constraints(
     tIdx::Int = 0
 )
     Pg = opfdict[:Pg]
+    Pr = opfdict[:Pr]
+    ωt = opfdict[:ωt]
     St = opfdict[:St]
     Zt = opfdict[:Zt]
 
@@ -361,6 +386,8 @@ function compute_time_linking_constraints(
         link[:ramping_n] = [(t > 1) ? (-Pg[g,1,t-1] + Pg[g,1,t] - gens[g].ramp_agc) : 0.0 for g=1:ngen,t=Trange]
     elseif modelinfo.time_link_constr_type == :equality
         link[:ramping] = [(t > 1) ? (Pg[g,1,t-1] - Pg[g,1,t] + St[g,t] - gens[g].ramp_agc) : 0.0 for g=1:ngen,t=Trange]
+    elseif modelinfo.time_link_constr_type == :frequency_recovery
+        link[:ramping] = [Pg[g,1,t] - Pr[g,t] - (gens[g].alpha*ωt[1,t]) + Zt[g,t] for g=1:ngen,t=Trange]
     else
         link[:ramping] = [(t > 1) ? (Pg[g,1,t-1] - Pg[g,1,t] + St[g,t] + Zt[g,t] - gens[g].ramp_agc) : 0.0 for g=1:ngen,t=Trange]
     end
@@ -418,7 +445,7 @@ function compute_quadratic_penalty(
     k = block[1]
     t = block[2]
 
-    if t > 1 && k == 1
+    if k == 1
         inequality = (modelinfo.time_link_constr_type == :inequality)
         inequality && (modelinfo.time_link_constr_type = :equality)
         link = compute_time_linking_constraints(opfdict, opfdata, modelinfo, t)
@@ -459,7 +486,7 @@ function compute_quadratic_penalty(
         link = compute_time_linking_constraints(opfdict, opfdata, modelinfo)
         inequality && (modelinfo.time_link_constr_type = :inequality)
 
-        lyapunov_quadratic_penalty_time = sum(link[:ramping][:,2:T].^2)
+        lyapunov_quadratic_penalty_time = sum(link[:ramping][:,1:T].^2)
     else
         lyapunov_quadratic_penalty_time = 0
     end
@@ -496,7 +523,7 @@ function compute_lagrangian_function(
 
     obj = compute_objective_function(opfdict, opfdata, opfBlockData, blk, modelinfo, algparams)
 
-    if t > 1 && k == 1
+    if k == 1
         link = compute_time_linking_constraints(opfdict, opfdata, modelinfo, t)
         lagrangian_t = sum(λ.ramping[:,t].*link[:ramping][:])
     else
@@ -525,7 +552,15 @@ function compute_proximal_function(
     t = block[2]
 
     prox_pg = algparams.τ*sum((x1.Pg[:,k,t] .- x2.Pg[:,k,t]).^2)
+    prox_pr = 0
     prox_penalty = 0
+
+    if modelinfo.time_link_constr_type == :frequency_recovery && k == 1
+        prox_pr += algparams.τ*sum((x1.Pr[:,t] .- x2.Pr[:,t]).^2)
+
+        # Note: algparams.ρ_t/32.0 is the prox weight for the zt variables
+        prox_penalty += (algparams.ρ_t/32.0)*sum((x1.Zt[:,t] .- x2.Zt[:,t]).^2)
+    end
 
     if modelinfo.time_link_constr_type == :penalty
         if t > 1 && k == 1
@@ -541,7 +576,7 @@ function compute_proximal_function(
         end
     end
 
-    return 0.5*(prox_pg + prox_penalty)
+    return 0.5*(prox_pg + prox_pr + prox_penalty)
 end
 
 function compute_objective_function(
@@ -574,6 +609,7 @@ function compute_objective_function(
     modelinfo::ModelInfo, algparams::AlgParams
 )
     d = Dict(:Pg => x.Pg,
+             :Pr => x.Pr,
              :ωt => x.ωt,
              :Zt => x.Zt,
              :Zk => x.Zk,
@@ -592,6 +628,7 @@ function compute_lyapunov_function(
     algparams::AlgParams
 )
     d = Dict(:Pg => x.Pg,
+             :Pr => x.Pr,
              :ωt => x.ωt,
              :St => x.St,
              :Zt => x.Zt,
@@ -621,6 +658,7 @@ function compute_dual_error(
     t = opfBlockData.blkIndex[blk][2]
 
     err_pg = zeros(ngen)
+    err_pr = zeros(ngen)
     err_ωt = 0.0
     err_st = zeros(ngen)
     err_sk = zeros(ngen)
@@ -630,22 +668,36 @@ function compute_dual_error(
 
     # time linking errors
     if k == 1
-        # for convenience
-        β = [g.ramp_agc for g in opfdata.generators]
-        if t > 1
-            temp_arr = -λ.ramping[:,t] .+ λprev.ramping[:,t] .+
+        if modelinfo.time_link_constr_type == :frequency_recovery
+            β = [g.alpha*x.ωt[1,t] for g in opfdata.generators]
+            err_pg .+= λ.ramping[:,t] .- λprev.ramping[:,t] .-
                         algparams.ρ_t*(
-                            (algparams.jacobi ? xprev.Pg[:,1,t-1] : x.Pg[:,1,t-1]) .-
-                            x.Pg[:,1,t] .+ x.St[:,t] .+ xprev.Zt[:,t] .- β
+                            x.Pg[:,1,t] .- x.Pr[:,t] .- β .+ xprev.Zt[:,t]
                         )
-            err_pg .+= temp_arr
-            err_st .+= -temp_arr
-        end
-        if t < T
-            err_pg .+= λ.ramping[:,t+1] .- λprev.ramping[:,t+1] .-
+            temp_arr = λ.ramping[:,t] .- λprev.ramping[:,t] .-
                         algparams.ρ_t*(
-                            x.Pg[:,1,t] .- xprev.Pg[:,1,t+1] .+ xprev.St[:,t+1] .+ xprev.Zt[:,t+1] .- β
+                            xprev.Pg[:,1,t] .- x.Pr[:,t] .- β + xprev.Zt[:,t]
                         )
+            err_pr .-= temp_arr .+ (algparams.τ*(x.Pr[:,t] .- xprev.Pr[:,t]))
+            err_ωt -= sum(opfdata.generators[g].alpha * temp_arr[g] for g in 1:ngen)
+        else
+            # for convenience
+            β = [g.ramp_agc for g in opfdata.generators]
+            if t > 1
+                temp_arr = -λ.ramping[:,t] .+ λprev.ramping[:,t] .+
+                            algparams.ρ_t*(
+                                (algparams.jacobi ? xprev.Pg[:,1,t-1] : x.Pg[:,1,t-1]) .-
+                                x.Pg[:,1,t] .+ x.St[:,t] .+ xprev.Zt[:,t] .- β
+                            )
+                err_pg .+= temp_arr
+                err_st .+= -temp_arr
+            end
+            if t < T
+                err_pg .+= λ.ramping[:,t+1] .- λprev.ramping[:,t+1] .-
+                            algparams.ρ_t*(
+                                x.Pg[:,1,t] .- xprev.Pg[:,1,t+1] .+ xprev.St[:,t+1] .+ xprev.Zt[:,t+1] .- β
+                            )
+            end
         end
     end
 
@@ -686,7 +738,7 @@ function compute_dual_error(
         end
     end
 
-    return norm([err_pg; err_ωt; err_st; err_sk], lnorm)
+    return norm([err_pg; err_pr; err_ωt; err_st; err_sk], lnorm)
 end
 
 function compute_dual_error(
@@ -699,12 +751,32 @@ function compute_dual_error(
     (ngen, K, T) = size(x.Pg)
 
     err_pg = zeros(ngen, K, T)
+    err_pr = zeros(ngen, T)
     err_ωt = zeros(K, T)
     err_st = zeros(ngen, T)
     err_sk = zeros(ngen, K, T)
 
-    if T > 1
-        @assert modelinfo.time_link_constr_type == :penalty
+    if modelinfo.time_link_constr_type == :frequency_recovery
+        @views begin
+            β = zeros(ngen, T)
+            for g=1:ngen
+                β[g,:] .= opfdata.generators[g].alpha*x.ωt[1,:]
+            end
+
+            err_pg[:,1,:] .+= λ.ramping .- λprev.ramping .-
+                                algparams.ρ_t*(
+                                    x.Pg[:,1,:] .- x.Pr .- β .+ xprev.Zt
+                                )
+            temp_arr = λ.ramping .- λprev.ramping .-
+                        algparams.ρ_t*(
+                            xprev.Pg[:,1,:] .- x.Pr .- β .+ xprev.Zt
+                        )
+            err_pr .-= temp_arr + (algparams.τ*(x.Pr[:,t] .- xprev.Pr[:,t]))
+            err_ωt[1,:] .-= sum(opfdata.generators[g].alpha * temp_arr[g,:] for g in 1:ngen)
+        end
+    end
+
+    if T > 1 && modelinfo.time_link_constr_type == :penalty
         @views begin
             # for convenience
             β = zeros(ngen, T)
@@ -778,11 +850,12 @@ function compute_dual_error(
     end
 
     err_pg_view = view(err_pg, :, :, :)
+    err_pr_view = view(err_pr, :, :)
     err_ωt_view = view(err_ωt, :, :)
     err_st_view = view(err_st, :, :)
     err_sk_view = view(err_sk, :, :, :)
 
-    dual_error = CatView(err_pg_view, err_ωt_view, err_st_view, err_sk_view)
+    dual_error = CatView(err_pg_view, err_pr_view, err_ωt_view, err_st_view, err_sk_view)
 
     return norm(dual_error, lnorm)
 end
@@ -794,6 +867,8 @@ function compute_true_ramp_error(
     tIdx::Int = 0
 )
     d = Dict(:Pg => x.Pg,
+             :Pr => x.Pr,
+             :ωt => x.ωt,
              :St => x.St,
              :Zt => x.Zt)
     if modelinfo.time_link_constr_type == :inequality
@@ -802,9 +877,18 @@ function compute_true_ramp_error(
     end
 
     true_time_link_constr_type = modelinfo.time_link_constr_type
-    modelinfo.time_link_constr_type = :equality
+    if modelinfo.time_link_constr_type in [:inequality, :penalty]
+        modelinfo.time_link_constr_type = :equality
+    end
     link = compute_time_linking_constraints(d, opfdata, modelinfo, tIdx)
     modelinfo.time_link_constr_type = true_time_link_constr_type
+    if modelinfo.time_link_constr_type == :frequency_recovery
+        if tIdx == 0
+            link[:ramping] .-= x.Zt
+        else
+            link[:ramping][:,1] .-= x.Zt[:,tIdx]
+        end
+    end
 
     return maximum(abs.(link[:ramping]))
 end
@@ -937,7 +1021,17 @@ function opf_block_get_auglag_penalty_expr(
     auglag_penalty = @expression(opfmodel, 0.5*algparams.τ*sum((Pg[g,1,1] - primal.Pg[g,k,t])^2 for g=1:ngen))
 
     if !algparams.decompCtgs || k == 1
-        if t > 1
+        if modelinfo.time_link_constr_type == :frequency_recovery
+            ramp_link_expr =
+                @expression(opfmodel,
+                    [g=1:ngen],
+                        Pg[g,1,1] - primal.Pr[g,t] - (gens[g].alpha*primal.ωt[1,t]) + primal.Zt[g,t]
+                )
+            auglag_penalty += sum(  dual.ramping[g,t]*(+ramp_link_expr[g]) +
+                                    0.5*algparams.ρ_t*(+ramp_link_expr[g])^2
+                                for g=1:ngen)
+        end
+        if t > 1 && modelinfo.time_link_constr_type != :frequency_recovery
             ramp_link_expr_prev =
                 @expression(opfmodel,
                     [g=1:ngen],
@@ -947,7 +1041,7 @@ function opf_block_get_auglag_penalty_expr(
                                     0.5*algparams.ρ_t*(+ramp_link_expr_prev[g])^2
                                 for g=1:ngen)
         end
-        if t < T
+        if t < T && modelinfo.time_link_constr_type != :frequency_recovery
             ramp_link_expr_next =
                 @expression(opfmodel,
                     [g=1:ngen],
