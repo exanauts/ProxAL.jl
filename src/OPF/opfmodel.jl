@@ -50,12 +50,13 @@ function opf_model_add_variables(opfmodel::JuMP.Model, opfdata::OPFData,
         set_upper_bound.(Qg[i,:,:], gens[i].Qmax)
         set_start_value.(Qg[i,:,:], 0.5*(gens[i].Qmax + gens[i].Qmin))
     end
-    for i=1:ngen
-        set_lower_bound.(Pr[i,:], gens[i].Pmin)
-        set_upper_bound.(Pr[i,:], gens[i].Pmax)
-        set_start_value.(Pr[i,:], 0.5*(gens[i].Pmax + gens[i].Pmin))
-        if tIdx == 0
-            for t=1:T
+    if tIdx == 0
+        for i=1:ngen
+            set_lower_bound(Pr[i,1], opfdata.Pgrefmin[i])
+            set_upper_bound(Pr[i,1], opfdata.Pgrefmax[i])
+            set_start_value(Pr[i,1], 0.5*(opfdata.Pgrefmin[i] + opfdata.Pgrefmax[i]))
+            for t=2:T
+                set_lower_bound(Pr[i,t], gens[i].Pmin)
                 set_upper_bound(Pr[i,t], opfdata.Pgmax[i,t])
                 set_start_value(Pr[i,t], 0.5*(opfdata.Pgmax[i,t] + gens[i].Pmin))
             end
@@ -64,9 +65,9 @@ function opf_model_add_variables(opfmodel::JuMP.Model, opfdata::OPFData,
 
     fix.(Va[opfdata.bus_ref,:,:], buses[opfdata.bus_ref].Va)
     for i=1:nbus
-        set_lower_bound.(Vm[i,:,:], buses[i].Vmin)
-        set_upper_bound.(Vm[i,:,:], buses[i].Vmax)
-        set_start_value.(Vm[i,:,:], 0.5*(buses[i].Vmax + buses[i].Vmin))
+        set_lower_bound.(Vm[i,:,:], opfdata.Vgmin[i])
+        set_upper_bound.(Vm[i,:,:], opfdata.Vgmax[i])
+        set_start_value.(Vm[i,:,:], 0.5*(opfdata.Vgmax[i] + opfdata.Vgmin[i]))
         set_start_value.(Va[i,:,:], buses[opfdata.bus_ref].Va)
     end
     if modelinfo.time_link_constr_type != :frequency_recovery

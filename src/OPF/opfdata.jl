@@ -108,6 +108,10 @@ struct OPFData
     Pd::Array                #2d array of active power demands over a time horizon
     Qd::Array                #2d array of reactive power demands
     Pgmax::Array             #2d array of maximum possible active generation over a time horizon
+    Pgrefmin::Array
+    Pgrefmax::Array
+    Vgmin::Array
+    Vgmax::Array
 end
 
 
@@ -138,6 +142,10 @@ mutable struct RawData
     qd_arr::Array{Float64, 2}
     pgmax_arr::Array{Float64, 2}
     ctgs_arr
+    pgrefmin_arr
+    pgrefmax_arr
+    vgmin_arr
+    vgmax_arr
 end
 
 ##
@@ -179,7 +187,7 @@ function RawData(case_name, scen_file::String="")
     if isfile(scen_file * ".Ctgs")
         ctgs_arr = readdlm(scen_file * ".Ctgs", Int)
     end
-    return RawData(baseMVA, bus_arr, branch_arr, gen_arr, costgen_arr, genfuel_arr, pd_arr, qd_arr, pgmax_arr, ctgs_arr)
+    return RawData(baseMVA, bus_arr, branch_arr, gen_arr, costgen_arr, genfuel_arr, pd_arr, qd_arr, pgmax_arr, ctgs_arr, nothing, nothing, nothing, nothing)
 end
 
 # UTILS
@@ -377,6 +385,7 @@ function opf_loaddata(raw::RawData;
             generators[i].scen_agc = generators[i].ramp_agc * corr_scale
             if genfuel_arr[git] ∈ ["wind", "solar"]
                 generators[i].Pmin = 0
+                generators[i].alpha = 0
             end
         end
         if size(raw.pgmax_arr, 1) > 0 && time_horizon_start == time_horizon_end
@@ -436,7 +445,24 @@ function opf_loaddata(raw::RawData;
         end
     end
 
-    return OPFData(buses, lines, generators, bus_ref, baseMVA, Ybus, busIdx, BusGeners, Pd, Qd, Pgmax)
+    Pgrefmin = [generators[i].Pmin for i=1:num_on]
+    Pgrefmax = [Pgmax[i,1] for i=1:num_on]
+    Vgmin = [buses[i].Vmin for i=1:num_buses]
+    Vgmax = [buses[i].Vmax for i=1:num_buses]
+    if !isa(raw.pgrefmin_arr, Nothing)
+        Pgrefmin .= raw.pgrefmin_arr[:]
+    end
+    if !isa(raw.pgrefmax_arr, Nothing)
+        Pgrefmax .= raw.pgrefmax_arr[:]
+    end
+    if !isa(raw.vgmin_arr, Nothing)
+        Vgmin .= raw.vgmin_arr[:]
+    end
+    if !isa(raw.vgmax_arr, Nothing)
+        Vgmax .= raw.vgmax_arr[:]
+    end
+
+    return OPFData(buses, lines, generators, bus_ref, baseMVA, Ybus, busIdx, BusGeners, Pd, Qd, Pgmax, Pgrefmin, Pgrefmax, Vgmin, Vgmax)
 end
 
 function computeAdmitances(lines, buses, baseMVA; lossless::Bool=false, fixedtaps::Bool=false, zeroshunts::Bool=false)

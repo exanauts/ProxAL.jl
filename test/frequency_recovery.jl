@@ -39,8 +39,8 @@ algparams.optimizer =
                 optimizer_with_attributes(Ipopt.Optimizer,
                     "print_level" => 0)
 
-solver_list = ["Ipopt", "ExaAdmmCPU"]
-if CUDA.has_cuda_gpu()
+solver_list = ["Ipopt"] #, "ExaAdmmCPU"]
+if false
     # TODO: MadNLP broken currently
     # push!(solver_list, "MadNLPGPU")
     # push!(solver_list, "ExaAdmmGPU")

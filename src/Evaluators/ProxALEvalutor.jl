@@ -429,10 +429,15 @@ function optimize!(
 
                             @variable(pgref_model, Pr[1:ngen,1:T])
                             @variable(pgref_model, -1 <= ωt[1:T] <= 1, start = 0)
-                            for g=1:ngen,t=1:T
-                                set_upper_bound(Pr[g,t], opfdata.Pgmax[g,t])
-                                set_lower_bound(Pr[g,t], opfdata.generators[g].Pmin)
-                                set_start_value(Pr[g,t], 0.5*(opfdata.Pgmax[g,t] + opfdata.generators[g].Pmin))
+                            for i=1:ngen
+                                set_lower_bound(Pr[i,1], opfdata.Pgrefmin[i])
+                                set_upper_bound(Pr[i,1], opfdata.Pgrefmax[i])
+                                set_start_value(Pr[i,1], 0.5*(opfdata.Pgrefmin[i] + opfdata.Pgrefmax[i]))
+                                for t=2:T
+                                    set_lower_bound(Pr[i,t], opfdata.generators[i].Pmin)
+                                    set_upper_bound(Pr[i,t], opfdata.Pgmax[i,t])
+                                    set_start_value(Pr[i,t], 0.5*(opfdata.Pgmax[i,t] + opfdata.generators[i].Pmin))
+                                end
                             end
 
                             @constraint(pgref_model, [g=1:ngen,t=2:T], +Pr[g,t-1] - Pr[g,t] <= opfdata.generators[g].ramp_agc)
