@@ -39,24 +39,11 @@ mutable struct ModelProxAL{T,TD,TI,TM} <: ExaAdmm.AbstractOPFModel{T,TD,TI,TM}
     nvar_padded::Int
 
     # ProxAL's part
-    t_curr::Int      # current time period
-    T::Int           # size of time horizon
-    tau::Float64     # penalty for proximal term
-    rho::Float64     # penalty for ramping equality
-    pg_ref::TD       # proximal term
-    pg_next::TD      # primal value for (t+1) time period
-    l_next::TD       # dual (for ramping) value for (t-1) time period
-    pg_prev::TD      # primal value for (t+1) time period
-    l_prev::TD       # dual (for ramping) value for (t-1) time period
     s_curr::TD       # slack for ramping
     smin::TD         # slack's lower bound
     smax::TD         # slack's upper bound
-
     Q_ref::TD
     c_ref::TD
-
-    Q::TD
-    c::TD
 
     function ModelProxAL{T,TD,TI,TM}() where {T, TD<:AbstractArray{T}, TI<:AbstractArray{Int}, TM<:AbstractArray{T,2}}
         return new{T,TD,TI,TM}()
@@ -119,29 +106,17 @@ function ModelProxAL(
     model.info = ExaAdmm.IterationInformation{ExaAdmm.ComponentInformation}()
 
     # ProxAL
-    model.t_curr = t
-    model.T = horizon
-    model.tau = 0.1
-    model.rho = 0.1
-    model.pg_ref  = TD(undef, model.grid_data.ngen)
-    model.pg_next = TD(undef, model.grid_data.ngen)
-    model.pg_prev = TD(undef, model.grid_data.ngen)
-    model.l_next  = TD(undef, model.grid_data.ngen)
-    model.l_prev  = TD(undef, model.grid_data.ngen)
     ## Slack
     model.s_curr  = TD(undef, model.grid_data.ngen)
     model.smin  = TD(undef, model.grid_data.ngen)
     model.smax  = TD(undef, model.grid_data.ngen)
     # Costs
     model.Q_ref  = TD(undef, 4*model.grid_data.ngen)
-    model.Q      = TD(undef, 4*model.grid_data.ngen)
-    model.c      = TD(undef, 2*model.grid_data.ngen)
     model.c_ref  = TD(undef, 2*model.grid_data.ngen)
 
     # Don't let any array uninitialized
     for field in [
-        :pg_ref, :pg_next, :pg_prev, :l_next, :l_prev, :s_curr,
-        :smin, :smax, :Q_ref, :Q, :c, :c_ref
+        :s_curr, :smin, :smax, :Q_ref, :c_ref
     ]
         fill!(getfield(model, field), zero(T))
     end

@@ -22,18 +22,6 @@ macro define_setter_value(function_name, attribute)
     end
 end
 
-@define_setter_array set_lower_bound_slack! smin
-@define_setter_array set_upper_bound_slack! smax
-@define_setter_array set_slack! s_curr
-@define_setter_array set_multiplier_last! l_prev
-@define_setter_array set_multiplier_next! l_next
-@define_setter_array set_proximal_last! pg_prev
-@define_setter_array set_proximal_next! pg_next
-@define_setter_array set_proximal_ref! pg_ref
-
-@define_setter_value set_proximal_term! tau
-@define_setter_value set_penalty! rho
-
 function set_active_load!(model::ModelProxAL, values::AbstractVector)
     copyto!(model.grid_data.Pd, values)
 end

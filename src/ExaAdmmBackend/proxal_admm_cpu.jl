@@ -91,67 +91,18 @@ function generator_kernel_two_level_proxal(ngen::Int, gen_start::Int,
     return
 end
 
-function build_qp_problem!(baseMVA, model::ModelProxAL)
-    for g in 1:model.grid_data.ngen
-        shift_Q = 4*(g-1)
-        shift_c = 2*(g-1)
-
-        # Q[1, 1]
-        model.Q[shift_Q + 1] = model.Q_ref[shift_Q + 1]
-        # Q[2, 1]
-        model.Q[shift_Q + 2] = model.Q_ref[shift_Q + 2]
-        # Q[1, 2]
-        model.Q[shift_Q + 3] = model.Q_ref[shift_Q + 3]
-        # Q[2, 2]
-        model.Q[shift_Q + 4] = model.Q_ref[shift_Q + 4]
-
-        # c[1]
-        model.c[shift_c + 1] = model.c_ref[shift_c + 1]
-        # c[2]
-        model.c[shift_c + 2] = model.c_ref[shift_c + 2]
-
-        # τ/2 (pg - pgₚ)^2
-        model.Q[shift_Q + 1] += model.tau + 2.0 * model.grid_data.c2[g]*baseMVA^2
-        model.c[shift_c + 1] += - model.tau * model.pg_ref[g] + model.grid_data.c1[g]*baseMVA
-
-        # λ₊ (pg - pg₊) + ρ/2 * (pg - pg₊)^2
-        if (model.t_curr < model.T)
-            # Pg
-            model.Q[shift_Q + 1] += model.rho
-            model.c[shift_c + 1] += model.l_next[g]
-            model.c[shift_c + 1] -= model.rho * model.pg_next[g]
-        end
-
-        # λ₋ (pg₋ + s - pg) + ρ/2 * (pg₋ + s - pg)^2
-        if (model.t_curr > 1)
-            # Pg
-            model.Q[shift_Q + 1] += model.rho
-            model.c[shift_c + 1] -= model.l_prev[g]
-            model.c[shift_c + 1] -= model.rho * model.pg_prev[g]
-
-            # Slack
-            model.Q[shift_Q + 4] += model.rho
-            model.c[shift_c + 2] += model.l_prev[g]
-            model.c[shift_c + 2] += model.rho * model.pg_prev[g]
-
-            # Cross-term (Slack * Pg)
-            model.Q[shift_Q + 2] -= model.rho
-            model.Q[shift_Q + 3] -= model.rho
-        end
-    end
-end
 
 function generator_kernel_two_level(
     model::ModelProxAL{Float64,Array{Float64,1},Array{Int,1}},
     baseMVA::Float64, u, xbar, zu, lu, rho_u,
 )
-    build_qp_problem!(baseMVA, model)
     tcpu = @timed generator_kernel_two_level_proxal(
         model.grid_data.ngen, model.gen_start,
         u, xbar, zu, lu, rho_u,
         model.grid_data.pgmin, model.grid_data.pgmax,
         model.grid_data.qgmin, model.grid_data.qgmax,
-        model.smin, model.smax, model.s_curr, model.Q, model.c)
+        model.smin, model.smax, model.s_curr,
+        model.Q_ref, model.c_ref)
     return tcpu
 end
 
