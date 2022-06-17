@@ -483,10 +483,9 @@ function optimize!(
         runinfo.λprev = deepcopy(λ)
 
         # Primal update of pg_ref (frequency_recovery)
-        pgref_update()
-
         # Primal update
         for _ in 1:algparams.num_sweeps
+            pgref_update()
             primal_update()
         end
 
