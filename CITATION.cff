@@ -1,0 +1,11 @@
+cff-version: 1.2.0
+authors:
+  - family-names: Subramanyam
+    given-names: Anirudh
+  - family-names: Pacaud
+    given-names: François
+  - family-names: Schanen
+    given-names: Michel
+  - family-names: Kim
+    given-names: Youngdae
+doi: 10.5281/zenodo.6640213 
