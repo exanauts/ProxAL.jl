@@ -128,6 +128,9 @@ function opf_model_add_variables(opfmodel::JuMP.Model, opfdata::OPFData,
     if modelinfo.ctgs_link_constr_type ∉ [:frequency_penalty, :preventive_penalty, :corrective_penalty]
         fix.(Zk, 0; force = true)
     end
+    if modelinfo.time_link_constr_type == :frequency_recovery && tIdx == 0
+        fix.(Zt, 0; force = true)
+    end
 end
 
 function opf_model_add_block_constraints(opfmodel::JuMP.Model, opfdata::OPFData, rawdata::RawData, modelinfo::ModelInfo)
