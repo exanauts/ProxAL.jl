@@ -11,8 +11,6 @@ testdir = @__DIR__
         include("exaadmm.jl")
     end
 
-    # We can finalize here as now we launch external processes
-
     # Testing using 1 process
     @testset "Sequential tests" begin
         include("convergence.jl")

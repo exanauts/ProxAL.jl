@@ -74,12 +74,12 @@ Nonblocking communication with a given pattern. An array of requests is returned
 """
 function comm_neighbors!(data::AbstractArray{T,2}, blocks::AbstractBlocks, runinfo::ProxALProblem, pattern::AbstractCommPattern, comm::MPI.Comm) where {T}
 	requests = MPI.Request[]
-    for blk in runinfo.blkLinIndex
+    for blk in runinfo.blkLinIndices
         block = blocks.blkIndex[blk]
         k = block[1]
         t = block[2]
         if is_my_work(blk, comm)
-            for blkn in runinfo.blkLinIndex
+            for blkn in runinfo.blkLinIndices
                 blockn = blocks.blkIndex[blkn]
                 kn = blockn[1]
                 tn = blockn[2]
@@ -89,8 +89,13 @@ function comm_neighbors!(data::AbstractArray{T,2}, blocks::AbstractBlocks, runin
                         sbuf = @view data[:,blk]
                         rbuf = @view data[:,blkn]
                     elseif isa(pattern, CommPatternT)
-                        sbuf = @view data[:,t]
-                        rbuf = @view data[:,tn]
+                        if isa(data, LocalStorage)
+                            sbuf = unsafe_wrap(Array, pointer(data.data[t]), (data.n,))
+                            rbuf = unsafe_wrap(Array, pointer(data.data[tn]), (data.n,))
+                        else
+                            sbuf = @view data[:,t]
+                            rbuf = @view data[:,tn]
+                        end
                     else
                         error("Invalid communication pattern")
                     end
@@ -105,20 +110,25 @@ end
 
 function comm_neighbors!(data::AbstractArray{T,3}, blocks::AbstractBlocks, runinfo::ProxALProblem, pattern::AbstractCommPattern, comm::MPI.Comm) where {T}
 	requests = MPI.Request[]
-    for blk in runinfo.blkLinIndex
+    for blk in runinfo.blkLinIndices
         block = blocks.blkIndex[blk]
         k = block[1]
         t = block[2]
         if is_my_work(blk, comm)
-            for blkn in runinfo.blkLinIndex
+            for blkn in runinfo.blkLinIndices
                 blockn = blocks.blkIndex[blkn]
                 kn = blockn[1]
                 tn = blockn[2]
                 if is_comm_pattern(t, tn, k, kn, pattern) && !is_my_work(blkn, comm)
                     remote = whoswork(blkn, comm)
                     if isa(pattern, CommPatternK)
-                        sbuf = @view data[:,k,t]
-                        rbuf = @view data[:,kn,tn]
+                        if isa(data, LocalStorage)
+                            sbuf = unsafe_wrap(Array, pointer(data.data[k,t]), (data.n,))
+                            rbuf = unsafe_wrap(Array, pointer(data.data[kn,tn]), (data.n,))
+                        else
+                            sbuf = @view data[:,k,t]
+                            rbuf = @view data[:,kn,tn]
+                        end
                     else
                         error("Invalid communication pattern")
                     end

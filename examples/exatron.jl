@@ -37,9 +37,9 @@ else
 end
 
 # choose backend
-# backend = ProxAL.JuMPBackend()
+backend = ProxAL.JuMPBackend()
 # With ExaAdmmBackend(), CUDADevice will used
-backend = ProxAL.ExaAdmmBackend()
+# backend = ProxAL.ExaAdmmBackend()
 
 
 # Load case
@@ -68,7 +68,7 @@ algparams.verbose = 1
 algparams.tol = 1e-3
 algparams.decompCtgs = (K > 0)
 algparams.iterlim = 500
-if isa(backend, ProxAL.ExaAdmmBackend)
+if isa(backend, ProxAL.AdmmBackend)
     algparams.device = ProxAL.CUDADevice
 end
 algparams.optimizer = optimizer_with_attributes(Ipopt.Optimizer, "print_level" => 0) #,  "tol" => 1e-1*algparams.tol)

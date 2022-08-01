@@ -34,12 +34,14 @@ mutable struct ProxALProblem
     nlp_soltime::Vector{Float64}
     wall_time_elapsed_actual::Float64
     wall_time_elapsed_ideal::Float64
-    iter
+    iter::Int64
 
     #---- other/static information ----
-    blkLinIndex
+    blkLinIndices::LinearIndices{2, Tuple{UnitRange{Int64}, UnitRange{Int64}}}
+    blkLocalIndices::Union{Vector{Int64}, Nothing}
+    blkLinkedIndices::Union{Vector{Int64}, Nothing}
 end
-
+include("communication.jl")
 include("Evaluators/Evaluators.jl")
 include("ExaAdmmBackend/ExaAdmmBackend.jl")
 include("params.jl")
@@ -47,8 +49,8 @@ include("OPF/opfdata.jl")
 include("OPF/opfsolution.jl")
 include("backends.jl")
 include("blocks.jl")
+include("LocalStorage.jl")
 include("OPF/opfmodel.jl")
-include("communication.jl")
 include("Evaluators/ProxALEvalutor.jl")
 include("Evaluators/NonDecomposedModel.jl")
 
@@ -71,28 +73,28 @@ function update_primal_nlpvars(
 
     from = 1
     to = size(x.Pg,1)*length(range_k)
-    @views x.Pg[:,range_k,t][:] .= opfBlockData.colValue[from:to,blk]
+    x.Pg[:,range_k,t] = opfBlockData.colValue[from:to,blk]
 
     from = 1+to
     to = to + size(x.Qg, 1)*length(range_k)
-    @views x.Qg[:,range_k,t][:] .= opfBlockData.colValue[from:to,blk]
+    x.Qg[:,range_k,t] = opfBlockData.colValue[from:to,blk]
 
     from = 1+to
     to = to + size(x.Vm, 1)*length(range_k)
-    @views x.Vm[:,range_k,t][:] .= opfBlockData.colValue[from:to,blk]
+    x.Vm[:,range_k,t] = opfBlockData.colValue[from:to,blk]
 
     from = 1+to
     to = to + size(x.Va, 1)*length(range_k)
-    @views x.Va[:,range_k,t][:] .= opfBlockData.colValue[from:to,blk]
+    x.Va[:,range_k,t] = opfBlockData.colValue[from:to,blk]
 
     from = 1+to
     to = to + length(range_k)
-    @views x.ωt[range_k,t] .= opfBlockData.colValue[from:to,blk]
+    x.ωt[range_k,t] = opfBlockData.colValue[from:to,blk]
 
     from = 1+to
     to = to + size(x.St, 1)
     if !algparams.decompCtgs || k == 1
-        @views x.St[:,t] .= opfBlockData.colValue[from:to,blk]
+        x.St[:,t] = opfBlockData.colValue[from:to,blk]
     end
 
     # Zt will be updated in update_primal_penalty
@@ -102,13 +104,13 @@ function update_primal_nlpvars(
     from = 1+to
     to = to + size(x.Sk, 1)*length(range_k)
     if !algparams.decompCtgs || k > 1
-        @views x.Sk[:,range_k,t][:] .= opfBlockData.colValue[from:to,blk]
+        x.Sk[:,range_k,t] = opfBlockData.colValue[from:to,blk]
     end
 
     from = 1+to
     to = to + size(x.Zk, 1)*length(range_k)
     if !algparams.decompCtgs
-        @views x.Zk[:,range_k,t][:] .= opfBlockData.colValue[from:to,blk]
+        x.Zk[:,range_k,t] = opfBlockData.colValue[from:to,blk]
     end
 
     return nothing
@@ -131,7 +133,7 @@ function update_primal_penalty(
 
     if t > 1 && k == 1 && modelinfo.time_link_constr_type == :penalty
         β = [opfdata.generators[g].ramp_agc for g=1:ngen]
-        @views x.Zt[:,t] .= (((algparams.ρ_t/32.0)*primal.Zt[:,t]) .- dual.ramping[:,t] .-
+        x.Zt[:,t] = (((algparams.ρ_t/32.0)*primal.Zt[:,t]) .- dual.ramping[:,t] .-
                                 (algparams.ρ_t*(x.Pg[:,1,t-1] .- x.Pg[:,1,t] .+ x.St[:,t] .- β))
                             ) ./  max(algparams.zero, (algparams.ρ_t/32.0) + algparams.ρ_t + (modelinfo.obj_scale*algparams.θ_t))
     end
@@ -146,7 +148,7 @@ function update_primal_penalty(
                 β = zeros(ngen)
                 @assert norm(x.Sk[:,k,t]) <= algparams.zero
             end
-            @views x.Zk[:,k,t] .=   (((algparams.ρ_c/32.0)*primal.Zk[:,k,t]) .- dual.ctgs[:,k,t] .-
+            x.Zk[:,k,t] = (((algparams.ρ_c/32.0)*primal.Zk[:,k,t]) .- dual.ctgs[:,k,t] .-
                                         (algparams.ρ_c*(x.Pg[:,1,t] .- x.Pg[:,k,t] .+ x.Sk[:,k,t] .- β))
                                     ) ./  max(algparams.zero, (algparams.ρ_c/32.0) + algparams.ρ_c + (modelinfo.obj_scale*algparams.θ_c))
         end
@@ -205,8 +207,6 @@ function ProxALProblem(
     comm::Union{MPI.Comm,Nothing}
 )
     # initial values
-    x = OPFPrimalSolution(opfdata, modelinfo)
-    λ = OPFDualSolution(opfdata, modelinfo)
     backend = if isa(backend, JuMPBackend)
         JuMPBlockBackend
     elseif isa(backend, ExaPFBackend)
@@ -220,8 +220,35 @@ function ProxALProblem(
         modelinfo=modelinfo, algparams=algparams,
         backend=backend, comm=comm
     )
-    blkLinIndex = LinearIndices(blocks.blkIndex)
-    for blk in blkLinIndex
+    blkLinIndices = LinearIndices(blocks.blkIndex)
+    if algparams.mode == :nondecomposed || algparams.decompCtgs == false
+        blkLocalIndices = nothing
+        blkLinkedIndices = nothing
+    else
+        blkLocalIndices = Vector{Int64}()
+        for blk in blkLinIndices
+            if is_my_work(blk, comm)
+                push!(blkLocalIndices, blk)
+            end
+        end
+        blkLinkedIndices = Vector{Int64}()
+        for blk in blkLocalIndices
+            block = blocks.blkIndex[blk]
+            k = block[1]
+            t = block[2]
+            for blkn in blkLinIndices
+                blockn = blocks.blkIndex[blkn]
+                kn = blockn[1]
+                tn = blockn[2]
+                if is_comm_pattern(t, tn, k, kn, CommPatternTK()) && !is_my_work(blkn, comm)
+                    push!(blkLinkedIndices, blkn)
+                end
+            end
+        end
+    end
+    x = OPFPrimalSolution(opfdata, modelinfo, blocks, blkLocalIndices, blkLinkedIndices)
+    λ = OPFDualSolution(opfdata, modelinfo, blocks, blkLocalIndices, blkLinkedIndices)
+    for blk in blkLinIndices
         if is_my_work(blk, comm)
             if algparams.mode ∉ [:nondecomposed, :lyapunov_bound]
                 init!(blocks.blkModel[blk], algparams)
@@ -264,7 +291,9 @@ function ProxALProblem(
         wall_time_elapsed_actual,
         wall_time_elapsed_ideal,
         iter,
-        blkLinIndex,
+        blkLinIndices,
+        blkLocalIndices,
+        blkLinkedIndices,
     )
 end
 
@@ -278,7 +307,7 @@ function runinfo_update(
 )
     iter = runinfo.iter
     obj = 0.0
-    for blk in runinfo.blkLinIndex
+    for blk in runinfo.blkLinIndices
         if is_my_work(blk, comm)
             obj += compute_objective_function(runinfo.x, opfdata, opfBlockData, blk, modelinfo, algparams)
         end
@@ -288,7 +317,7 @@ function runinfo_update(
 
     iter = runinfo.iter
     lyapunov = 0.0
-    for blk in runinfo.blkLinIndex
+    for blk in runinfo.blkLinIndices
         if is_my_work(blk, comm)
             lyapunov += compute_lyapunov_function(runinfo.x, runinfo.λ, opfdata, opfBlockData, blk, runinfo.xprev, modelinfo, algparams)
         end
@@ -297,7 +326,7 @@ function runinfo_update(
     push!(runinfo.lyapunov, lyapunov)
 
     maxviol_t_actual = 0.0
-    for blk in runinfo.blkLinIndex
+    for blk in runinfo.blkLinIndices
         if is_my_work(blk, comm)
             lmaxviol_t_actual = compute_true_ramp_error(runinfo.x, opfdata, opfBlockData, blk, modelinfo)
             maxviol_t_actual = max(maxviol_t_actual, lmaxviol_t_actual)
@@ -307,7 +336,7 @@ function runinfo_update(
     push!(runinfo.maxviol_t_actual, maxviol_t_actual)
 
     maxviol_c_actual = 0.0
-    for blk in runinfo.blkLinIndex
+    for blk in runinfo.blkLinIndices
         if is_my_work(blk, comm)
             lmaxviol_c_actual = compute_true_ctgs_error(runinfo.x, opfdata, opfBlockData, blk, modelinfo)
             maxviol_c_actual = max(maxviol_c_actual, lmaxviol_c_actual)
@@ -317,7 +346,7 @@ function runinfo_update(
     push!(runinfo.maxviol_c_actual, maxviol_c_actual)
 
     maxviol_d = 0.0
-    for blk in runinfo.blkLinIndex
+    for blk in runinfo.blkLinIndices
         if is_my_work(blk, comm)
             lmaxviol_d = compute_dual_error(runinfo.x, runinfo.xprev, runinfo.λ, runinfo.λprev, opfdata, opfBlockData, blk, modelinfo, algparams)
             maxviol_d = max(maxviol_d, lmaxviol_d)
