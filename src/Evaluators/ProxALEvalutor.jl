@@ -54,7 +54,7 @@ function ProxALEvaluator(
     rawdata::RawData,
     modelinfo::ModelInfo,
     algparams::AlgParams,
-    space::AbstractBackend=JuMPBackend(),
+    backend::AbstractBackend=JuMPBackend(),
     comm::Union{MPI.Comm,Nothing} = MPI.COMM_WORLD
 )
     opfdata = opf_loaddata(
@@ -71,22 +71,22 @@ function ProxALEvaluator(
         modelinfo.time_link_constr_type = :penalty
     end
     if modelinfo.num_ctgs > 1 && !algparams.decompCtgs
-        if isa(space, ExaAdmmBackend)
-            @warn("ProxAL with multiple contingencies and $space "*
+        if isa(backend, ExaAdmmBackend)
+            @warn("ProxAL with multiple contingencies and $backend "*
                   "is guaranteed to converge only when AlgParams.decompCtgs = true\n"*
                   "     Forcing AlgParams.decompCtgs = true\n")
             algparams.decompCtgs = true
         else
-            error("Multiple contingencies not supported by backend: $space")
+            error("Multiple contingencies not supported by backend: $backend")
         end
     end
     if modelinfo.num_ctgs > 1 && algparams.decompCtgs
-        if isa(space, JuMPBackend)
+        if isa(backend, JuMPBackend)
             allowed = [:frequency_penalty, :preventive_penalty, :corrective_penalty]
-        elseif isa(space, AdmmBackend)
+        elseif isa(backend, AdmmBackend)
             allowed = [:preventive_penalty, :corrective_penalty]
         else
-            error("Multiple contingencies not supported by backend: $space")
+            error("Multiple contingencies not supported by backend: $backend")
         end
         if modelinfo.ctgs_link_constr_type ∉ allowed
             if modelinfo.ctgs_link_constr_type == :frequency_equality
@@ -96,15 +96,15 @@ function ProxALEvaluator(
             else
                 modelinfo.ctgs_link_constr_type = :preventive_penalty
             end
-            @warn("ProxAL with $space is guaranteed to converge only when "*
+            @warn("ProxAL with $backend is guaranteed to converge only when "*
                   "ctgs_link_constr_type in $allowed\n"*
                   "     Forcing ctgs_link_constr_type = $(modelinfo.ctgs_link_constr_type)\n")
         end
     end
 
     # ctgs_arr = deepcopy(rawdata.ctgs_arr)
-    problem = ProxALProblem(opfdata, rawdata, modelinfo, algparams, space, comm)
-    return ProxALEvaluator(problem, modelinfo, algparams, opfdata, rawdata, space, comm)
+    problem = ProxALProblem(opfdata, rawdata, modelinfo, algparams, backend, comm)
+    return ProxALEvaluator(problem, modelinfo, algparams, opfdata, rawdata, backend, comm)
 end
 
 """
@@ -218,7 +218,7 @@ function optimize!(
             # Primal update except penalty vars
             nlp_soltime .= 0.0
             nlp_soltime_local = 0.0
-            for blk in runinfo.blkLinIndex
+            for blk in runinfo.blkLinIndices
                 if is_my_work(blk, comm)
                     nlp_opt_sol[:,blk] .= 0.0
                     nlp_soltime[blk] = @elapsed blocknlp_optimize(blk, x, λ, algparams)
@@ -244,7 +244,7 @@ function optimize!(
 
             # Update primal values
             elapsed_t = @elapsed begin
-                for blk in runinfo.blkLinIndex
+                for blk in runinfo.blkLinIndices
                     block = opfBlockData.blkIndex[blk]
                     k = block[1]
                     t = block[2]
@@ -252,7 +252,7 @@ function optimize!(
                         # Updating my own primal values
                         opfBlockData.colValue[:,blk] .= nlp_opt_sol[:,blk]
                         update_primal_nlpvars(x, opfBlockData, blk, modelinfo, algparams)
-                        for blkn in runinfo.blkLinIndex
+                        for blkn in runinfo.blkLinIndices
                             blockn = opfBlockData.blkIndex[blkn]
                             kn = blockn[1]
                             tn = blockn[2]
@@ -274,7 +274,7 @@ function optimize!(
 
             # Primal update of penalty vars
             elapsed_t = @elapsed begin
-                for blk in runinfo.blkLinIndex
+                for blk in runinfo.blkLinIndices
                     if is_my_work(blk, comm)
                         update_primal_penalty(x, opfdata, opfBlockData, blk, x, λ, modelinfo, algparams)
                     end
@@ -299,14 +299,14 @@ function optimize!(
         if comm_rank(comm) == 0
             print_timings && println("Comm penalty: $elapsed_t")
         end
-        runinfo.wall_time_elapsed_ideal += isempty(runinfo.blkLinIndex) ? 0.0 : maximum([nlp_soltime[blk] for blk in runinfo.blkLinIndex])
+        runinfo.wall_time_elapsed_ideal += isempty(runinfo.blkLinIndices) ? 0.0 : maximum([nlp_soltime[blk] for blk in runinfo.blkLinIndices])
         runinfo.wall_time_elapsed_ideal += elapsed_t
     end
     #------------------------------------------------------------------------------------
     function dual_update()
         elapsed_t = @elapsed begin
             maxviol_t = 0.0; maxviol_c = 0.0
-            for blk in runinfo.blkLinIndex
+            for blk in runinfo.blkLinIndices
                 block = opfBlockData.blkIndex[blk]
                 k = block[1]
                 t = block[2]

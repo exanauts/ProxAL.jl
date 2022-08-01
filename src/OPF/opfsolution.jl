@@ -16,7 +16,13 @@ mutable struct OPFPrimalSolution <: AbstractPrimalSolution
     sigma_lineFr
     sigma_lineTo
 
-    function OPFPrimalSolution(opfdata::OPFData, modelinfo::ModelInfo) 
+    function OPFPrimalSolution(
+        opfdata::OPFData,
+        modelinfo::ModelInfo,
+        blocks::Union{AbstractBlocks,Nothing} = nothing,
+        blkLocalIndices::Nothing = nothing,
+        blkLinkedIndices::Nothing = nothing,
+    )
         buses = opfdata.buses
         gens  = opfdata.generators
         ngen  = length(gens)
@@ -69,17 +75,96 @@ mutable struct OPFPrimalSolution <: AbstractPrimalSolution
 
         new(Pg,Qg,Vm,Va,ωt,St,Zt,Sk,Zk,sigma_real,sigma_imag,sigma_lineFr,sigma_lineTo)
     end
+
+    function OPFPrimalSolution(
+        opfdata::OPFData,
+        modelinfo::ModelInfo,
+        blocks::AbstractBlocks,
+        blkLocalIndices::Array{Int64},
+        blkLinkedIndices::Array{Int64},
+    )
+        buses = opfdata.buses
+        gens  = opfdata.generators
+        ngen  = length(gens)
+        nbus  = length(buses)
+        nline = length(opfdata.lines)
+        T = modelinfo.num_time_periods
+        K = modelinfo.num_ctgs + 1 # base case counted separately
+        @assert T >= 1
+        @assert K >= 1
+
+        blockindices = (blkLocalIndices, blkLinkedIndices)
+        Pg = LocalStorage{2,ngen}(K, T, blocks, blockindices)
+        Qg = LocalStorage{2,ngen}(K, T, blocks, blockindices)
+        Vm = LocalStorage{2,nbus}(K, T, blocks, blockindices)
+        Va = LocalStorage{2,nbus}(K, T, blocks, blockindices)
+        ωt = LocalStorage{2,1}(K, T, blocks, blockindices)
+        St = LocalStorage{1,ngen}(T, blocks, blockindices)
+        Zt = LocalStorage{1,ngen}(T, blocks, blockindices)
+        Sk = LocalStorage{2,ngen}(K, T, blocks, blockindices)
+        Zk = LocalStorage{2,ngen}(K, T, blocks, blockindices)
+        if modelinfo.allow_constr_infeas
+            sigma_real = LocalStorage{2,nbus}(K, T, blocks, blockindices)
+            sigma_imag = LocalStorage{2,nbus}(K, T, blocks, blockindices)
+            sigma_lineFr = LocalStorage{2,nline}(K, T, blocks, blockindices)
+            sigma_lineTo = LocalStorage{2,nline}(K, T, blocks, blockindices)
+        else
+            sigma_real = 0
+            sigma_imag = 0
+            sigma_lineFr = 0
+            sigma_lineTo = 0
+        end
+        for blk in vcat(blockindices[1], blockindices[2])
+            block = blocks.blkIndex[blk]
+            k = block[1]
+            t = block[2]
+            for i=1:ngen
+                Pg[i,k,t] = 0.5*(gens[i].Pmax + gens[i].Pmin)
+            end
+            for i=1:ngen
+                Qg[i,k,t] = 0.5*(gens[i].Qmax + gens[i].Qmin)
+            end
+            for i=1:nbus
+                Vm[i,k,t] = 0.5*(buses[i].Vmax + buses[i].Vmin)
+                Va[i,k,t] = opfdata.buses[opfdata.bus_ref].Va
+            end
+            if T > 1
+                for i=1:ngen
+                    St[i,t] = gens[i].ramp_agc
+                end
+            end
+            if K > 1
+                for i=1:ngen
+                    Sk[i,k,t] = gens[i].scen_agc
+                end
+            end
+        end
+
+        new(Pg,Qg,Vm,Va,ωt,St,Zt,Sk,Zk,sigma_real,sigma_imag,sigma_lineFr,sigma_lineTo)
+    end
 end
 
-function OPFPrimalSolution(nlp::AbstractNLPEvaluator) 
-    return OPFPrimalSolution(nlp.opfdata, nlp.modelinfo)
+function OPFPrimalSolution(nlp::AbstractNLPEvaluator)
+    return OPFPrimalSolution(
+        nlp.opfdata,
+        nlp.modelinfo,
+        nlp.problem.opfBlockData,
+        nlp.problem.blkLocalIndices,
+        nlp.problem.blkLinkedIndices
+    )
 end
 
 mutable struct OPFDualSolution <: AbstractDualSolution
     ramping
     ctgs
 
-    function OPFDualSolution(opfdata::OPFData, modelinfo::ModelInfo) 
+    function OPFDualSolution(
+        opfdata::OPFData,
+        modelinfo::ModelInfo,
+        blocks::Union{AbstractBlocks,Nothing} = nothing,
+        blkLocalIndices::Nothing = nothing,
+        blkLinkedIndices::Nothing = nothing,
+    )
         ngen = length(opfdata.generators)
         T = modelinfo.num_time_periods
         K = modelinfo.num_ctgs + 1 # base case counted separately
@@ -91,10 +176,36 @@ mutable struct OPFDualSolution <: AbstractDualSolution
 
         new(ramping,ctgs)
     end
+
+    function OPFDualSolution(
+        opfdata::OPFData,
+        modelinfo::ModelInfo,
+        blocks::AbstractBlocks,
+        blkLocalIndices::Array{Int64},
+        blkLinkedIndices::Array{Int64},
+    )
+        ngen = length(opfdata.generators)
+        T = modelinfo.num_time_periods
+        K = modelinfo.num_ctgs + 1 # base case counted separately
+        @assert T >= 1
+        @assert K >= 1
+
+        blkindices = (blkLocalIndices, blkLinkedIndices)
+        ramping = LocalStorage{1,ngen}(T, blocks, blkindices)
+        ctgs = LocalStorage{2,ngen}(K, T, blocks, blkindices)
+
+        new(ramping,ctgs)
+    end
 end
 
-function OPFDualSolution(nlp::AbstractNLPEvaluator) 
-    return OPFDualSolution(nlp.opfdata, nlp.modelinfo)
+function OPFDualSolution(nlp::AbstractNLPEvaluator)
+    return OPFDualSolution(
+        nlp.opfdata,
+        nlp.modelinfo,
+        nlp.problem.opfBlockData,
+        nlp.problem.blkLocalIndices,
+        nlp.problem.blkLinkedIndices,
+        )
 end
 
 function get_block_view(x::OPFPrimalSolution,
@@ -104,15 +215,16 @@ function get_block_view(x::OPFPrimalSolution,
     k = block[1]
     t = block[2]
     range_k = algparams.decompCtgs ? (k:k) : (1:(modelinfo.num_ctgs + 1))
-    Pg = view(x.Pg, :, range_k, t)
-    Qg = view(x.Qg, :, range_k, t)
-    Vm = view(x.Vm, :, range_k, t)
-    Va = view(x.Va, :, range_k, t)
-    ωt = view(x.ωt, range_k, t)
-    St = view(x.St, :, t)
-    Zt = view(x.Zt, :, t)
-    Sk = view(x.Sk, :, range_k, t)
-    Zk = view(x.Zk, :, range_k, t)
+
+    Pg = x.Pg[:, range_k, t]
+    Qg = x.Qg[:, range_k, t]
+    Vm = x.Vm[:, range_k, t]
+    Va = x.Va[:, range_k, t]
+    ωt = x.ωt[range_k, t]
+    St = x.St[:, t]
+    Zt = x.Zt[:, t]
+    Sk = x.Sk[:, range_k, t]
+    Zk = x.Zk[:, range_k, t]
 
     return CatView(Pg, Qg, Vm, Va, ωt, St, Zt, Sk, Zk)
 end
