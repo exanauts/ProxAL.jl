@@ -23,7 +23,7 @@ demandfiles = "$(case)_oneweek_168"
 
 # choose one of the following (K*T subproblems in each case)
 if length(ARGS) == 0
-    (T, K) = (2, 1)
+    (T, K) = (4, 2)
 elseif length(ARGS) == 4
     case = ARGS[1]
     demandfiles = ARGS[2]
@@ -93,7 +93,7 @@ elapsed_t = @elapsed begin
         load_file,
         modelinfo,
         algparams,
-        backend
+        backend,
     )
     # end
 end
@@ -110,4 +110,6 @@ else
     info = ProxAL.optimize!(nlp)
 end
 
-MPI.Finalize()
+if !isinteractive()
+    MPI.Finalize()
+end

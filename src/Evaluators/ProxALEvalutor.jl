@@ -147,7 +147,6 @@ function optimize!(
     end
 
     opfBlockData = runinfo.opfBlockData
-    nlp_opt_sol = runinfo.nlp_opt_sol
     nlp_soltime = runinfo.nlp_soltime
     ngen = length(opfdata.generators)
     nbus = length(opfdata.buses)
@@ -158,49 +157,36 @@ function optimize!(
     # number of contingency per blocks
     k_per_block = (algparams.decompCtgs) ? 1 : K
 
-    function transfer!(blk, opt_sol, solution)
+    function transfer!(blk, x, solution)
+        block = opfBlockData.blkIndex[blk]
+        k = block[1]
+        t = block[2]
         # Pg
-        fr = 1 ; to = ngen * k_per_block
-        @views opt_sol[fr:to, blk] .= solution.pg[:]
+        k = algparams.decompCtgs ? k : 1:K
+        x.Pg[:,k,t] = solution.pg[:]
         # Qg
-        fr = to + 1 ; to += ngen * k_per_block
-        @views opt_sol[fr:to, blk] .= solution.qg[:]
+        x.Qg[:,k,t] = solution.qg[:]
         # vm
-        fr = to +1 ; to = fr + nbus * k_per_block - 1
-        @views opt_sol[fr:to, blk] .= solution.vm[:]
+        x.Vm[:,k,t] = solution.vm[:]
         # va
-        fr = to + 1 ; to = fr + nbus * k_per_block - 1
-        @views opt_sol[fr:to, blk] .= solution.va[:]
+        x.Va[:,k,t] = solution.va[:]
         # wt
-        fr = to +1  ; to = fr + k_per_block -1
-        @views opt_sol[fr:to, blk] .= solution.ωt[:]
+        x.ωt[k,t] = algparams.decompCtgs ? solution.ωt[1] : solution.ωt
         # St
-        fr = to +1  ; to = fr + ngen - 1
-        @views opt_sol[fr:to, blk] .= solution.st[:]
-        # zt
-        fr = to +1  ; to = fr + ngen -1
-        if haskey(solution, :zt)
-            @views opt_sol[fr:to, blk] .= solution.zt[:]
+        if !algparams.decompCtgs || k == 1
+            x.St[:,t] = solution.st[:]
         end
-        # sk
-        fr = to +1  ; to = fr + ngen * k_per_block - 1
-        if haskey(solution, :sk)
-            @views opt_sol[fr:to, blk] .= solution.sk[:]
-        end
-        # zk
-        fr = to +1  ; to = fr + ngen * k_per_block - 1
-        if haskey(solution, :zk)
-            @views opt_sol[fr:to, blk] .= solution.zk[:]
-        end
+        x.Sk[:,k,t] = solution.sk[:]
     end
     #------------------------------------------------------------------------------------
     function blocknlp_optimize(blk, x_ref, λ_ref, alg_ref)
         model = opfBlockData.blkModel[blk]
         # Update objective
         set_objective!(model, alg_ref, x_ref, λ_ref)
-        x0 = @view opfBlockData.colValue[:, blk]
+        block = opfBlockData.blkIndex[blk]
+        x0 = get_block_view(x_ref, block, modelinfo, algparams)
         solution = optimize!(model, x0, alg_ref)
-        transfer!(blk, nlp_opt_sol, solution)
+        transfer!(blk, x, solution)
     end
     #------------------------------------------------------------------------------------
     function blocknlp_init_and_optimize(blk, x_ref, λ_ref, alg_ref)
@@ -208,9 +194,10 @@ function optimize!(
         init!(model, alg_ref)
         # Update objective
         set_objective!(model, alg_ref, x_ref, λ_ref)
-        x0 = @view opfBlockData.colValue[:, blk]
+        block = opfBlockData.blkIndex[blk]
+        x0 = get_block_view(x_ref, block, modelinfo, algparams)
         solution = optimize!(model, x0, alg_ref)
-        transfer!(blk, nlp_opt_sol, solution)
+        transfer!(blk, x, solution)
     end
     #------------------------------------------------------------------------------------
     function primal_update()
@@ -218,13 +205,10 @@ function optimize!(
             # Primal update except penalty vars
             nlp_soltime .= 0.0
             nlp_soltime_local = 0.0
-            for blk in runinfo.blkLinIndices
-                if is_my_work(blk, comm)
-                    nlp_opt_sol[:,blk] .= 0.0
-                    nlp_soltime[blk] = @elapsed blocknlp_optimize(blk, x, λ, algparams)
-                    # nlp_soltime[blk] = @elapsed blocknlp_init_and_optimize(blk, x, λ, algparams)
-                    nlp_soltime_local += nlp_soltime[blk]
-                end
+            _x = deepcopy(x)
+            for blk in runinfo.blkLocalIndices
+                nlp_soltime[blk] = @elapsed blocknlp_optimize(blk, _x, λ, algparams)
+                nlp_soltime_local += nlp_soltime[blk]
             end
             if comm_rank(comm) == 0
               print_timings && println("Solve subproblems(): $nlp_soltime_local")
@@ -232,7 +216,14 @@ function optimize!(
 
             print_timings && comm_barrier(comm)
             elapsed_t = @elapsed begin
-                requests = comm_neighbors!(nlp_opt_sol, opfBlockData, runinfo, CommPatternTK(), comm)
+                requests = Vector{MPI.Request}()
+                requests = vcat(requests, comm_neighbors!(x.Pg, opfBlockData, runinfo, CommPatternTK(), comm))
+                requests = vcat(requests, comm_neighbors!(x.Qg, opfBlockData, runinfo, CommPatternTK(), comm))
+                requests = vcat(requests, comm_neighbors!(x.Vm, opfBlockData, runinfo, CommPatternTK(), comm))
+                requests = vcat(requests, comm_neighbors!(x.Va, opfBlockData, runinfo, CommPatternTK(), comm))
+                requests = vcat(requests, comm_neighbors!(x.ωt, opfBlockData, runinfo, CommPatternTK(), comm))
+                requests = vcat(requests, comm_neighbors!(x.St, opfBlockData, runinfo, CommPatternT(), comm))
+                requests = vcat(requests, comm_neighbors!(x.Sk, opfBlockData, runinfo, CommPatternK(), comm))
                 # Every worker sends his contribution
                 comm_sum!(nlp_soltime, comm)
                 comm_wait!(requests)
@@ -242,42 +233,9 @@ function optimize!(
                 print_timings && println("Comm primals: $elapsed_t")
             end
 
-            # Update primal values
             elapsed_t = @elapsed begin
-                for blk in runinfo.blkLinIndices
-                    block = opfBlockData.blkIndex[blk]
-                    k = block[1]
-                    t = block[2]
-                    if is_my_work(blk, comm)
-                        # Updating my own primal values
-                        opfBlockData.colValue[:,blk] .= nlp_opt_sol[:,blk]
-                        update_primal_nlpvars(x, opfBlockData, blk, modelinfo, algparams)
-                        for blkn in runinfo.blkLinIndices
-                            blockn = opfBlockData.blkIndex[blkn]
-                            kn = blockn[1]
-                            tn = blockn[2]
-                            # Updating the received neighboring primal values
-                            if is_comm_pattern(t, tn, k, kn, CommPatternTK()) && !is_my_work(blkn, comm)
-                                opfBlockData.colValue[:,blkn] .= nlp_opt_sol[:,blkn]
-                                update_primal_nlpvars(x, opfBlockData, blkn, modelinfo, algparams)
-                            end
-                        end
-                    end
-                end
-                print_timings && comm_barrier(comm)
-            end
-
-            if comm_rank(comm) == 0
-              print_timings && println("update_primal_nlpvars(): $elapsed_t")
-            end
-
-
-            # Primal update of penalty vars
-            elapsed_t = @elapsed begin
-                for blk in runinfo.blkLinIndices
-                    if is_my_work(blk, comm)
-                        update_primal_penalty(x, opfdata, opfBlockData, blk, x, λ, modelinfo, algparams)
-                    end
+                for blk in runinfo.blkLocalIndices
+                    update_primal_penalty(x, opfdata, opfBlockData, blk, x, λ, modelinfo, algparams)
                 end
                 print_timings && comm_barrier(comm)
             end
@@ -306,15 +264,10 @@ function optimize!(
     function dual_update()
         elapsed_t = @elapsed begin
             maxviol_t = 0.0; maxviol_c = 0.0
-            for blk in runinfo.blkLinIndices
-                block = opfBlockData.blkIndex[blk]
-                k = block[1]
-                t = block[2]
-                if is_my_work(blk, comm)
-                    lmaxviol_t, lmaxviol_c = update_dual_vars(λ, opfdata, opfBlockData, blk, x, modelinfo, algparams)
-                    maxviol_t = max(maxviol_t, lmaxviol_t)
-                    maxviol_c = max(maxviol_c, lmaxviol_c)
-                end
+            for blk in runinfo.blkLocalIndices
+                lmaxviol_t, lmaxviol_c = update_dual_vars(λ, opfdata, opfBlockData, blk, x, modelinfo, algparams)
+                maxviol_t = max(maxviol_t, lmaxviol_t)
+                maxviol_c = max(maxviol_c, lmaxviol_c)
             end
             print_timings && comm_barrier(comm)
         end
@@ -324,7 +277,7 @@ function optimize!(
         elapsed_t = @elapsed begin
             requests_ramp = comm_neighbors!(λ.ramping, opfBlockData, runinfo, CommPatternT(), comm)
             if algparams.decompCtgs
-                requests_ctgs = comm_neighbors!(λ.ctgs, opfBlockData, runinfo, CommPatternK(), comm)
+                requests_ctgs = comm_neighbors!(λ.ctgs, opfBlockData, runinfo, CommPatternTK(), comm)
                 comm_wait!(requests_ctgs)
             end
             comm_wait!(requests_ramp)

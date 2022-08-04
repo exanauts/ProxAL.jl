@@ -42,8 +42,6 @@ mutable struct OPFBlocks <: AbstractBlocks
     blkCount::Int64
     blkIndex::CartesianIndices
     blkModel::Vector{AbstractBlockModel}
-    colCount::Int64
-    colValue::Array{Float64,2}
 end
 
 function OPFBlocks(
@@ -62,9 +60,6 @@ function OPFBlocks(
 
     blkCount = algparams.decompCtgs ? (T*K) : T
     blkIndex = algparams.decompCtgs ? CartesianIndices((1:K,1:T)) : CartesianIndices((1:1,1:T))
-    colCount = ((algparams.decompCtgs ? 1 : K)*(
-                    2*nbus + 4*ngen + 1)) + 2*ngen
-    colValue = zeros(colCount,blkCount)
     blkModel = AbstractBlockModel[]
 
     function local_copy(modelinfo)
@@ -122,6 +117,6 @@ function OPFBlocks(
         push!(blkModel, localmodel)
     end
 
-    return OPFBlocks(blkCount, blkIndex, blkModel, colCount, colValue)
+    return OPFBlocks(blkCount, blkIndex, blkModel)
 end
 
