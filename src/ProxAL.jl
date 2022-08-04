@@ -30,7 +30,6 @@ mutable struct ProxALProblem
     maxviol_d::Vector{Float64}
     maxviol_t_actual::Vector{Float64}
     maxviol_c_actual::Vector{Float64}
-    nlp_opt_sol::Array{Float64,2}
     nlp_soltime::Vector{Float64}
     wall_time_elapsed_actual::Float64
     wall_time_elapsed_ideal::Float64
@@ -46,10 +45,10 @@ include("Evaluators/Evaluators.jl")
 include("ExaAdmmBackend/ExaAdmmBackend.jl")
 include("params.jl")
 include("OPF/opfdata.jl")
-include("OPF/opfsolution.jl")
 include("backends.jl")
 include("blocks.jl")
 include("LocalStorage.jl")
+include("OPF/opfsolution.jl")
 include("OPF/opfmodel.jl")
 include("Evaluators/ProxALEvalutor.jl")
 include("Evaluators/NonDecomposedModel.jl")
@@ -58,63 +57,6 @@ export ModelInfo, AlgParams
 export ProxALEvaluator, NonDecomposedModel
 export optimize!
 export JuMPBackend, ExaPFBackend, AdmmBackend
-
-function update_primal_nlpvars(
-    x::AbstractPrimalSolution,
-    opfBlockData::AbstractBlocks,
-    blk::Int,
-    modelinfo::ModelInfo,
-    algparams::AlgParams
-)
-    block = opfBlockData.blkIndex[blk]
-    k = block[1]
-    t = block[2]
-    range_k = algparams.decompCtgs ? (k:k) : (1:(modelinfo.num_ctgs + 1))
-
-    from = 1
-    to = size(x.Pg,1)*length(range_k)
-    x.Pg[:,range_k,t] = opfBlockData.colValue[from:to,blk]
-
-    from = 1+to
-    to = to + size(x.Qg, 1)*length(range_k)
-    x.Qg[:,range_k,t] = opfBlockData.colValue[from:to,blk]
-
-    from = 1+to
-    to = to + size(x.Vm, 1)*length(range_k)
-    x.Vm[:,range_k,t] = opfBlockData.colValue[from:to,blk]
-
-    from = 1+to
-    to = to + size(x.Va, 1)*length(range_k)
-    x.Va[:,range_k,t] = opfBlockData.colValue[from:to,blk]
-
-    from = 1+to
-    to = to + length(range_k)
-    x.ωt[range_k,t] = opfBlockData.colValue[from:to,blk]
-
-    from = 1+to
-    to = to + size(x.St, 1)
-    if !algparams.decompCtgs || k == 1
-        x.St[:,t] = opfBlockData.colValue[from:to,blk]
-    end
-
-    # Zt will be updated in update_primal_penalty
-    from = 1+to
-    to = to + size(x.Zt, 1)
-
-    from = 1+to
-    to = to + size(x.Sk, 1)*length(range_k)
-    if !algparams.decompCtgs || k > 1
-        x.Sk[:,range_k,t] = opfBlockData.colValue[from:to,blk]
-    end
-
-    from = 1+to
-    to = to + size(x.Zk, 1)*length(range_k)
-    if !algparams.decompCtgs
-        x.Zk[:,range_k,t] = opfBlockData.colValue[from:to,blk]
-    end
-
-    return nothing
-end
 
 function update_primal_penalty(
     x::AbstractPrimalSolution,
@@ -220,17 +162,17 @@ function ProxALProblem(
         modelinfo=modelinfo, algparams=algparams,
         backend=backend, comm=comm
     )
+    # Linearize Cartesian indices
     blkLinIndices = LinearIndices(blocks.blkIndex)
-    if algparams.mode == :nondecomposed || algparams.decompCtgs == false
-        blkLocalIndices = nothing
-        blkLinkedIndices = nothing
-    else
+    # Only do fully distributed if contingencies are decomposed (and MPI enabled)
+        # Get the local indices this process has to work on
         blkLocalIndices = Vector{Int64}()
         for blk in blkLinIndices
             if is_my_work(blk, comm)
                 push!(blkLocalIndices, blk)
             end
         end
+        # Get the list of neighbors this process has to communicate with
         blkLinkedIndices = Vector{Int64}()
         for blk in blkLocalIndices
             block = blocks.blkIndex[blk]
@@ -245,15 +187,16 @@ function ProxALProblem(
                 end
             end
         end
+    if !algparams.decompCtgs == true || !isa(comm, MPI.Comm)
+        x = OPFPrimalSolution(opfdata, modelinfo, blocks, blkLocalIndices, blkLinkedIndices, Array)
+        λ = OPFDualSolution(opfdata, modelinfo, blocks, blkLocalIndices, blkLinkedIndices, Array)
+    else
+        x = OPFPrimalSolution(opfdata, modelinfo, blocks, blkLocalIndices, blkLinkedIndices, LocalStorage)
+        λ = OPFDualSolution(opfdata, modelinfo, blocks, blkLocalIndices, blkLinkedIndices, LocalStorage)
     end
-    x = OPFPrimalSolution(opfdata, modelinfo, blocks, blkLocalIndices, blkLinkedIndices)
-    λ = OPFDualSolution(opfdata, modelinfo, blocks, blkLocalIndices, blkLinkedIndices)
-    for blk in blkLinIndices
-        if is_my_work(blk, comm)
-            if algparams.mode ∉ [:nondecomposed, :lyapunov_bound]
-                init!(blocks.blkModel[blk], algparams)
-            end
-            blocks.colValue[:,blk] .= get_block_view(x, blocks.blkIndex[blk], modelinfo, algparams)
+    for blk in blkLocalIndices
+        if algparams.mode ∉ [:nondecomposed, :lyapunov_bound]
+            init!(blocks.blkModel[blk], algparams)
         end
     end
 
@@ -265,8 +208,6 @@ function ProxALProblem(
     maxviol_d = []
     maxviol_t_actual = []
     maxviol_c_actual = []
-    nlp_opt_sol = Array{Float64, 2}(undef, blocks.colCount, blocks.blkCount)
-    nlp_opt_sol .= blocks.colValue
     nlp_soltime = Vector{Float64}(undef, blocks.blkCount)
     wall_time_elapsed_actual = 0.0
     wall_time_elapsed_ideal = 0.0
@@ -286,7 +227,6 @@ function ProxALProblem(
         maxviol_d,
         maxviol_t_actual,
         maxviol_c_actual,
-        nlp_opt_sol,
         nlp_soltime,
         wall_time_elapsed_actual,
         wall_time_elapsed_ideal,

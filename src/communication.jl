@@ -85,19 +85,12 @@ function comm_neighbors!(data::AbstractArray{T,2}, blocks::AbstractBlocks, runin
                 tn = blockn[2]
                 if is_comm_pattern(t, tn, k, kn, pattern) && !is_my_work(blkn, comm)
                     remote = whoswork(blkn, comm)
-                    if isa(pattern, CommPatternTK)
-                        sbuf = @view data[:,blk]
-                        rbuf = @view data[:,blkn]
-                    elseif isa(pattern, CommPatternT)
-                        if isa(data, LocalStorage)
-                            sbuf = unsafe_wrap(Array, pointer(data.data[t]), (data.n,))
-                            rbuf = unsafe_wrap(Array, pointer(data.data[tn]), (data.n,))
-                        else
-                            sbuf = @view data[:,t]
-                            rbuf = @view data[:,tn]
-                        end
+                    if isa(data, LocalStorage)
+                        sbuf = unsafe_wrap(Array, pointer(data.data[t]), (data.n,))
+                        rbuf = unsafe_wrap(Array, pointer(data.data[tn]), (data.n,))
                     else
-                        error("Invalid communication pattern")
+                        sbuf = @view data[:,t]
+                        rbuf = @view data[:,tn]
                     end
                     push!(requests, MPI.Isend(sbuf, remote, t, comm))
                     push!(requests, MPI.Irecv!(rbuf, remote, tn, comm))
@@ -121,16 +114,12 @@ function comm_neighbors!(data::AbstractArray{T,3}, blocks::AbstractBlocks, runin
                 tn = blockn[2]
                 if is_comm_pattern(t, tn, k, kn, pattern) && !is_my_work(blkn, comm)
                     remote = whoswork(blkn, comm)
-                    if isa(pattern, CommPatternK)
-                        if isa(data, LocalStorage)
-                            sbuf = unsafe_wrap(Array, pointer(data.data[k,t]), (data.n,))
-                            rbuf = unsafe_wrap(Array, pointer(data.data[kn,tn]), (data.n,))
-                        else
-                            sbuf = @view data[:,k,t]
-                            rbuf = @view data[:,kn,tn]
-                        end
+                    if isa(data, LocalStorage)
+                        sbuf = unsafe_wrap(Array, pointer(data.data[k,t]), (data.n,))
+                        rbuf = unsafe_wrap(Array, pointer(data.data[kn,tn]), (data.n,))
                     else
-                        error("Invalid communication pattern")
+                        sbuf = @view data[:,k,t]
+                        rbuf = @view data[:,kn,tn]
                     end
                     push!(requests, MPI.Isend(sbuf, remote, k, comm))
                     push!(requests, MPI.Irecv!(rbuf, remote, kn, comm))
@@ -155,7 +144,7 @@ function comm_wait!(requests::Vector{MPI.Request})
     return MPI.Waitall!(requests)
 end
 
-function comm_wait!(requests::Nothing)
+function comm_wait!(requests)
     return nothing
 end
 

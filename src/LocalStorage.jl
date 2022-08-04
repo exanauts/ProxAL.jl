@@ -45,7 +45,7 @@ function LocalStorage{VT,1,M}(T::Int, blocks::OPFBlocks, blockindices::Tuple{Vec
 end
 
 function LocalStorage{VT,2,1}(K::Int, T::Int, blocks::OPFBlocks, blockindices::Tuple{Vector{Int64},Vector{Int64}}) where {VT}
-    arrays = Array{Union{VT, Nothing},2}(undef, K, T)
+    arrays = Array{Union{Vector{VT}, Nothing},2}(undef, K, T)
     entries = 0
     for i in 1:length(arrays)
         arrays[i] = nothing
@@ -54,15 +54,15 @@ function LocalStorage{VT,2,1}(K::Int, T::Int, blocks::OPFBlocks, blockindices::T
         block = blocks.blkIndex[blk]
         k = block[1]
         t = block[2]
-        arrays[k,t] = zero(VT)
+        arrays[k,t] = Vector{VT}([zero(VT)])
         entries += 1
     end
-    LocalStorage{VT,2,1,2}(arrays, 1, entries, K, T)
+    LocalStorage{VT,2,1,3}(arrays, 1, entries, K, T)
 end
 
 Base.size(L::LocalStorage{VT,2,M,3}) where {VT,M} = (L.n, L.K, L.T)
 Base.size(L::LocalStorage{VT,1,M,2}) where {VT,M} = (L.n, L.T)
-Base.size(L::LocalStorage{VT,2,1,2}) where {VT} = (L.K, L.T)
+Base.size(L::LocalStorage{VT,2,1,3}) where {VT} = (L.K, L.T)
 Base.size(L::LocalStorage, i::Int64) = (L.n, L.K, L.T)[i]
 
 function Base.getindex(L::LocalStorage{VT,2,M,3}, ::Colon, I1::UnitRange{Int64}, I2::Int64) where {VT,M}
@@ -73,24 +73,20 @@ function Base.getindex(L::LocalStorage{VT,2,M,3}, ::Colon, I1::UnitRange{Int64},
     return m
 end
 
-function Base.getindex(L::LocalStorage{VT,2,1,2}, I1::UnitRange{Int64}, I2::Int64) where {VT}
+function Base.getindex(L::LocalStorage{VT,2,1,3}, I1::UnitRange{Int64}, I2::Int64) where {VT}
     v = Vector{VT}(undef, length(I1))
     for (i, i1) in enumerate(I1)
-        v[i] = L.data[i1,I2]
+        v[i] = L.data[i1,I2][1]
     end
     return v
 end
 
-function Base.getindex(L::LocalStorage{VT,2,1,2}, I1::Int64, I2::Int64) where {VT}
-    return L.data[I1,I2]
+function Base.getindex(L::LocalStorage{VT,2,1,3}, I1::Int64, I2::Int64) where {VT}
+    return L.data[I1,I2][1]
 end
 
 function Base.getindex(L::LocalStorage{VT,1,M,2}, ::Colon, I1::Int64) where {VT,M}
     v = Vector{VT}(L.data[I1][:])
-    # @show pointer(L.data[I1])
-    # @show typeof(L.data[I1])
-    # v = Vector{VT}(undef, L.n)
-    # v .= L.data[I1][:]
     return v
 end
 
@@ -137,8 +133,8 @@ function Base.setindex!(L::LocalStorage{VT,2,M,3}, x::Float64, I1::Int64, I2::In
     L.data[I2,I3][I1] = x
 end
 
-function Base.setindex!(L::LocalStorage{VT,2,1,2}, x::Float64, I1::Int64, I2::Int64) where {VT}
-    L.data[I1,I2] = x
+function Base.setindex!(L::LocalStorage{VT,2,1,3}, x::Float64, I1::Int64, I2::Int64) where {VT}
+    L.data[I1,I2][1] = x
 end
 
 function Base.setindex!(L::LocalStorage{VT,2,M,3}, x::Vector{Float64}, ::Colon, I1::UnitRange{Int64}, I2::Int64) where {VT,M}

@@ -20,8 +20,9 @@ mutable struct OPFPrimalSolution <: AbstractPrimalSolution
         opfdata::OPFData,
         modelinfo::ModelInfo,
         blocks::Union{AbstractBlocks,Nothing} = nothing,
-        blkLocalIndices::Nothing = nothing,
-        blkLinkedIndices::Nothing = nothing,
+        blkLocalIndices::Union{Array{Int64},Nothing} = nothing,
+        blkLinkedIndices::Union{Array{Int64},Nothing} = nothing,
+        ::Type{Array}=Array
     )
         buses = opfdata.buses
         gens  = opfdata.generators
@@ -82,6 +83,7 @@ mutable struct OPFPrimalSolution <: AbstractPrimalSolution
         blocks::AbstractBlocks,
         blkLocalIndices::Array{Int64},
         blkLinkedIndices::Array{Int64},
+        ::Type{LocalStorage}
     )
         buses = opfdata.buses
         gens  = opfdata.generators
@@ -128,12 +130,12 @@ mutable struct OPFPrimalSolution <: AbstractPrimalSolution
                 Vm[i,k,t] = 0.5*(buses[i].Vmax + buses[i].Vmin)
                 Va[i,k,t] = opfdata.buses[opfdata.bus_ref].Va
             end
-            if T > 1
+            if T > 1 && t ∈ 2:T
                 for i=1:ngen
                     St[i,t] = gens[i].ramp_agc
                 end
             end
-            if K > 1
+            if K > 1 && k ∈ 2:K
                 for i=1:ngen
                     Sk[i,k,t] = gens[i].scen_agc
                 end
@@ -150,7 +152,8 @@ function OPFPrimalSolution(nlp::AbstractNLPEvaluator)
         nlp.modelinfo,
         nlp.problem.opfBlockData,
         nlp.problem.blkLocalIndices,
-        nlp.problem.blkLinkedIndices
+        nlp.problem.blkLinkedIndices,
+        Array
     )
 end
 
@@ -162,8 +165,9 @@ mutable struct OPFDualSolution <: AbstractDualSolution
         opfdata::OPFData,
         modelinfo::ModelInfo,
         blocks::Union{AbstractBlocks,Nothing} = nothing,
-        blkLocalIndices::Nothing = nothing,
-        blkLinkedIndices::Nothing = nothing,
+        blkLocalIndices::Union{Array{Int64},Nothing} = nothing,
+        blkLinkedIndices::Union{Array{Int64},Nothing} = nothing,
+        ::Type{Array} = Array
     )
         ngen = length(opfdata.generators)
         T = modelinfo.num_time_periods
@@ -183,6 +187,7 @@ mutable struct OPFDualSolution <: AbstractDualSolution
         blocks::AbstractBlocks,
         blkLocalIndices::Array{Int64},
         blkLinkedIndices::Array{Int64},
+        ::Type{LocalStorage}
     )
         ngen = length(opfdata.generators)
         T = modelinfo.num_time_periods
@@ -205,6 +210,7 @@ function OPFDualSolution(nlp::AbstractNLPEvaluator)
         nlp.problem.opfBlockData,
         nlp.problem.blkLocalIndices,
         nlp.problem.blkLinkedIndices,
+        Array
         )
 end
 
@@ -265,4 +271,27 @@ function dist(λ1::OPFDualSolution, λ2::OPFDualSolution,
     λ1vec = get_coupling_view(λ1, modelinfo, algparams)
     λ2vec = get_coupling_view(λ2, modelinfo, algparams)
     return norm(λ1vec .- λ2vec, lnorm) #/(1e-16 + norm(λ2vec, lnorm))
+end
+
+function printprimal(x::OPFPrimalSolution)
+    rank = MPI.Comm_rank(MPI.COMM_WORLD)
+    if rank == 0
+        println("x.Pg: $(x.Pg)")
+        println("x.Qg: $(x.Qg)")
+        println("x.Vm: $(x.Vm)")
+        println("x.Va: $(x.Va)")
+        println("x.ωt: $(x.ωt)")
+        println("x.St: $(x.St)")
+        println("x.Sk: $(x.Sk)")
+        println("x.Zt: $(x.Zt)")
+        println("x.Zk: $(x.Zk)")
+    end
+end
+
+function printdual(λ::OPFDualSolution)
+    rank = MPI.Comm_rank(MPI.COMM_WORLD)
+    if rank == 0
+        println("λ.ramping: $(λ.ramping)")
+        println("λ.ctgs: $(λ.ctgs)")
+    end
 end
