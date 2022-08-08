@@ -110,6 +110,8 @@ else
     info = ProxAL.optimize!(nlp)
 end
 
+ProxAL.write(info, nlp, "solution.h5")
+
 if !isinteractive()
     MPI.Finalize()
 end

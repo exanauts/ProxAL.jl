@@ -10,6 +10,7 @@ using ExaAdmm
 using LinearAlgebra
 using SparseArrays
 using MPI
+using HDF5
 
 abstract type AbstractPrimalSolution end
 abstract type AbstractDualSolution end
@@ -57,6 +58,7 @@ export ModelInfo, AlgParams
 export ProxALEvaluator, NonDecomposedModel
 export optimize!
 export JuMPBackend, ExaPFBackend, AdmmBackend
+export write
 
 function update_primal_penalty(
     x::AbstractPrimalSolution,
@@ -165,28 +167,28 @@ function ProxALProblem(
     # Linearize Cartesian indices
     blkLinIndices = LinearIndices(blocks.blkIndex)
     # Only do fully distributed if contingencies are decomposed (and MPI enabled)
-        # Get the local indices this process has to work on
-        blkLocalIndices = Vector{Int64}()
-        for blk in blkLinIndices
-            if is_my_work(blk, comm)
-                push!(blkLocalIndices, blk)
+    # Get the local indices this process has to work on
+    blkLocalIndices = Vector{Int64}()
+    for blk in blkLinIndices
+        if is_my_work(blk, comm)
+            push!(blkLocalIndices, blk)
+        end
+    end
+    # Get the list of neighbors this process has to communicate with
+    blkLinkedIndices = Vector{Int64}()
+    for blk in blkLocalIndices
+        block = blocks.blkIndex[blk]
+        k = block[1]
+        t = block[2]
+        for blkn in blkLinIndices
+            blockn = blocks.blkIndex[blkn]
+            kn = blockn[1]
+            tn = blockn[2]
+            if is_comm_pattern(t, tn, k, kn, CommPatternTK()) && !is_my_work(blkn, comm)
+                push!(blkLinkedIndices, blkn)
             end
         end
-        # Get the list of neighbors this process has to communicate with
-        blkLinkedIndices = Vector{Int64}()
-        for blk in blkLocalIndices
-            block = blocks.blkIndex[blk]
-            k = block[1]
-            t = block[2]
-            for blkn in blkLinIndices
-                blockn = blocks.blkIndex[blkn]
-                kn = blockn[1]
-                tn = blockn[2]
-                if is_comm_pattern(t, tn, k, kn, CommPatternTK()) && !is_my_work(blkn, comm)
-                    push!(blkLinkedIndices, blkn)
-                end
-            end
-        end
+    end
     if !algparams.decompCtgs == true || !isa(comm, MPI.Comm)
         x = OPFPrimalSolution(opfdata, modelinfo, blocks, blkLocalIndices, blkLinkedIndices, Array)
         λ = OPFDualSolution(opfdata, modelinfo, blocks, blkLocalIndices, blkLinkedIndices, Array)

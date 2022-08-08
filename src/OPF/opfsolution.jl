@@ -295,3 +295,55 @@ function printdual(λ::OPFDualSolution)
         println("λ.ctgs: $(λ.ctgs)")
     end
 end
+
+function write(runinfo::ProxALProblem, nlp::AbstractNLPEvaluator, filename::String)
+    blkLocalIndices = runinfo.blkLocalIndices
+    blkIndex = runinfo.opfBlockData.blkIndex
+    comm = nlp.comm
+    modelinfo = nlp.modelinfo
+    x = runinfo.x
+    λ = runinfo.λ
+    if isa(comm, MPI.Comm)
+        info = MPI.Info()
+        ff = h5open(filename, "w", comm, info)
+    elseif isa(comm, Nothing)
+        ff = h5open(filename, "w")
+    else
+        error("Wrong type of comm")
+    end
+    K = modelinfo.num_ctgs + 1
+    T = modelinfo.num_time_periods
+
+    dt = datatype(Float64)
+    pgset = create_dataset(ff, "/Pg", dt, dataspace((size(x.Pg,1), K, T)))
+    qgset = create_dataset(ff, "/Qg", dt, dataspace((size(x.Qg,1), K, T)))
+    vmset = create_dataset(ff, "/Vm", dt, dataspace((size(x.Vm,1), K, T)))
+    vaset = create_dataset(ff, "/Va", dt, dataspace((size(x.Va,1), K, T)))
+    ωtset = create_dataset(ff, "/ωt", dt, dataspace((K,T)))
+    stset = create_dataset(ff, "/St", dt, dataspace((size(x.St,1), T)))
+    skset = create_dataset(ff, "/Sk", dt, dataspace((size(x.St,1),K, T)))
+    ztset = create_dataset(ff, "/Zt", dt, dataspace((size(x.Zt,1),T,)))
+    zkset = create_dataset(ff, "/Zk", dt, dataspace((size(x.Zk,1),K, T)))
+    rampingset = create_dataset(ff, "/ramping", dt, dataspace((size(λ.ramping,1), T)))
+    ctgsset = create_dataset(ff, "/ctgs", dt, dataspace((size(λ.ctgs,1), K, T)))
+
+    for blk in blkLocalIndices
+        block = blkIndex[blk]
+        k = block[1]
+        t = block[2]
+        pgset[:, k, t] = x.Pg[:, k, t]
+        qgset[:, k, t] = x.Qg[:, k, t]
+        vmset[:, k, t] = x.Vm[:, k, t]
+        vaset[:, k, t] = x.Va[:, k, t]
+        ωtset[k, t] = x.ωt[k, t]
+        if k == 1
+            stset[:, t] = x.St[:, t]
+            ztset[:, t] = x.Zt[:, t]
+            rampingset[:, t] = λ.ramping[:, t]
+        end
+        skset[:, k, t] = x.Sk[:, k, t]
+        zkset[:, k, t] = x.Zk[:, k, t]
+        ctgsset[:, k, t] = λ.ctgs[:, k, t]
+    end
+    close(ff)
+end
