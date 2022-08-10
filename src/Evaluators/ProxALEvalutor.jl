@@ -399,13 +399,18 @@ function optimize!(
         iteration()
 
         # Check convergence
-        if max(
+        minviol = max(
             runinfo.maxviol_t[end],
             runinfo.maxviol_c[end],
             runinfo.maxviol_t_actual[end],
             runinfo.maxviol_c_actual[end],
             runinfo.maxviol_d[end]
-        ) <= algparams.tol
+        )
+        if minviol < runinfo.minviol
+            runinfo.minviol = minviol
+            algparams.tron_outer_eps = minviol
+        end
+        if minviol <= algparams.tol
             break
         end
     end
