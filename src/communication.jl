@@ -198,6 +198,14 @@ function comm_rank(comm::Nothing)
     return 0
 end
 
+function comm_ranks(comm::MPI.Comm)
+    return MPI.Comm_size(comm)
+end
+
+function comm_ranks(comm::Nothing)
+    return 1
+end
+
 function comm_barrier(comm::MPI.Comm)
     return MPI.Barrier(comm)
 end

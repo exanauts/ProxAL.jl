@@ -30,10 +30,11 @@ function ProxALEvaluator(
     modelinfo::ModelInfo,
     algparams::AlgParams,
     space::AbstractBackend=JuMPBackend(),
-    comm::Union{MPI.Comm,Nothing} = MPI.COMM_WORLD
+    comm::Union{MPI.Comm,Nothing} = MPI.COMM_WORLD;
+    output::Bool = false
 )
     rawdata = RawData(case_file, load_file)
-    return ProxALEvaluator(rawdata, modelinfo, algparams, space, comm)
+    return ProxALEvaluator(rawdata, modelinfo, algparams, space, comm; output=output)
 end
 
 """
@@ -55,7 +56,8 @@ function ProxALEvaluator(
     modelinfo::ModelInfo,
     algparams::AlgParams,
     backend::AbstractBackend=JuMPBackend(),
-    comm::Union{MPI.Comm,Nothing} = MPI.COMM_WORLD
+    comm::Union{MPI.Comm,Nothing} = MPI.COMM_WORLD;
+    output::Bool=false
 )
     opfdata = opf_loaddata(
         rawdata;
@@ -102,8 +104,7 @@ function ProxALEvaluator(
         end
     end
 
-    # ctgs_arr = deepcopy(rawdata.ctgs_arr)
-    problem = ProxALProblem(opfdata, rawdata, modelinfo, algparams, backend, comm)
+    problem = ProxALProblem(opfdata, rawdata, modelinfo, algparams, backend, comm; output=output)
     return ProxALEvaluator(problem, modelinfo, algparams, opfdata, rawdata, backend, comm)
 end
 
@@ -409,6 +410,9 @@ function optimize!(
         if minviol < runinfo.minviol
             runinfo.minviol = minviol
             algparams.tron_outer_eps = minviol
+            if runinfo.output
+                ProxAL.write(runinfo, nlp, "solution_$(modelinfo.case_name)_$(comm_ranks(comm)).h5")
+            end
         end
         if minviol <= algparams.tol
             break

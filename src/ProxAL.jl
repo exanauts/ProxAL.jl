@@ -41,6 +41,9 @@ mutable struct ProxALProblem
     blkLinIndices::LinearIndices{2, Tuple{UnitRange{Int64}, UnitRange{Int64}}}
     blkLocalIndices::Union{Vector{Int64}, Nothing}
     blkLinkedIndices::Union{Vector{Int64}, Nothing}
+
+    # write output
+    output::Bool
 end
 include("communication.jl")
 include("Evaluators/Evaluators.jl")
@@ -149,7 +152,8 @@ function ProxALProblem(
     modelinfo::ModelInfo,
     algparams::AlgParams,
     backend::AbstractBackend,
-    comm::Union{MPI.Comm,Nothing}
+    comm::Union{MPI.Comm,Nothing};
+    output = false
 )
     # initial values
     backend = if isa(backend, JuMPBackend)
@@ -238,6 +242,7 @@ function ProxALProblem(
         blkLinIndices,
         blkLocalIndices,
         blkLinkedIndices,
+        output
     )
 end
 
