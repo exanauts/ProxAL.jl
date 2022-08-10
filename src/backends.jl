@@ -243,9 +243,12 @@ end
 function get_solution(block::JuMPBlockBackend)
     opfmodel = block.model
     blk = block.id
+    k = block.k
+    t = block.t
+
     status = termination_status(opfmodel)
     if status ∉ MOI_OPTIMAL_STATUSES
-        @warn("Block $blk subproblem not solved to optimality. status: $status")
+        @warn("Block $blk[$k, $t] subproblem not solved to optimality. status: $status")
     end
     if !has_values(opfmodel)
         error("no solution vector available in block $blk subproblem")
@@ -604,6 +607,7 @@ function AdmmBlockBackend(
         exadata, rho_pq, rho_va;
         use_gpu=use_gpu,
         verbose=algparams.verbose_inner,
+        tight_factor=0.99,
     )
 
     env.params.outer_eps = algparams.tron_outer_eps
@@ -634,7 +638,7 @@ function init!(block::AdmmBlockBackend, algparams::AlgParams)
     if algparams.decompCtgs && k > 1
         if modelinfo.ctgs_link_constr_type == :corrective_penalty
             copyto!(opfmodel.smin, zeros(length(gens)))
-            copyto!(opfmodel.smax, 2.0.*[g.scen_agc for g in gens])
+            copyto!(opfmodel.smax, 1.0.*[g.scen_agc for g in gens])
         else
             @assert modelinfo.ctgs_link_constr_type == :preventive_penalty
             copyto!(opfmodel.smin, zeros(length(gens)))
@@ -758,9 +762,12 @@ function get_solution(block::AdmmBlockBackend)
     elseif exatron_status == :IterationLimit
         MOI.ITERATION_LIMIT
     end
+    blk = block.id
+    k = block.k
+    t = block.t
 
     if status ∉ MOI_OPTIMAL_STATUSES
-        @warn("Block $(block.id) subproblem not solved to optimality. status: $status")
+        @warn("Block $blk[$k, $t] subproblem not solved to optimality. status: $status")
     end
 
     s = ExaAdmmBackend.slack_values(model) |> Array
@@ -801,6 +808,7 @@ function optimize!(block::AdmmBlockBackend, x0::Union{Nothing, AbstractArray}, a
         set_start_values!(block, x0)
     end
     # Optimize with optimizer, using ExaPF model
+    block.env.params.outer_eps = algparams.tron_outer_eps*2e2
     ExaAdmm.admm_two_level(block.env, block.model)
     # Recover solution in ProxAL format
     solution = get_solution(block)
