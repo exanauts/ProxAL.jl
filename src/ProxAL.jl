@@ -31,6 +31,7 @@ mutable struct ProxALProblem
     maxviol_d::Vector{Float64}
     maxviol_t_actual::Vector{Float64}
     maxviol_c_actual::Vector{Float64}
+    minviol::Float64
     nlp_soltime::Vector{Float64}
     wall_time_elapsed_actual::Float64
     wall_time_elapsed_ideal::Float64
@@ -229,6 +230,7 @@ function ProxALProblem(
         maxviol_d,
         maxviol_t_actual,
         maxviol_c_actual,
+        Inf,
         nlp_soltime,
         wall_time_elapsed_actual,
         wall_time_elapsed_ideal,
@@ -298,10 +300,10 @@ function runinfo_update(
     push!(runinfo.maxviol_d, maxviol_d)
     if algparams.verbose > 0 && comm_rank(comm) == 0
         if iter == 1
-            @printf("--------------------------------------------------------------------------------------------------------------------\n");
-            @printf("iter ramp_err   ramp_err   ctgs_err   ctgs_err   dual_error lyapunov_f    rho_t    rho_c  theta_t  theta_c      tau \n");
+            @printf("---------------------------------------------------------------------------------------------------------------------------\n");
+            @printf("iter ramp_err   ramp_err   ctgs_err   ctgs_err   dual_error lyapunov_f    rho_t    rho_c  theta_t  theta_c      tau minviol\n");
             @printf("     (penalty)  (actual)   (penalty)  (actual)\n");
-            @printf("--------------------------------------------------------------------------------------------------------------------\n");
+            @printf("---------------------------------------------------------------------------------------------------------------------------\n");
         end
         @printf("%4d ", iter-1);
         @printf("%10.4e ", runinfo.maxviol_t[iter])
@@ -315,6 +317,7 @@ function runinfo_update(
         @printf("%8.2e ", algparams.θ_t)
         @printf("%8.2e ", algparams.θ_c)
         @printf("%8.2e ", algparams.τ)
+        @printf("%10.4e ", runinfo.minviol)
         @printf("\n")
     end
 end
