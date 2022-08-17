@@ -52,7 +52,7 @@ function generator_kernel_two_level_proxal(ngen::Int, gen_start::Int,
             x[2] = min(xu[2], max(xl[2], s[I]))
             CUDA.sync_threads()
 
-            status, minor_iter = ExaTron.tron_qp_kernel(n, 500, 200, 1e-6, 1.0, x, xl, xu, A, c)
+            status, minor_iter = ExaTron.ExaTronCUDAKernels.tron_qp_kernel(n, 500, 200, 1e-6, 1.0, x, xl, xu, A, c)
 
             u[pg_idx] = x[1]
             s[I] = x[2]
