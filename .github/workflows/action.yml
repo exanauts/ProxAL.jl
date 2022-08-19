@@ -49,4 +49,5 @@ jobs:
         with:
           version: ${{ matrix.julia-version }}
       - uses: julia-actions/julia-buildpkg@latest
+      - run: source ./setup_moonshot.sh
       - uses: julia-actions/julia-runtest@latest
