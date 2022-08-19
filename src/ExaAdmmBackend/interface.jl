@@ -53,32 +53,45 @@ function reactive_power_generation(model::ModelProxAL, sol::ExaAdmm.Solution)
 end
 function voltage_magnitude(model::ModelProxAL, sol::ExaAdmm.Solution)
     data, line_start = model.grid_data, model.line_start
-    nbus, FrIdx, FrStart, ToIdx, ToStart = data.nbus, data.FrIdx, data.FrStart, data.ToIdx, data.ToStart
+    nbus    = data.nbus
+    FrIdx   = data.FrIdx   |> Array
+    FrStart = data.FrStart |> Array
+    ToIdx   = data.ToIdx   |> Array
+    ToStart = data.ToStart |> Array
+    v_curr  = sol.v_curr   |> Array
+
     vm = zeros(nbus)
     for I=1:nbus
         for j=FrStart[I]:FrStart[I+1]-1
             pij_idx = line_start + 8*(FrIdx[j]-1)
-            vm[I] = sqrt(sol.v_curr[pij_idx+4])
+            vm[I] = sqrt(v_curr[pij_idx+4])
         end
         for j=ToStart[I]:ToStart[I+1]-1
             pij_idx = line_start + 8*(ToIdx[j]-1)
-            vm[I] = sqrt(sol.v_curr[pij_idx+5])
+            vm[I] = sqrt(v_curr[pij_idx+5])
         end
     end
     return vm
 end
 function voltage_angle(model::ModelProxAL, sol::ExaAdmm.Solution)
     data, line_start = model.grid_data, model.line_start
-    nbus, FrIdx, FrStart, ToIdx, ToStart = data.nbus, data.FrIdx, data.FrStart, data.ToIdx, data.ToStart
+    data, line_start = model.grid_data, model.line_start
+    nbus    = data.nbus
+    FrIdx   = data.FrIdx   |> Array
+    FrStart = data.FrStart |> Array
+    ToIdx   = data.ToIdx   |> Array
+    ToStart = data.ToStart |> Array
+    v_curr  = sol.v_curr   |> Array
+
     va = zeros(nbus)
     for I=1:nbus
         for j=FrStart[I]:FrStart[I+1]-1
             pij_idx = line_start + 8*(FrIdx[j]-1)
-            va[I] = sol.v_curr[pij_idx+6]
+            va[I] = v_curr[pij_idx+6]
         end
         for j=ToStart[I]:ToStart[I+1]-1
             pij_idx = line_start + 8*(ToIdx[j]-1)
-            va[I] = sol.v_curr[pij_idx+7]
+            va[I] = v_curr[pij_idx+7]
         end
     end
     return va
