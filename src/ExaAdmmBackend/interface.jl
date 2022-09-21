@@ -64,11 +64,11 @@ function voltage_magnitude(model::ModelProxAL, sol::ExaAdmm.Solution)
     for I=1:nbus
         for j=FrStart[I]:FrStart[I+1]-1
             pij_idx = line_start + 8*(FrIdx[j]-1)
-            vm[I] = sqrt(v_curr[pij_idx+4])
+            vm[I] = sqrt(abs(v_curr[pij_idx+4]))
         end
         for j=ToStart[I]:ToStart[I+1]-1
             pij_idx = line_start + 8*(ToIdx[j]-1)
-            vm[I] = sqrt(v_curr[pij_idx+5])
+            vm[I] = sqrt(abs(v_curr[pij_idx+5]))
         end
     end
     return vm
