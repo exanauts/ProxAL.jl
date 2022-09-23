@@ -598,7 +598,8 @@ function AdmmBlockBackend(
     opfdata::OPFData, raw_data::RawData, algparams::AlgParams,
     modelinfo::ModelInfo, t::Int, k::Int, T::Int
 )
-    use_gpu = (algparams.device == CUDADevice)
+    use_gpu = (algparams.device != CPU)
+    ka_device = isa(algparams.ka_device, KA.CPU) ? nothing : algparams.ka_device
     # TODO
     exadata = ExaAdmm.OPFData(opfdata)
     rho_pq = algparams.tron_rho_pq
@@ -606,6 +607,7 @@ function AdmmBlockBackend(
     env = ExaAdmm.AdmmEnv(
         exadata, rho_pq, rho_va;
         use_gpu=use_gpu,
+        ka_device=ka_device,
         verbose=algparams.verbose_inner,
         tight_factor=0.99,
     )

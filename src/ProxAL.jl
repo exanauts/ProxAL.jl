@@ -7,10 +7,12 @@ using Ipopt, JuMP
 using Printf, CatViews
 using ExaPF
 using ExaAdmm
+using KernelAbstractions
 using LinearAlgebra
 using SparseArrays
 using MPI
 using HDF5
+const KA = KernelAbstractions
 
 abstract type AbstractPrimalSolution end
 abstract type AbstractDualSolution end

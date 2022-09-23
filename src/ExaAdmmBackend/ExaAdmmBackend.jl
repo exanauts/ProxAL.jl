@@ -4,6 +4,8 @@ using CUDA
 import MPI
 import ExaAdmm
 import ExaTron
+using KernelAbstractions
+const KA = KernelAbstractions
 
 mutable struct ModelProxAL{T,TD,TI,TM} <: ExaAdmm.AbstractOPFModel{T,TD,TI,TM}
     # OPF's part

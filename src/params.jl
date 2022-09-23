@@ -10,7 +10,7 @@ const MOI_OPTIMAL_STATUSES = [
 @enum(TargetDevice,
     CPU,
     CUDADevice,
-    Mixed,
+    KADevice,
 )
 
 #
@@ -76,6 +76,7 @@ Base.@kwdef mutable struct AlgParams
     nr_tol::Float64         = 1e-10          # Tolerance of the Newton-Raphson algorithm (for ExaBlockBackend backend)
     init_opf::Bool          = false
     device::TargetDevice    = CPU
+    ka_device::KA.Device    = KA.CPU()
     verbose_inner::Int      = 0
     tron_rho_pq::Float64    = 4e2
     tron_rho_pa::Float64    = 4e4
