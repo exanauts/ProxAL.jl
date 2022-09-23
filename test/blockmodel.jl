@@ -80,40 +80,7 @@ load_file = joinpath(DATA_DIR, "mp_demand", "$(case)_oneweek_168")
         pg_jump = solution.pg
         slack_jump = solution.st
 
-        # @testset "ExaPF Block backend" begin
-        #     # TODO: currently, we need to build directly ExaPF object
-        #     # with rawdata, as ExaPF is dealing only with struct of arrays objects.
-        #     blockmodel = ProxAL.ExaBlockBackend(blkid, opfdata_c, nlp.rawdata, algparams, modelinfo_local, t, 1, T)
-        #     ProxAL.init!(blockmodel, nlp.algparams)
-        #     ProxAL.set_objective!(blockmodel, nlp.algparams, primal, dual)
-
-        #     # Better to set nothing than 0 to avoid convergence issue
-        #     # in the powerflow solver.
-        #     x0 = nothing
-
-        #     # Set up optimizer
-        #     algparams.gpu_optimizer = optimizer_with_attributes(
-        #         Ipopt.Optimizer,
-        #         "print_level" => 0,
-        #         "limited_memory_max_history" => 50,
-        #         "hessian_approximation" => "limited-memory",
-        #         "derivative_test" => "first-order",
-        #         "tol" => 1e-6,
-        #     )
-
-        #     solution = ProxAL.optimize!(blockmodel, x0, algparams)
-        #     @test solution.status ∈ ProxAL.MOI_OPTIMAL_STATUSES
-        #     obj_exa = solution.minimum
-        #     pg_exa = solution.pg
-        #     slack_exa = solution.st
-        #     @test obj_jump ≈ obj_exa
-        #     @test pg_jump ≈ pg_exa rtol=1e-6
-        #     if t > 1  # slack could be of any value for t == 1
-        #         @test slack_jump ≈ slack_exa rtol=1e-5
-        #     end
-        # end
-
-        @testset "ExaTron BlockModel" begin
+        @testset "ExaAdmm BlockModel" begin
             blockmodel = ProxAL.AdmmBlockBackend(
                 blkid, opfdata_c, nlp.rawdata, algparams, modelinfo_local, t, 1, T;
             )

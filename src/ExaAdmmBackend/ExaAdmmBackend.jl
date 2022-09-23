@@ -1,9 +1,12 @@
 module ExaAdmmBackend
 
 using CUDA
+using AMDGPU
 import MPI
-import ExaAdmm
-import ExaTron
+using KernelAbstractions
+using ExaAdmm
+using ExaTron
+const KA = KernelAbstractions
 
 mutable struct ModelProxAL{T,TD,TI,TM} <: ExaAdmm.AbstractOPFModel{T,TD,TI,TM}
     # OPF's part
@@ -95,7 +98,7 @@ function ModelProxAL(
     # XXX
     model.solution =
         ExaAdmm.Solution{T,TD}(model.nvar_padded)
-    ExaAdmm.init_solution!(model, model.solution, env.initial_rho_pq, env.initial_rho_va)
+    ExaAdmm.init_solution!(model, model.solution, env.initial_rho_pq, env.initial_rho_va, env.ka_device)
     model.gen_solution = ExaAdmm.EmptyGeneratorSolution{T,TD}()
 
     model.membuf = TM(undef, (31, model.grid_data.nline))
@@ -122,19 +125,28 @@ function ModelProxAL(
     return model
 end
 
-function ExaAdmm.AdmmEnv(opfdata, rho_va::Float64, rho_pq::Float64; use_gpu=false, options...)
+function ExaAdmm.AdmmEnv(opfdata, rho_va::Float64, rho_pq::Float64; use_gpu=false, ka_device=nothing, options...)
     if use_gpu
-        T = Float64
-        VT = CuVector{Float64}
-        VI = CuVector{Int}
-        MT = CuMatrix{Float64}
+        if isa(ka_device, ROCDevice)
+            T = Float64
+            VT = ROCVector{Float64}
+            VI = ROCVector{Int}
+            MT = ROCMatrix{Float64}
+        elseif isa(ka_device, CUDADevice)
+            VT = CuVector{Float64}
+            VI = CuVector{Int}
+            MT = CuMatrix{Float64}
+        else
+            error("Unknown device type $ka_device")
+        end
+
     else
         T = Float64
         VT = Vector{Float64}
         VI = Vector{Int}
         MT = Matrix{Float64}
     end
-    env = ExaAdmm.AdmmEnv{T,VT,VI,MT}(opfdata, "proxal", rho_pq, rho_va; use_gpu=use_gpu, options...)
+    env = ExaAdmm.AdmmEnv{T,VT,VI,MT}(opfdata, "proxal", rho_pq, rho_va; use_gpu=use_gpu, ka_device=ka_device, options...)
     return env
 end
 

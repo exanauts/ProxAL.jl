@@ -109,7 +109,7 @@ function ExaAdmm.acopf_admm_update_x_gen(
     env::ExaAdmm.AdmmEnv{Float64,Array{Float64,1},Array{Int,1},Array{Float64,2}},
     mod::ModelProxAL{Float64,Array{Float64,1},Array{Int,1},Array{Float64,2}},
     gen_sol::ExaAdmm.EmptyGeneratorSolution{Float64,Array{Float64,1}}
-) where {T<:Float64,VT<:Vector{T}, VI<:Vector{Int}, MT<:Matrix{T}}
+)
     sol, info, data = mod.solution, mod.info, mod.grid_data
     time_gen = generator_kernel_two_level(mod, data.baseMVA, sol.u_curr, sol.v_curr, sol.z_curr, sol.l_curr, sol.rho)
     info.user.time_generators += time_gen.time
@@ -129,3 +129,15 @@ function ExaAdmm.acopf_admm_update_x_gen(
     return
 end
 
+function ExaAdmm.acopf_admm_update_x_gen(
+    env::ExaAdmm.AdmmEnv,
+    mod::ModelProxAL,
+    gen_sol::ExaAdmm.EmptyGeneratorSolution,
+    device
+)
+    sol, info, data = mod.solution, mod.info, mod.grid_data
+    generator_kernel_two_level(mod, data.baseMVA, sol.u_curr, sol.v_curr, sol.z_curr, sol.l_curr, sol.rho, device)
+    info.user.time_generators += 0.0
+    info.time_x_update += 0.0
+    return
+end
