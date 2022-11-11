@@ -56,6 +56,7 @@ load_file = joinpath(DATA_DIR, "mp_demand", "$(case)_oneweek_168")
     modelinfo_local = deepcopy(nlp.modelinfo)
     modelinfo_local.num_time_periods = 1
     blkid = 1
+    modelinfo_local.obj_scale = 1e0
 
     @testset "Timestep $t" for t in 1:T
         opfdata_c = ProxAL.opf_loaddata(nlp.rawdata;
@@ -95,10 +96,10 @@ load_file = joinpath(DATA_DIR, "mp_demand", "$(case)_oneweek_168")
             pg_tron    = solution.pg
             slack_tron = solution.st
             # TODO: implement ProxAL objective in ExaTron
-            @test_broken obj_jump ≈ obj_tron
-            @test pg_jump ≈ pg_tron rtol=1e-2
+            @test obj_jump ≈ obj_tron rtol=1e-4
+            @test pg_jump ≈ pg_tron rtol=1e-3
             if t > 1  # slack could be of any value for t == 1
-                @test slack_jump ≈ slack_tron rtol=1e-2
+                @test slack_jump ≈ slack_tron rtol=1e-3
             end
         end
     end
