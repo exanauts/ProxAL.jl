@@ -640,7 +640,7 @@ function init!(block::AdmmBlockBackend, algparams::AlgParams)
     if algparams.decompCtgs && k > 1
         if modelinfo.ctgs_link_constr_type == :corrective_penalty
             copyto!(opfmodel.smin, zeros(length(gens)))
-            copyto!(opfmodel.smax, 1.0.*[g.scen_agc for g in gens])
+            copyto!(opfmodel.smax, 2.0.*[g.scen_agc for g in gens])
         else
             @assert modelinfo.ctgs_link_constr_type == :preventive_penalty
             copyto!(opfmodel.smin, zeros(length(gens)))
@@ -810,7 +810,6 @@ function optimize!(block::AdmmBlockBackend, x0::Union{Nothing, AbstractArray}, a
         set_start_values!(block, x0)
     end
     # Optimize with optimizer, using ExaPF model
-    block.env.params.outer_eps = algparams.tron_outer_eps*2e2
     ExaAdmm.admm_two_level(block.env, block.model, block.env.ka_device)
     # Recover solution in ProxAL format
     solution = get_solution(block)

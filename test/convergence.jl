@@ -4,6 +4,7 @@ using DelimitedFiles, Printf
 using LinearAlgebra, JuMP
 using CatViews
 using CUDA
+using AMDGPU
 using MPI
 using LazyArtifacts
 
@@ -37,9 +38,28 @@ algparams.verbose = 0
 
 solver_list = ["Ipopt", "ExaAdmmCPU"]
 if CUDA.has_cuda_gpu()
-    # TODO: MadNLP broken currently
-    # push!(solver_list, "MadNLPGPU")
     push!(solver_list, "ExaAdmmGPU")
+    using CUDAKernels
+    function ProxAL.ExaAdmm.KAArray{T}(n::Int, device::CUDADevice) where {T}
+        return CuArray{T}(undef, n)
+    end
+    function ProxAL.ExaAdmm.KAArray{T}(n1::Int, n2::Int, device::CUDADevice) where {T}
+        return CuArray{T}(undef, n1, n2)
+    end
+    gpu_device = CUDADevice()
+    push!(solver_list, "ExaAdmmGPUKA")
+elseif AMDGPU.has_rocm_gpu()
+    using ROCKernels
+    # Set for crusher login node to avoid other users
+    AMDGPU.default_device!(AMDGPU.devices()[2])
+    function ProxAL.ExaAdmm.KAArray{T}(n::Int, device::ROCDevice) where {T}
+        return ROCArray{T}(undef, n)
+    end
+    function ProxAL.ExaAdmm.KAArray{T}(n1::Int, n2::Int, device::ROCDevice) where {T}
+        return ROCArray{T}(undef, n1, n2)
+    end
+    gpu_device = ROCDevice()
+    push!(solver_list, "ExaAdmmGPUKA")
 end
 if isfile(joinpath(dirname(@__FILE__), "..", "build/libhiop.so"))
     push!(solver_list, "Hiop")
@@ -52,7 +72,6 @@ end
 
     for solver in solver_list
     @testset "$(solver)" begin
-        println("Testing using $(solver)")
         if solver == "Ipopt"
             using Ipopt
             backend = JuMPBackend()
@@ -69,7 +88,15 @@ end
             backend = AdmmBackend()
             algparams.tron_outer_iterlim=2000
             algparams.tron_outer_eps=1e-6
-            algparams.device = ProxAL.CUDADevice
+            algparams.device = ProxAL.GPU # Assuming CUDA
+            algparams.ka_device = nothing
+        end
+        if solver == "ExaAdmmGPUKA"
+            backend = AdmmBackend()
+            algparams.tron_outer_iterlim=2000
+            algparams.tron_outer_eps=1e-6
+            algparams.device = ProxAL.KADevice
+            algparams.ka_device = gpu_device
         end
 
 

@@ -126,22 +126,18 @@ function ModelProxAL(
 end
 
 function ExaAdmm.AdmmEnv(opfdata, rho_va::Float64, rho_pq::Float64; use_gpu=false, ka_device=nothing, options...)
+    T = Float64
     if use_gpu
-        if isa(ka_device, ROCDevice)
-            T = Float64
-            VT = ROCVector{Float64}
-            VI = ROCVector{Int}
-            MT = ROCMatrix{Float64}
-        elseif isa(ka_device, CUDADevice)
+        if !isa(ka_device, Nothing)
+            VT = typeof(ExaAdmm.KAArray{Float64}(0, ka_device))
+            VI = typeof(ExaAdmm.KAArray{Int}(0, ka_device))
+            MT = typeof(ExaAdmm.KAArray{Float64}(0, 0, ka_device))
+        else
             VT = CuVector{Float64}
             VI = CuVector{Int}
             MT = CuMatrix{Float64}
-        else
-            error("Unknown device type $ka_device")
         end
-
     else
-        T = Float64
         VT = Vector{Float64}
         VI = Vector{Int}
         MT = Matrix{Float64}

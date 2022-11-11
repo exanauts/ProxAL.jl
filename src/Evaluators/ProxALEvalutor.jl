@@ -400,21 +400,28 @@ function optimize!(
         iteration()
 
         # Check convergence
-        minviol = max(
+        if max(
             runinfo.maxviol_t[end],
             runinfo.maxviol_c[end],
             runinfo.maxviol_t_actual[end],
             runinfo.maxviol_c_actual[end],
             runinfo.maxviol_d[end]
-        )
-        if minviol < runinfo.minviol
-            runinfo.minviol = minviol
-            algparams.tron_outer_eps = minviol
-            if runinfo.output
-                ProxAL.write(runinfo, nlp, "solution_$(modelinfo.case_name)_$(comm_ranks(comm)).h5")
-            end
-        end
-        if minviol <= algparams.tol
+        ) <= algparams.tol
+        # minviol = max(
+        #     runinfo.maxviol_t[end],
+        #     runinfo.maxviol_c[end],
+        #     runinfo.maxviol_t_actual[end],
+        #     runinfo.maxviol_c_actual[end],
+        #     runinfo.maxviol_d[end]
+        # )
+        # if minviol < runinfo.minviol
+        #     runinfo.minviol = minviol
+        #     algparams.tron_outer_eps = minviol
+        #     if runinfo.output
+        #         ProxAL.write(runinfo, nlp, "solution_$(modelinfo.case_name)_$(comm_ranks(comm)).h5")
+        #     end
+        # end
+        # if minviol <= algparams.tol
             break
         end
     end

@@ -9,7 +9,7 @@ const MOI_OPTIMAL_STATUSES = [
 
 @enum(TargetDevice,
     CPU,
-    CUDADevice,
+    GPU,
     KADevice,
 )
 
