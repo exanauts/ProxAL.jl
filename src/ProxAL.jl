@@ -8,7 +8,6 @@ using Printf, CatViews
 using ExaPF
 using ExaAdmm
 using KernelAbstractions
-using ROCKernels
 using LinearAlgebra
 using SparseArrays
 using MPI

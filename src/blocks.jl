@@ -31,9 +31,9 @@ total number of contingencies).
 
 ### Deporting the resolution on the GPU
 
-When the backend is set to `ExaBlockBackend` (and a CUDA GPU is available), the user
+When the backend is set to `ExaAdmmBackend` (and a CUDA GPU is available), the user
 could chose to deport the resolution of each subproblem directly on
-the GPU simply by setting `algparams.device=CUDADevice`. However, note that
+the GPU simply by setting `algparams.device=GPU`. However, note that
 we could not instantiate more subproblems on the GPU than the number of GPU
 available.
 

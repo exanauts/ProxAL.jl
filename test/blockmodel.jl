@@ -1,4 +1,6 @@
 using Test
+using CUDA
+using AMDGPU
 using MPI
 using Ipopt
 using ExaPF
@@ -19,6 +21,31 @@ rtol = 1e-4
 # Load data
 case_file = joinpath(DATA_DIR, "$(case).m")
 load_file = joinpath(DATA_DIR, "mp_demand", "$(case)_oneweek_168")
+
+solver_list = ["ExaAdmmCPU"]
+if CUDA.has_cuda_gpu()
+    using CUDAKernels
+    function ProxAL.ExaAdmm.KAArray{T}(n::Int, device::CUDADevice) where {T}
+        return CuArray{T}(undef, n)
+    end
+    function ProxAL.ExaAdmm.KAArray{T}(n1::Int, n2::Int, device::CUDADevice) where {T}
+        return CuArray{T}(undef, n1, n2)
+    end
+    gpu_device = CUDADevice()
+    push!(solver_list, "ExaAdmmGPUKA")
+elseif AMDGPU.has_rocm_gpu()
+    using ROCKernels
+    # Set for crusher login node to avoid other users
+    AMDGPU.default_device!(AMDGPU.devices()[2])
+    function ProxAL.ExaAdmm.KAArray{T}(n::Int, device::ROCDevice) where {T}
+        return ROCArray{T}(undef, n)
+    end
+    function ProxAL.ExaAdmm.KAArray{T}(n1::Int, n2::Int, device::ROCDevice) where {T}
+        return ROCArray{T}(undef, n1, n2)
+    end
+    gpu_device = ROCDevice()
+    push!(solver_list, "ExaAdmmGPUKA")
+end
 
 @testset "Block Model Backends" begin
     # ctgs_arr = deepcopy(rawdata.ctgs_arr)
@@ -82,24 +109,41 @@ load_file = joinpath(DATA_DIR, "mp_demand", "$(case)_oneweek_168")
         slack_jump = solution.st
 
         @testset "ExaAdmm BlockModel" begin
-            blockmodel = ProxAL.AdmmBlockBackend(
-                blkid, opfdata_c, nlp.rawdata, algparams, modelinfo_local, t, 1, T;
-            )
-            ProxAL.init!(blockmodel, nlp.algparams)
-            ProxAL.set_objective!(blockmodel, nlp.algparams, primal, dual)
+            for solver in solver_list
+                @testset "$(solver)" begin
+                    if solver == "ExaAdmmCPU"
+                        backend = AdmmBackend()
+                    end
+                    if solver == "ExaAdmmGPU"
+                        backend = AdmmBackend()
+                        algparams.device = ProxAL.GPU # Assuming CUDA
+                        algparams.ka_device = nothing
+                    end
+                    if solver == "ExaAdmmGPUKA"
+                        backend = AdmmBackend()
+                        algparams.device = ProxAL.KADevice
+                        algparams.ka_device = gpu_device
+                    end
+                    blockmodel = ProxAL.AdmmBlockBackend(
+                        blkid, opfdata_c, nlp.rawdata, algparams, modelinfo_local, t, 1, T;
+                    )
+                    ProxAL.init!(blockmodel, nlp.algparams)
+                    ProxAL.set_objective!(blockmodel, nlp.algparams, primal, dual)
 
-            # Test optimization
-            x0 = nothing
-            solution = ProxAL.optimize!(blockmodel, x0, nlp.algparams)
-            @test solution.status ∈ ProxAL.MOI_OPTIMAL_STATUSES
-            obj_tron   = solution.minimum
-            pg_tron    = solution.pg
-            slack_tron = solution.st
-            # TODO: implement ProxAL objective in ExaTron
-            @test obj_jump ≈ obj_tron rtol=1e-4
-            @test pg_jump ≈ pg_tron rtol=1e-3
-            if t > 1  # slack could be of any value for t == 1
-                @test slack_jump ≈ slack_tron rtol=1e-3
+                    # Test optimization
+                    x0 = nothing
+                    solution = ProxAL.optimize!(blockmodel, x0, nlp.algparams)
+                    @test solution.status ∈ ProxAL.MOI_OPTIMAL_STATUSES
+                    obj_tron   = solution.minimum
+                    pg_tron    = solution.pg
+                    slack_tron = solution.st
+                    # TODO: implement ProxAL objective in ExaTron
+                    @test obj_jump ≈ obj_tron rtol=1e-4
+                    @test pg_jump ≈ pg_tron rtol=1e-3
+                    if t > 1  # slack could be of any value for t == 1
+                        @test slack_jump ≈ slack_tron rtol=1e-3
+                    end
+                end
             end
         end
     end
