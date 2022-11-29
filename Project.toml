@@ -31,6 +31,7 @@ ExaTron = "2.1"
 HDF5 = "0.16"
 Ipopt = "1"
 JuMP = "1"
+KernelAbstractions = "0.8"
 MPI = "0.19"
 julia = "1.8"
 
