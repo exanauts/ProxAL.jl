@@ -75,13 +75,13 @@ function OPFBlocks(
         t, k;
         decompCtgs=false,
     )
-        lineOff = Line()
+        lineOff = nothing
         if length(rawdata.ctgs_arr) < k - 1
             error("Not enough contingencies in .ctg file while trying to read contingency $(k-1).")
         end
         if decompCtgs
             if k > 1
-                lineOff = opfdata.lines[rawdata.ctgs_arr[k - 1]]
+                lineOff = opfdata.lines[rawdata.ctgs_arr[k - 1,:]]
             end
         end
         data = opf_loaddata(
