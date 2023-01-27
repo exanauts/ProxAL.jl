@@ -112,7 +112,7 @@ function opf_model_add_block_constraints(opfmodel::JuMP.Model, opfdata::OPFData,
         @views for t=1:T, k=1:K
             opfdata_c = (k == 1) ? opfdata :
                 opf_loaddata(rawdata;
-                    lineOff = opfdata.lines[rawdata.ctgs_arr[k - 1]],
+                    lineOff = opfdata.lines[rawdata.ctgs_arr[k - 1],:],
                     time_horizon_start = modelinfo.time_horizon_start + t - 1,
                     time_horizon_end = modelinfo.time_horizon_start + t - 1,
                     load_scale = modelinfo.load_scale,
@@ -130,7 +130,7 @@ function opf_model_add_block_constraints(opfmodel::JuMP.Model, opfdata::OPFData,
         @views for t=1:T, k=1:K
             opfdata_c = (k == 1) ? opfdata :
                 opf_loaddata(rawdata;
-                    lineOff = opfdata.lines[rawdata.ctgs_arr[k - 1]],
+                    lineOff = opfdata.lines[rawdata.ctgs_arr[k - 1],:],
                     time_horizon_start = modelinfo.time_horizon_start + t - 1,
                     time_horizon_end = modelinfo.time_horizon_start + t - 1,
                     load_scale = modelinfo.load_scale,

@@ -240,7 +240,7 @@ function opf_loaddata(raw::RawData;
                       load_scale::Float64=1.0,
                       ramp_scale::Float64=0.0,
                       corr_scale::Float64=0.1,
-                      lineOff=Line(),
+                      lineOff=nothing,
                       genOff::Vector{Int}=Int[])
     #
     # load buses
@@ -278,15 +278,19 @@ function opf_loaddata(raw::RawData;
     #
     branch_arr = raw.branch_arr
     num_lines = size(branch_arr, 1)
-    lines_on = findall((branch_arr[:,11] .> 0) .& ((branch_arr[:,1].!=lineOff.from) .| (branch_arr[:,2].!=lineOff.to)) )
+    lines_on = findall((branch_arr[:,11] .> 0)) 
+    if !isa(lineOff, Nothing)
+        for line in lineOff
+            intersect!(lines_on, findall((branch_arr[:,11] .> 0) .& ((branch_arr[:,1].!=line.from) .| (branch_arr[:,2].!=line.to)) ))
+            if line.from> 0 && line.to > 0
+                # println("opf_loaddata: was asked to remove line from,to=", lineOff.from, ",", lineOff.to)
+            end
+            if length(findall(branch_arr[:,11].==0))>0
+                # println("opf_loaddata: ", num_lines-length(findall(branch_arr[:,11].>0)), " lines are off and will be discarded (out of ", num_lines, ")")
+            end
+        end
+    end
     num_on   = length(lines_on)
-
-    if lineOff.from> 0 && lineOff.to > 0
-        # println("opf_loaddata: was asked to remove line from,to=", lineOff.from, ",", lineOff.to)
-    end
-    if length(findall(branch_arr[:,11].==0))>0
-        # println("opf_loaddata: ", num_lines-length(findall(branch_arr[:,11].>0)), " lines are off and will be discarded (out of ", num_lines, ")")
-    end
 
     lines = Array{Line}(undef, num_on)
     ncols_lines = size(branch_arr, 2)

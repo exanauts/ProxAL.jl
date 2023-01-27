@@ -210,7 +210,7 @@ function init!(block::JuMPBlockBackend, algparams::AlgParams)
         end
         opfdata_c = (j == 1) ? opfdata :
             opf_loaddata(block.rawdata;
-            lineOff = opfdata.lines[block.rawdata.ctgs_arr[j - 1]],
+            lineOff = opfdata.lines[block.rawdata.ctgs_arr[j - 1],:],
             time_horizon_start = modelinfo.time_horizon_start + t - 1,
             time_horizon_end = modelinfo.time_horizon_start + t - 1,
             load_scale = modelinfo.load_scale,

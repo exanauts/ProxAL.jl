@@ -303,10 +303,10 @@ function write(runinfo::ProxALProblem, nlp::AbstractNLPEvaluator, filename::Stri
     modelinfo = nlp.modelinfo
     x = runinfo.x
     λ = runinfo.λ
-    if isa(comm, MPI.Comm)
+    if isa(comm, MPI.Comm) && comm_ranks(comm) != 1
         info = MPI.Info()
         ff = h5open(filename, "w", comm, info)
-    elseif isa(comm, Nothing)
+    elseif isa(comm, Nothing) || comm_ranks(comm) == 1 
         ff = h5open(filename, "w")
     else
         error("Wrong type of comm")
