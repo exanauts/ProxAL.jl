@@ -400,13 +400,22 @@ function optimize!(
         iteration()
 
         # Check convergence
-        if max(
+        iteration_limit = 0
+        for blk in opfBlockData.blkModel
+            solution = get_solution(blk)
+            if solution.status ∉ MOI_OPTIMAL_STATUSES
+                iteration_limit = 1
+            end
+        end
+        giteration_limit = comm_sum(iteration_limit, comm)
+
+        if (max(
             runinfo.maxviol_t[end],
             runinfo.maxviol_c[end],
             runinfo.maxviol_t_actual[end],
             runinfo.maxviol_c_actual[end],
             runinfo.maxviol_d[end]
-        ) <= algparams.tol
+        ) <= algparams.tol) && (giteration_limit == 0)
         # minviol = max(
         #     runinfo.maxviol_t[end],
         #     runinfo.maxviol_c[end],
