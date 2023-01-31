@@ -168,11 +168,11 @@ end
 Collective to reduce and return the sum over scalar `data`.
 
 """
-function comm_sum(data::Float64, comm::MPI.Comm)
+function comm_sum(data::Number, comm::MPI.Comm)
     return MPI.Allreduce(data, MPI.SUM, comm)
 end
 
-function comm_sum(data::Float64, comm::Nothing)
+function comm_sum(data::Number, comm::Nothing)
     return data
 end
 

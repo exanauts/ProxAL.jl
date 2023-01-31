@@ -112,7 +112,13 @@ function init!(block::EmptyBlockModel, algparams::AlgParams) end
 function set_objective!(block::EmptyBlockModel, algparams::AlgParams,
                         primal::AbstractPrimalSolution, dual::AbstractDualSolution)
 end
-function get_solution(block::EmptyBlockModel) end
+function get_solution(block::EmptyBlockModel)
+    # Empty block is always optimal
+    solution = (
+        status=MOI.OPTIMAL,
+    )
+    return solution
+end
 
 ### Implementation of JuMPBlockBackend
 struct JuMPBlockBackend <: AbstractBlockModel
@@ -768,9 +774,9 @@ function get_solution(block::AdmmBlockBackend)
     k = block.k
     t = block.t
 
-    if status ∉ MOI_OPTIMAL_STATUSES
-        @warn("Block $blk[$k, $t] subproblem not solved to optimality. status: $status")
-    end
+    # if status ∉ MOI_OPTIMAL_STATUSES
+    #     @warn("Block $blk[$k, $t] subproblem not solved to optimality. status: $status")
+    # end
 
     s = ExaAdmmBackend.slack_values(model) |> Array
     solution = (
