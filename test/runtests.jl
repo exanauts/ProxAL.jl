@@ -15,6 +15,10 @@ testdir = @__DIR__
     @testset "Sequential tests" begin
         include("convergence.jl")
     end
+    # Testing N-2
+    @testset "Sequential tests" begin
+        include("n-2.jl")
+    end
 
     # Testing using 2 processes
 
