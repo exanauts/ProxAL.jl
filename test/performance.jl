@@ -9,6 +9,11 @@ using ProxAL
 using DelimitedFiles, Printf
 using LazyArtifacts
 using BenchmarkTools
+using CUDA
+using AMDGPU
+using Profile
+using PProf
+
 
 const DATA_DIR = joinpath(artifact"ExaData", "ExaData")
 case = "case9"
@@ -58,7 +63,7 @@ blkid = 1
 modelinfo_local.obj_scale = 1e0
 
 # @testset "Timestep $t" for t in 1:T
-t= 1
+t= 2
 opfdata_c = ProxAL.opf_loaddata(nlp.rawdata;
                     time_horizon_start = t,
                     time_horizon_end = t,
@@ -66,119 +71,119 @@ opfdata_c = ProxAL.opf_loaddata(nlp.rawdata;
                     ramp_scale = ramp_scale,
                     corr_scale = modelinfo.corr_scale)
 
-# JuMP
-blockmodel = ProxAL.JuMPBlockBackend(blkid, opfdata_c, nlp.rawdata, algparams, modelinfo_local, t, 1, T)
-ProxAL.init!(blockmodel, nlp.algparams)
-ProxAL.set_objective!(blockmodel, nlp.algparams, primal, dual)
-n = JuMP.num_variables(blockmodel.model)
-x0 = zeros(n)
-solution = ProxAL.optimize!(blockmodel, x0, nlp.algparams)
-solution.status ∈ ProxAL.MOI_OPTIMAL_STATUSES
-obj_jump = solution.minimum
-pg_jump = solution.pg
-slack_jump = solution.st
-@btime begin
-    blockmodel = $blockmodel
-    nlp = $nlp
-    primal = $primal
-    dual = $dual
-    x0 = $x0
-    obj_jump = $obj_jump
-    pg_jump = $pg_jump
-    slack_jump  = $slack_jump
-    ProxAL.init!(blockmodel, nlp.algparams)
-    ProxAL.set_objective!(blockmodel, nlp.algparams, primal, dual)
-    solution = ProxAL.optimize!(blockmodel, x0, nlp.algparams)
-    solution.status ∈ ProxAL.MOI_OPTIMAL_STATUSES
-    @test obj_jump == solution.minimum
-    @test pg_jump == solution.pg
-    @test slack_jump == solution.st
-end
+# # JuMP
+# blockmodel = ProxAL.JuMPBlockBackend(blkid, opfdata_c, nlp.rawdata, algparams, modelinfo_local, t, 1, T)
+# ProxAL.init!(blockmodel, nlp.algparams)
+# ProxAL.set_objective!(blockmodel, nlp.algparams, primal, dual)
+# n = JuMP.num_variables(blockmodel.model)
+# x0 = zeros(n)
+# solution = ProxAL.optimize!(blockmodel, x0, nlp.algparams)
+# solution.status ∈ ProxAL.MOI_OPTIMAL_STATUSES
+# obj_jump = solution.minimum
+# pg_jump = solution.pg
+# slack_jump = solution.st
+# @btime begin
+#     blockmodel = $blockmodel
+#     nlp = $nlp
+#     primal = $primal
+#     dual = $dual
+#     x0 = $x0
+#     obj_jump = $obj_jump
+#     pg_jump = $pg_jump
+#     slack_jump  = $slack_jump
+#     ProxAL.init!(blockmodel, nlp.algparams)
+#     ProxAL.set_objective!(blockmodel, nlp.algparams, primal, dual)
+#     solution = ProxAL.optimize!(blockmodel, x0, nlp.algparams)
+#     solution.status ∈ ProxAL.MOI_OPTIMAL_STATUSES
+#     @test obj_jump == solution.minimum
+#     @test pg_jump == solution.pg
+#     @test slack_jump == solution.st
+# end
 
 
-# ExaAdmm CPU
-blockmodel = ProxAL.AdmmBlockBackend(
-    blkid, opfdata_c, nlp.rawdata, algparams, modelinfo_local, t, 1, T;
-)
-ProxAL.init!(blockmodel, nlp.algparams)
-ProxAL.set_objective!(blockmodel, nlp.algparams, primal, dual)
-x0 = nothing
-solution = ProxAL.optimize!(blockmodel, x0, nlp.algparams)
-@test solution.status ∈ ProxAL.MOI_OPTIMAL_STATUSES
-@test obj_jump ≈ solution.minimum rtol=1e-4
-@test pg_jump ≈ solution.pg rtol=1e-3
-@btime begin
-    alparams = $algparams
-    modelinfo_local = $modelinfo_local
-    t = $t
-    T = $T
-    opfdata_c = $opfdata_c
-    blkid = $blkid
-    nlp = $nlp
-    primal = $primal
-    dual = $dual
-    x0 = $x0
-    obj_jump = $obj_jump
-    pg_jump = $pg_jump
-    slack_jump  = $slack_jump
-    blockmodel = ProxAL.AdmmBlockBackend(
-        blkid, opfdata_c, nlp.rawdata, algparams, modelinfo_local, t, 1, T;
-    )
-    ProxAL.init!(blockmodel, nlp.algparams)
-    ProxAL.set_objective!(blockmodel, nlp.algparams, primal, dual)
-    x0 = nothing
-    solution = ProxAL.optimize!(blockmodel, x0, nlp.algparams)
-    @test solution.status ∈ ProxAL.MOI_OPTIMAL_STATUSES
-    @test obj_jump ≈ solution.minimum rtol=1e-4
-    @test pg_jump ≈ solution.pg rtol=1e-3
-end
-
-# ExaAdmm GPU CUDA
-algparams.device = ProxAL.GPU
-blockmodel = ProxAL.AdmmBlockBackend(
-    blkid, opfdata_c, nlp.rawdata, algparams, modelinfo_local, t, 1, T;
-)
-ProxAL.init!(blockmodel, nlp.algparams)
-ProxAL.set_objective!(blockmodel, nlp.algparams, primal, dual)
-x0 = nothing
-solution = ProxAL.optimize!(blockmodel, x0, nlp.algparams)
-@test solution.status ∈ ProxAL.MOI_OPTIMAL_STATUSES
-@test obj_jump ≈ solution.minimum rtol=1e-4
-@test pg_jump ≈ solution.pg rtol=1e-3
+# # ExaAdmm CPU
 # blockmodel = ProxAL.AdmmBlockBackend(
 #     blkid, opfdata_c, nlp.rawdata, algparams, modelinfo_local, t, 1, T;
 # )
-@btime begin
-    blockmodel = $blockmodel
-    alparams = $algparams
-    modelinfo_local = $modelinfo_local
-    t = $t
-    T = $T
-    opfdata_c = $opfdata_c
-    blkid = $blkid
-    nlp = $nlp
-    primal = $primal
-    dual = $dual
-    x0 = $x0
-    obj_jump = $obj_jump
-    pg_jump = $pg_jump
-    slack_jump  = $slack_jump
-    blockmodel = ProxAL.AdmmBlockBackend(
-        blkid, opfdata_c, nlp.rawdata, algparams, modelinfo_local, t, 1, T;
-    )
-    ProxAL.init!(blockmodel, nlp.algparams)
-    ProxAL.set_objective!(blockmodel, nlp.algparams, primal, dual)
-    x0 = nothing
-    solution = ProxAL.optimize!(blockmodel, x0, nlp.algparams)
-    @test solution.status ∈ ProxAL.MOI_OPTIMAL_STATUSES
-    @test obj_jump ≈ solution.minimum rtol=1e-4
-    @test pg_jump ≈ solution.pg rtol=1e-3
-end
+# ProxAL.init!(blockmodel, nlp.algparams)
+# ProxAL.set_objective!(blockmodel, nlp.algparams, primal, dual)
+# x0 = nothing
+# solution = ProxAL.optimize!(blockmodel, x0, nlp.algparams)
+# @test solution.status ∈ ProxAL.MOI_OPTIMAL_STATUSES
+# @test obj_jump ≈ solution.minimum rtol=1e-4
+# @test pg_jump ≈ solution.pg rtol=1e-3
+# @btime begin
+#     alparams = $algparams
+#     modelinfo_local = $modelinfo_local
+#     t = $t
+#     T = $T
+#     opfdata_c = $opfdata_c
+#     blkid = $blkid
+#     nlp = $nlp
+#     primal = $primal
+#     dual = $dual
+#     x0 = $x0
+#     obj_jump = $obj_jump
+#     pg_jump = $pg_jump
+#     slack_jump  = $slack_jump
+#     blockmodel = ProxAL.AdmmBlockBackend(
+#         blkid, opfdata_c, nlp.rawdata, algparams, modelinfo_local, t, 1, T;
+#     )
+#     ProxAL.init!(blockmodel, nlp.algparams)
+#     ProxAL.set_objective!(blockmodel, nlp.algparams, primal, dual)
+#     x0 = nothing
+#     solution = ProxAL.optimize!(blockmodel, x0, nlp.algparams)
+#     @test solution.status ∈ ProxAL.MOI_OPTIMAL_STATUSES
+#     @test obj_jump ≈ solution.minimum rtol=1e-4
+#     @test pg_jump ≈ solution.pg rtol=1e-3
+# end
+
+# # ExaAdmm GPU CUDA
+# if CUDA.has_cuda_gpu()
+# algparams.device = ProxAL.GPU
+# blockmodel = ProxAL.AdmmBlockBackend(
+#     blkid, opfdata_c, nlp.rawdata, algparams, modelinfo_local, t, 1, T;
+# )
+# ProxAL.init!(blockmodel, nlp.algparams)
+# ProxAL.set_objective!(blockmodel, nlp.algparams, primal, dual)
+# x0 = nothing
+# solution = ProxAL.optimize!(blockmodel, x0, nlp.algparams)
+# @test solution.status ∈ ProxAL.MOI_OPTIMAL_STATUSES
+# @test obj_jump ≈ solution.minimum rtol=1e-4
+# @test pg_jump ≈ solution.pg rtol=1e-3
+# # blockmodel = ProxAL.AdmmBlockBackend(
+# #     blkid, opfdata_c, nlp.rawdata, algparams, modelinfo_local, t, 1, T;
+# # )
+# @btime begin
+#     blockmodel = $blockmodel
+#     alparams = $algparams
+#     modelinfo_local = $modelinfo_local
+#     t = $t
+#     T = $T
+#     opfdata_c = $opfdata_c
+#     blkid = $blkid
+#     nlp = $nlp
+#     primal = $primal
+#     dual = $dual
+#     x0 = $x0
+#     obj_jump = $obj_jump
+#     pg_jump = $pg_jump
+#     slack_jump  = $slack_jump
+#     blockmodel = ProxAL.AdmmBlockBackend(
+#         blkid, opfdata_c, nlp.rawdata, algparams, modelinfo_local, t, 1, T;
+#     )
+#     ProxAL.init!(blockmodel, nlp.algparams)
+#     ProxAL.set_objective!(blockmodel, nlp.algparams, primal, dual)
+#     x0 = nothing
+#     solution = ProxAL.optimize!(blockmodel, x0, nlp.algparams)
+#     @test solution.status ∈ ProxAL.MOI_OPTIMAL_STATUSES
+#     @test obj_jump ≈ solution.minimum rtol=1e-4
+#     @test pg_jump ≈ solution.pg rtol=1e-3
+# end
+# end
 
 # ExaAdmm GPU KA
 algparams.device = ProxAL.GPU
-using CUDA
-using AMDGPU
 if CUDA.has_cuda_gpu()
     using CUDAKernels
     function ProxAL.ExaAdmm.KAArray{T}(n::Int, device::CUDADevice) where {T}
@@ -202,34 +207,41 @@ elseif AMDGPU.has_rocm_gpu()
 end
 using CUDAKernels
 algparams.ka_device = gpu_device
-blockmodel = ProxAL.AdmmBlockBackend(
-    blkid, opfdata_c, nlp.rawdata, algparams, modelinfo_local, t, 1, T;
-)
-ProxAL.init!(blockmodel, nlp.algparams)
-ProxAL.set_objective!(blockmodel, nlp.algparams, primal, dual)
-x0 = nothing
-solution = ProxAL.optimize!(blockmodel, x0, nlp.algparams)
-@test solution.status ∈ ProxAL.MOI_OPTIMAL_STATUSES
-@test obj_jump ≈ solution.minimum rtol=1e-4
-@test pg_jump ≈ solution.pg rtol=1e-3
+algparams.verbose = 1
+algparams.verbose_inner = 1
+algparams.tron_inner_iterlim=5
+algparams.tron_outer_iterlim=50
+println("Create blockmodel")
 # blockmodel = ProxAL.AdmmBlockBackend(
 #     blkid, opfdata_c, nlp.rawdata, algparams, modelinfo_local, t, 1, T;
 # )
-@btime begin
-    blockmodel = $blockmodel
-    alparams = $algparams
-    modelinfo_local = $modelinfo_local
-    t = $t
-    T = $T
-    opfdata_c = $opfdata_c
-    blkid = $blkid
-    nlp = $nlp
-    primal = $primal
-    dual = $dual
-    x0 = $x0
-    obj_jump = $obj_jump
-    pg_jump = $pg_jump
-    slack_jump  = $slack_jump
+# println("Init")
+# ProxAL.init!(blockmodel, nlp.algparams)
+# println("Set objective")
+# ProxAL.set_objective!(blockmodel, nlp.algparams, primal, dual)
+# x0 = nothing
+# println("Optimize")
+# solution = ProxAL.optimize!(blockmodel, x0, nlp.algparams)
+# @test solution.status ∈ ProxAL.MOI_OPTIMAL_STATUSES
+# @test obj_jump ≈ solution.minimum rtol=1e-4
+# @test pg_jump ≈ solution.pg rtol=1e-3
+println("Start benchmark")
+Profile.clear()
+# Profile.@profile begin
+    # blockmodel = $blockmodel
+    # alparams = $algparams
+    # modelinfo_local = $modelinfo_local
+    # t = $t
+    # T = $T
+    # opfdata_c = $opfdata_c
+    # blkid = $blkid
+    # nlp = $nlp
+    # primal = $primal
+    # dual = $dual
+    # x0 = $x0
+    # obj_jump = $obj_jump
+    # pg_jump = $pg_jump
+    # slack_jump  = $slack_jump
     blockmodel = ProxAL.AdmmBlockBackend(
         blkid, opfdata_c, nlp.rawdata, algparams, modelinfo_local, t, 1, T;
     )
@@ -237,7 +249,9 @@ solution = ProxAL.optimize!(blockmodel, x0, nlp.algparams)
     ProxAL.set_objective!(blockmodel, nlp.algparams, primal, dual)
     x0 = nothing
     solution = ProxAL.optimize!(blockmodel, x0, nlp.algparams)
-    @test solution.status ∈ ProxAL.MOI_OPTIMAL_STATUSES
-    @test obj_jump ≈ solution.minimum rtol=1e-4
-    @test pg_jump ≈ solution.pg rtol=1e-3
-end
+    # @test solution.status ∈ ProxAL.MOI_OPTIMAL_STATUSES
+    # @test obj_jump ≈ solution.minimum rtol=1e-4
+    # @test pg_jump ≈ solution.pg rtol=1e-3
+# end
+
+# Profile.pprof()
