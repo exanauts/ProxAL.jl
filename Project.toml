@@ -1,7 +1,7 @@
 name = "ProxAL"
 uuid = "12c3852d-bf95-4e7b-be60-68937c3c927b"
 authors = ["Anirudh Subramanyam <asubramanyam@anl.gov>", "Youngdae Kim <youngdae@anl.gov>", "Francois Pacaud <fpacaud@anl.gov>", "Michel Schanen <mschanen@anl.gov>"]
-version = "0.7.0"
+version = "0.8.0"
 
 [deps]
 AMDGPU = "21141c5a-9bdb-4563-92ae-f87d6854732e"
