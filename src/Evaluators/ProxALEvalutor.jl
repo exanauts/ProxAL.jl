@@ -226,7 +226,7 @@ function optimize!(
                 requests = vcat(requests, comm_neighbors!(x.St, opfBlockData, runinfo, CommPatternT(), comm))
                 requests = vcat(requests, comm_neighbors!(x.Sk, opfBlockData, runinfo, CommPatternK(), comm))
                 # Every worker sends his contribution
-                comm_sum!(nlp_soltime, comm)
+                # comm_sum!(nlp_soltime, comm)
                 comm_wait!(requests)
                 print_timings && comm_barrier(comm)
             end
