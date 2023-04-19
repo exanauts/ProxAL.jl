@@ -16,7 +16,7 @@ This research was supported by the Exascale Computing Project (17-SC-20-SC), a j
 
 [build-url]: https://github.com/exanauts/ProxAL.jl/actions?query=workflow
 
-[build-stable-img]: https://github.com/exanauts/ProxAL.jl/workflows/Run%20tests/badge.svg?branch=master
+[build-stable-img]: https://github.com/exanauts/ProxAL.jl/workflows/Run%20tests/badge.svg?branch=main
 
 [doi-img]: https://zenodo.org/badge/236063417.svg
 [doi-url]: https://zenodo.org/badge/latestdoi/236063417
