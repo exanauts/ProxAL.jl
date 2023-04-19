@@ -363,8 +363,8 @@ of the structure `OPFBlocks`, used for decomposition purpose.
 #     # Instantiate model in memory
 #     target = if algparams.device == CPU
 #         ExaPF.CPU()
-#     elseif algparams.device == CUDADevice
-#         ExaPF.CUDADevice()
+#     elseif algparams.device == CUDABackend
+#         ExaPF.CUDABackend()
 #     end
 #     model = ExaPF.ProxALEvaluator(power_network, time;
 #                                   device=target)

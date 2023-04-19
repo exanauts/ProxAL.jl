@@ -155,15 +155,15 @@ function generator_kernel_two_level(
     #wait(driver_kernel_test(device,n)(Val{n}(),max_feval,max_minor,dx,dxl,dxu,dA,dc,d_out,ndrange=(n,nblk),dependencies=Event(device)))
     # tgpu = CUDA.@timed @cuda threads=32 blocks=ngen shmem=shmem_size generator_kernel_two_level_proxal(
 # @kernel function generator_kernel_two_level_proxal(ngen::Int, gen_start::Int,
-    ev = generator_kernel_two_level_proxal_ka(device, 32)(
+    generator_kernel_two_level_proxal_ka(device, 32)(
         32, model.gen_start,
         u, xbar, zu, lu, rho_u,
         model.grid_data.pgmin, model.grid_data.pgmax,
         model.grid_data.qgmin, model.grid_data.qgmax,
         model.smin, model.smax, model.s_curr,
         model.Q_ref, model.c_ref,
-        ndrange=(ngen,ngen), dependencies=Event(device)
+        ndrange=(ngen,ngen)
     )
-    wait(ev)
+    KA.synchronize(device)
     return 0.0
 end

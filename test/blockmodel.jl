@@ -24,26 +24,22 @@ load_file = joinpath(DATA_DIR, "mp_demand", "$(case)_oneweek_168")
 
 solver_list = ["ExaAdmmCPU"]
 if CUDA.has_cuda_gpu()
-    using CUDAKernels
-    function ProxAL.ExaAdmm.KAArray{T}(n::Int, device::CUDADevice) where {T}
+    function ProxAL.ExaAdmm.KAArray{T}(n::Int, device::CUDABackend) where {T}
         return CuArray{T}(undef, n)
     end
-    function ProxAL.ExaAdmm.KAArray{T}(n1::Int, n2::Int, device::CUDADevice) where {T}
+    function ProxAL.ExaAdmm.KAArray{T}(n1::Int, n2::Int, device::CUDABackend) where {T}
         return CuArray{T}(undef, n1, n2)
     end
-    gpu_device = CUDADevice()
+    gpu_device = CUDABackend()
     push!(solver_list, "ExaAdmmGPUKA")
 elseif AMDGPU.has_rocm_gpu()
-    using ROCKernels
-    # Set for crusher login node to avoid other users
-    AMDGPU.default_device!(AMDGPU.devices()[2])
-    function ProxAL.ExaAdmm.KAArray{T}(n::Int, device::ROCDevice) where {T}
+    function ProxAL.ExaAdmm.KAArray{T}(n::Int, device::ROCBackend) where {T}
         return ROCArray{T}(undef, n)
     end
-    function ProxAL.ExaAdmm.KAArray{T}(n1::Int, n2::Int, device::ROCDevice) where {T}
+    function ProxAL.ExaAdmm.KAArray{T}(n1::Int, n2::Int, device::ROCBackend) where {T}
         return ROCArray{T}(undef, n1, n2)
     end
-    gpu_device = ROCDevice()
+    gpu_device = ROCBackend()
     push!(solver_list, "ExaAdmmGPUKA")
 end
 
