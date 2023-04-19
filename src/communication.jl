@@ -92,8 +92,8 @@ function comm_neighbors!(data::AbstractArray{T,2}, blocks::AbstractBlocks, runin
                         sbuf = @view data[:,t]
                         rbuf = @view data[:,tn]
                     end
-                    push!(requests, MPI.Isend(sbuf, remote, t, comm))
-                    push!(requests, MPI.Irecv!(rbuf, remote, tn, comm))
+                    push!(requests, MPI.Isend(sbuf, comm; dest=remote, tag=t))
+                    push!(requests, MPI.Irecv!(rbuf, comm; source=remote, tag=tn))
                 end
             end
         end
@@ -121,8 +121,8 @@ function comm_neighbors!(data::AbstractArray{T,3}, blocks::AbstractBlocks, runin
                         sbuf = @view data[:,k,t]
                         rbuf = @view data[:,kn,tn]
                     end
-                    push!(requests, MPI.Isend(sbuf, remote, k, comm))
-                    push!(requests, MPI.Irecv!(rbuf, remote, kn, comm))
+                    push!(requests, MPI.Isend(sbuf, comm; dest=remote, tag=k))
+                    push!(requests, MPI.Irecv!(rbuf, comm; source=remote, tag=kn))
                 end
             end
         end
@@ -141,7 +141,7 @@ Wait until the communciation requests `requests` have been fulfilled.
 
 """
 function comm_wait!(requests::Vector{MPI.Request})
-    return MPI.Waitall!(requests)
+    return MPI.Waitall(requests)
 end
 
 function comm_wait!(requests)

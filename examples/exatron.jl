@@ -46,7 +46,7 @@ end
 
 # choose backend
 backend = ProxAL.JuMPBackend()
-# With ExaAdmmBackend(), CUDADevice will used
+# With ExaAdmmBackend(), CUDABackend will used
 # backend = ProxAL.AdmmBackend()
 
 # Model/formulation settings
@@ -71,7 +71,7 @@ algparams.tol = 1e-3
 algparams.decompCtgs = (K > 0)
 algparams.iterlim = 10000
 if isa(backend, ProxAL.AdmmBackend)
-    algparams.device = ProxAL.CUDADevice
+    algparams.device = ProxAL.CUDABackend
 end
 algparams.optimizer = optimizer_with_attributes(Ipopt.Optimizer, "print_level" => 0) #,  "tol" => 1e-1*algparams.tol)
 algparams.tron_rho_pq=3e3

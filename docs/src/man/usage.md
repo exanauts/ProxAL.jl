@@ -60,4 +60,4 @@ To disable MPI, simply pass `nothing` as the last argument to `ProxALEvaluator` 
 $ julia --project example.jl
 ```
 
-An example using the `ExaTron` backend with `ProxAL.CUDADevice` (GPU) can be found in `examples/exatron.jl`.
+An example using the `ExaTron` backend with `ProxAL.CUDABackend` (GPU) can be found in `examples/exatron.jl`.
