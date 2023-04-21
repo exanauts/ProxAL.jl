@@ -48,7 +48,7 @@ Specifies ProxAL's algorithmic parameters.
 | `device::TargetDevice` | Target device to deport the resolution of the optimization problem | CPU
 | `verbose_inner::Int` | Verbose level for `ExaTronBackend()` | 0
 | `tron_rho_pq::Float64` | Parameter for `ExaTronBackend()` | 4e2
-| `tron_rho_pa::Float64` | Parameter for `ExaTronBackend()` | 4e4
+| `tron_rho_va::Float64` | Parameter for `ExaTronBackend()` | 4e4
 | `tron_inner_iterlim::Int` | Parameter for `ExaTronBackend()` | 800
 | `tron_outer_iterlim::Int` | Parameter for `ExaTronBackend()` | 20
 | `tron_outer_eps::Float64` | Parameter for `ExaTronBackend()` | 1e-4
@@ -79,7 +79,7 @@ Base.@kwdef mutable struct AlgParams
     ka_device               = nothing
     verbose_inner::Int      = 0
     tron_rho_pq::Float64    = 4e2
-    tron_rho_pa::Float64    = 4e4
+    tron_rho_va::Float64    = 4e4
     tron_inner_iterlim::Int = 800
     tron_outer_iterlim::Int = 20
     tron_outer_eps::Float64 = 1e-4

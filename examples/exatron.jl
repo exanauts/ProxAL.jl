@@ -75,7 +75,7 @@ if isa(backend, ProxAL.AdmmBackend)
 end
 algparams.optimizer = optimizer_with_attributes(Ipopt.Optimizer, "print_level" => 0) #,  "tol" => 1e-1*algparams.tol)
 algparams.tron_rho_pq=3e3
-algparams.tron_rho_pa=3e4
+algparams.tron_rho_va=3e4
 algparams.tron_outer_iterlim=8
 algparams.tron_inner_iterlim=250
 algparams.mode = :coldstart

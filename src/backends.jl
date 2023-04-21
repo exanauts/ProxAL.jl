@@ -609,7 +609,7 @@ function AdmmBlockBackend(
     # TODO
     exadata = ExaAdmm.OPFData(opfdata)
     rho_pq = algparams.tron_rho_pq
-    rho_va = algparams.tron_rho_pa
+    rho_va = algparams.tron_rho_va
     env = ExaAdmm.AdmmEnv(
         exadata, rho_pq, rho_va;
         use_gpu=use_gpu,
