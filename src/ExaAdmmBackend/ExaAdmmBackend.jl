@@ -148,6 +148,7 @@ end
 
 include("interface.jl")
 include("proxal_admm_cpu.jl")
+include("proxal_admm_ka.jl")
 include("proxal_admm_gpu.jl")
 
 end
