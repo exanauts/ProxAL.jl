@@ -278,7 +278,7 @@ function opf_loaddata(raw::RawData;
     #
     branch_arr = raw.branch_arr
     num_lines = size(branch_arr, 1)
-    lines_on = findall((branch_arr[:,11] .> 0)) 
+    lines_on = findall((branch_arr[:,11] .> 0))
     if !isa(lineOff, Nothing)
         for line in lineOff
             intersect!(lines_on, findall((branch_arr[:,11] .> 0) .& ((branch_arr[:,1].!=line.from) .| (branch_arr[:,2].!=line.to)) ))
