@@ -146,3 +146,5 @@ function Base.setindex!(L::LocalStorage{VT,2,M,3}, x::Vector{Float64}, ::Colon, 
         from = to + 1
     end
 end
+
+Base.show(io::IO, L::ProxAL.LocalStorage) = print(io, "LocalStorage{", L.n, ",", L.K, ",", L.T, "}")
