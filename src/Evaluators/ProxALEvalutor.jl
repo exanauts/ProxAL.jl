@@ -458,7 +458,7 @@ function optimize!(
 
                         JuMP.optimize!(pgref_model)
                         if termination_status(pgref_model) ∉ MOI_OPTIMAL_STATUSES
-                            @warn("pgref_update() subproblem not solved to optimality. status: $status")
+                            @warn("pgref_update() subproblem not solved to optimality. status: $(termination_status(pgref_model))")
                         end
                         if !has_values(pgref_model)
                             error("no solution vector available in pgref_update() subproblem")
