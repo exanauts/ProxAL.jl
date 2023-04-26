@@ -409,27 +409,23 @@ function optimize!(
         end
         giteration_limit = comm_sum(iteration_limit, comm)
 
-        if (max(
+        minviol = max(
             runinfo.maxviol_t[end],
             runinfo.maxviol_c[end],
             runinfo.maxviol_t_actual[end],
             runinfo.maxviol_c_actual[end],
             runinfo.maxviol_d[end]
-        ) <= algparams.tol) && (giteration_limit == 0)
-        # minviol = max(
-        #     runinfo.maxviol_t[end],
-        #     runinfo.maxviol_c[end],
-        #     runinfo.maxviol_t_actual[end],
-        #     runinfo.maxviol_c_actual[end],
-        #     runinfo.maxviol_d[end]
-        # )
-        # if minviol < runinfo.minviol
-        #     runinfo.minviol = minviol
-        #     algparams.tron_outer_eps = minviol
-        #     if runinfo.output
-        #         ProxAL.write(runinfo, nlp, "solution_$(modelinfo.case_name)_$(comm_ranks(comm)).h5")
-        #     end
-        # end
+        )
+
+        if minviol < runinfo.minviol
+            runinfo.minviol = minviol
+            # algparams.tron_outer_eps = minviol
+            if runinfo.output
+                ProxAL.write(runinfo, nlp, "$(modelinfo.case_name)_$(comm_ranks(comm)).h5")
+            end
+        end
+
+        if (max(minviol) <= algparams.tol) && (giteration_limit == 0)
         # if minviol <= algparams.tol
             break
         end
