@@ -344,7 +344,7 @@ function optimize!(
                     algparams.ρ_t = min(2.0*algparams.ρ_t, 32.0*algparams.θ_t)
                     algparams.τ = τ_default(modelinfo, algparams)
                 elseif runinfo.maxviol_d[end] > 10.0*runinfo.maxviol_t[end]
-                    algparams.ρ_t *= 0.5
+                    algparams.ρ_t = max(0.5*algparams.ρ_t, 1e-4)
                     algparams.τ = τ_default(modelinfo, algparams)
                 end
             end
@@ -356,7 +356,7 @@ function optimize!(
                     algparams.ρ_c = min(2.0*algparams.ρ_c, 32.0*algparams.θ_c)
                     algparams.τ = τ_default(modelinfo, algparams)
                 elseif runinfo.maxviol_d[end] > 10*runinfo.maxviol_c[end]
-                    algparams.ρ_c *= 0.5
+                    algparams.ρ_c = max(0.5*algparams.ρ_c, 1e-4)
                     algparams.τ = τ_default(modelinfo, algparams)
                 end
             end
