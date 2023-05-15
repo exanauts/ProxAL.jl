@@ -397,7 +397,11 @@ function optimize!(
 
 
     for runinfo.iter=1:algparams.iterlim
-        iteration()
+        itertime = @elapsed iteration()
+        itertime = comm_max(itertime, comm)
+        if comm_rank(comm) == 0
+            println("Iteration $(runinfo.iter) complete. Time: $(itertime) s")
+        end
 
         # Check convergence
         iteration_limit = 0
@@ -417,15 +421,22 @@ function optimize!(
             runinfo.maxviol_d[end]
         )
 
+        # algparams.tron_outer_eps = max(2*minviol*1e-1, 1e-3)
+        if comm_rank(comm) == 0
+            println("Setting ADMM tolerance to $(algparams.tron_outer_eps)")
+            if giteration_limit != 0
+                println("Iteration limit reached $(giteration_limit) times")
+            end
+        end
         if minviol < runinfo.minviol
             runinfo.minviol = minviol
-            # algparams.tron_outer_eps = minviol
+            # algparams.tron_outer_eps = 2*minviol*1e-1
             if runinfo.output
                 ProxAL.write(runinfo, nlp, "$(modelinfo.case_name)_$(comm_ranks(comm)).h5")
             end
         end
 
-        if (max(minviol) <= algparams.tol) && (giteration_limit == 0)
+        if (minviol <= algparams.tol) && (giteration_limit == 0)
         # if minviol <= algparams.tol
             break
         end

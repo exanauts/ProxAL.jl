@@ -621,6 +621,7 @@ function AdmmBlockBackend(
     env.params.outer_eps = algparams.tron_outer_eps
     env.params.outer_iterlim = algparams.tron_outer_iterlim
     env.params.inner_iterlim = algparams.tron_inner_iterlim
+    # env.params.scale = 0.0
 
     model = ExaAdmmBackend.ModelProxAL(env, t, T)
     return AdmmBlockBackend(env, model, blk, k, t, T, opfdata, modelinfo)
@@ -815,6 +816,7 @@ function optimize!(block::AdmmBlockBackend, x0::Union{Nothing, AbstractArray}, a
     if isa(x0, Array)
         set_start_values!(block, x0)
     end
+    block.env.params.outer_eps = algparams.tron_outer_eps
     # Optimize with optimizer, using ExaPF model
     ExaAdmm.admm_two_level(block.env, block.model, block.env.ka_device)
     # Recover solution in ProxAL format
