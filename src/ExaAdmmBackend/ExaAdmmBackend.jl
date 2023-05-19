@@ -6,6 +6,7 @@ import MPI
 using KernelAbstractions
 using ExaAdmm
 using ExaTron
+using JLD
 const KA = KernelAbstractions
 
 mutable struct ModelProxAL{T,TD,TI,TM} <: ExaAdmm.AbstractOPFModel{T,TD,TI,TM}

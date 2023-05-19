@@ -11,13 +11,15 @@
 
     n = 2
 
-    if I <= ngen
+    # if I <= ngen
         x = @localmem Float64 (n,)
         xl = @localmem Float64 (n,)
         xu = @localmem Float64 (n,)
 
         A = @localmem Float64 (n,n)
         c = @localmem Float64 (n,)
+        @synchronize
+
 
         pg_idx = gen_start + 2*(I-1)
         qg_idx = gen_start + 2*(I-1) + 1
@@ -57,7 +59,7 @@
             u[pg_idx] = x[1]
             s[I] = x[2]
         end
-    end
+    # end
 end
 
 function generator_kernel_two_level(
@@ -67,7 +69,7 @@ function generator_kernel_two_level(
 ) where {AT, IAT}
 
     ngen = model.grid_data.ngen
-
+    JLD.@save "data.fld" ngen, model.gen_start, u, xbar, zu, lu, rho_u, model.grid_data.pgmin, model.grid_data.pgmax, model.grid_data.qgmin, model.grid_data.qgmax, model.smin, model.smax, model.s_curr, model.Q_ref, model.c_ref,
     generator_kernel_two_level_proxal_ka(device, 32, 32*ngen)(
         ngen, model.gen_start,
         u, xbar, zu, lu, rho_u,
@@ -75,8 +77,11 @@ function generator_kernel_two_level(
         model.grid_data.qgmin, model.grid_data.qgmax,
         model.smin, model.smax, model.s_curr,
         model.Q_ref, model.c_ref,
-        ndrange=(ngen,ngen)
+        #ndrange=(ngen,ngen)
     )
     KA.synchronize(device)
+    println("u: $u")
+    println("s: $(model.s_curr)")
+    println("Synchronize done")
     return 0.0
 end
