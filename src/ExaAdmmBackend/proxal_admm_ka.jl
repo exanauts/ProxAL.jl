@@ -1,23 +1,26 @@
 @kernel function generator_kernel_two_level_proxal_ka(ngen::Int, gen_start::Int,
     u, xbar, z,
     l, rho,
-    pgmin, pgmax,
-    qgmin, qgmax,
-    smin, smax, s,
+    @Const(pgmin), @Const(pgmax),
+    @Const(qgmin), @Const(qgmax),
+    @Const(smin), @Const(smax), s,
     _A, _c)
 
     tx = @index(Local, Linear)
     I = @index(Group, Linear)
+    # grpsize = @groupsize
+    # range = @ndrange
+    # AMDGPU.@rocprintf "generator_kernel %s %s %s\n" ngen grpsize range
+    x = @localmem Float64 (2,)
+    xl = @localmem Float64 (2,)
+    xu = @localmem Float64 (2,)
 
-    n = 2
+    A = @localmem Float64 (2,2)
+    c = @localmem Float64 (2,)
 
     if I <= ngen
-        x = @localmem Float64 (n,)
-        xl = @localmem Float64 (n,)
-        xu = @localmem Float64 (n,)
+        @synchronize
 
-        A = @localmem Float64 (n,n)
-        c = @localmem Float64 (n,)
 
         pg_idx = gen_start + 2*(I-1)
         qg_idx = gen_start + 2*(I-1) + 1
@@ -28,10 +31,10 @@
 
         A_start = 4*(I-1)
         c_start = 2*(I-1)
-        if tx <= n
-            @inbounds begin
-                for j=1:n
-                    A[tx,j] = _A[n*(j-1)+tx + A_start]
+        if tx <= 2
+            # @inbounds begin
+                for j=1:2
+                    A[tx,j] = _A[2*(j-1)+tx + A_start]
                 end
                 c[tx] = _c[tx + c_start]
 
@@ -39,24 +42,29 @@
                     A[1,1] += rho[pg_idx]
                     c[1] += l[pg_idx] + rho[pg_idx]*(-xbar[pg_idx] + z[pg_idx])
                 end
-            end
+            # end
         end
         @synchronize
 
-        @inbounds begin
-            xl[1] = pgmin[I]
-            xu[1] = pgmax[I]
-            xl[2] = smin[I]
-            xu[2] = smax[I]
-            x[1] = min(xu[1], max(xl[1], u[pg_idx]))
-            x[2] = min(xu[2], max(xl[2], s[I]))
+        # @inbounds begin
+            if tx == 1
+                xl[1] = pgmin[I]
+                xu[1] = pgmax[I]
+                xl[2] = smin[I]
+                xu[2] = smax[I]
+                x[1] = min(xu[1], max(xl[1], u[pg_idx]))
+                x[2] = min(xu[2], max(xl[2], s[I]))
+            end
             @synchronize
-
-            status, minor_iter = ExaTron.ExaTronKAKernels.tron_qp_kernel(n, 500, 200, 1e-6, 1.0, x, xl, xu, A, c, tx)
-
-            u[pg_idx] = x[1]
-            s[I] = x[2]
-        end
+            status, minor_iter = ExaAdmm.ExaTron.ExaTronKAKernels.tron_qp_kernel(2, 500, 200, 1e-6, 1.0, x, xl, xu, A, c, tx)
+            # AMDGPU.@rocprintf "atron_qp_kernel: %s\n" x[1]
+            @synchronize
+            if tx == 1
+                u[pg_idx] = x[1]
+                s[I] = x[2]
+            end
+            @synchronize
+        # end
     end
 end
 
@@ -67,16 +75,48 @@ function generator_kernel_two_level(
 ) where {AT, IAT}
 
     ngen = model.grid_data.ngen
-
-    generator_kernel_two_level_proxal_ka(device, 32, 32*ngen)(
-        ngen, model.gen_start,
-        u, xbar, zu, lu, rho_u,
-        model.grid_data.pgmin, model.grid_data.pgmax,
-        model.grid_data.qgmin, model.grid_data.qgmax,
-        model.smin, model.smax, model.s_curr,
-        model.Q_ref, model.c_ref,
-        ndrange=(ngen,ngen)
-    )
+    # println("Pgmin/Pgmax: $(model.grid_data.pgmin), $(model.grid_data.pgmax)")
+    # println("smin/smax: $(model.smin), $(model.smax)")
+    # println("device: $device")
+    # println("typeof: $(typeof(model.grid_data.pgmin)) $(typeof(model.smin))")
+    d = load("/lustre/orion/csc359/scratch/mschanen/git/milepost7/data.fld")
+    ngen = d["ngen"]
+    gen_start = d["model.gen_start"]
+    u = d["u |> Array"] |> ROCArray
+    xbar = d["xbar |> Array"] |> ROCArray
+    zu = d["zu |> Array"] |> ROCArray
+    lu = d["lu |> Array"] |> ROCArray
+    rho_u = d["rho_u |> Array"] |> ROCArray
+    pgmin = d["model.grid_data.pgmin |> Array"] |> ROCArray
+    pgmax = d["model.grid_data.pgmax |> Array"] |> ROCArray
+    qgmin = d["model.grid_data.qgmin |> Array"] |> ROCArray
+    qgmax = d["model.grid_data.qgmax |> Array"] |> ROCArray
+    smin = d["model.smin |> Array"] |> ROCArray
+    smax = d["model.smax |> Array"] |> ROCArray
+    s_curr = d["model.s_curr |> Array"] |> ROCArray
+    Q_ref = d["model.Q_ref |> Array"] |> ROCArray
+    c_ref = d["model.c_ref |> Array"] |> ROCArray
     KA.synchronize(device)
+    generator_kernel_two_level_proxal_ka(ROCBackend(), 1, 1)(
+        ngen, gen_start,
+        u, xbar, zu, lu, rho_u,
+        pgmin, pgmax,
+        qgmin, qgmax,
+        smin, smax, s_curr,
+        Q_ref, c_ref,
+        #ndrange=(ngen,ngen)
+    )
+    # generator_kernel_two_level_proxal_ka(device, 1, 1)(
+    #     ngen, model.gen_start,
+    #     u, xbar, zu, lu, rho_u,
+    #     model.grid_data.pgmin, model.grid_data.pgmax,
+    #     model.grid_data.qgmin, model.grid_data.qgmax,
+    #     model.smin, model.smax, model.s_curr,
+    #     model.Q_ref, model.c_ref,
+    # )
+    KA.synchronize(device)
+    println("u: $u")
+    println("s: $(model.s_curr)")
+    println("Synchronize done")
     return 0.0
 end
