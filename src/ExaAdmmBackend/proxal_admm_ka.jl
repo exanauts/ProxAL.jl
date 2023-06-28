@@ -56,8 +56,8 @@
                 x[2] = min(xu[2], max(xl[2], s[I]))
             end
             @synchronize
-            # AMDGPU.@rocprintf "btron_qp_kernel: %s < %s < %s %s < %s < %s \n" xl[1] x[1] xu[1] xl[2] x[2] xu[2]
-            status, minor_iter = ExaTron.ExaTronKAKernels.tron_qp_kernel(2, 500, 200, 1e-6, 1.0, x, xl, xu, A, c, tx)
+            status, minor_iter = ExaAdmm.ExaTron.ExaTronKAKernels.tron_qp_kernel(2, 500, 200, 1e-6, 1.0, x, xl, xu, A, c, tx)
+            # AMDGPU.@rocprintf "atron_qp_kernel: %s\n" x[1]
             @synchronize
             if tx == 1
                 u[pg_idx] = x[1]
@@ -75,19 +75,45 @@ function generator_kernel_two_level(
 ) where {AT, IAT}
 
     ngen = model.grid_data.ngen
-    println("Pgmin/Pgmax: $(model.grid_data.pgmin), $(model.grid_data.pgmax)")
-    println("smin/smax: $(model.smin), $(model.smax)")
-    println("device: $device")
-    println("typeof: $(typeof(model.grid_data.pgmin)) $(typeof(model.smin))")
+    # println("Pgmin/Pgmax: $(model.grid_data.pgmin), $(model.grid_data.pgmax)")
+    # println("smin/smax: $(model.smin), $(model.smax)")
+    # println("device: $device")
+    # println("typeof: $(typeof(model.grid_data.pgmin)) $(typeof(model.smin))")
+    d = load("/lustre/orion/csc359/scratch/mschanen/git/milepost7/data.fld")
+    ngen = d["ngen"]
+    gen_start = d["model.gen_start"]
+    u = d["u |> Array"] |> ROCArray
+    xbar = d["xbar |> Array"] |> ROCArray
+    zu = d["zu |> Array"] |> ROCArray
+    lu = d["lu |> Array"] |> ROCArray
+    rho_u = d["rho_u |> Array"] |> ROCArray
+    pgmin = d["model.grid_data.pgmin |> Array"] |> ROCArray
+    pgmax = d["model.grid_data.pgmax |> Array"] |> ROCArray
+    qgmin = d["model.grid_data.qgmin |> Array"] |> ROCArray
+    qgmax = d["model.grid_data.qgmax |> Array"] |> ROCArray
+    smin = d["model.smin |> Array"] |> ROCArray
+    smax = d["model.smax |> Array"] |> ROCArray
+    s_curr = d["model.s_curr |> Array"] |> ROCArray
+    Q_ref = d["model.Q_ref |> Array"] |> ROCArray
+    c_ref = d["model.c_ref |> Array"] |> ROCArray
     KA.synchronize(device)
-    generator_kernel_two_level_proxal_ka(device, 2, 2*ngen)(
-        ngen, model.gen_start,
+    generator_kernel_two_level_proxal_ka(ROCBackend(), 1, 1)(
+        ngen, gen_start,
         u, xbar, zu, lu, rho_u,
-        model.grid_data.pgmin, model.grid_data.pgmax,
-        model.grid_data.qgmin, model.grid_data.qgmax,
-        model.smin, model.smax, model.s_curr,
-        model.Q_ref, model.c_ref,
+        pgmin, pgmax,
+        qgmin, qgmax,
+        smin, smax, s_curr,
+        Q_ref, c_ref,
+        #ndrange=(ngen,ngen)
     )
+    # generator_kernel_two_level_proxal_ka(device, 1, 1)(
+    #     ngen, model.gen_start,
+    #     u, xbar, zu, lu, rho_u,
+    #     model.grid_data.pgmin, model.grid_data.pgmax,
+    #     model.grid_data.qgmin, model.grid_data.qgmax,
+    #     model.smin, model.smax, model.s_curr,
+    #     model.Q_ref, model.c_ref,
+    # )
     KA.synchronize(device)
     println("u: $u")
     println("s: $(model.s_curr)")
