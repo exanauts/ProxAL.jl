@@ -1,37 +1,37 @@
 @kernel function generator_kernel_two_level_proxal_ka(ngen::Int, gen_start::Int,
     u, xbar, z,
     l, rho,
-    pgmin, pgmax,
-    qgmin, qgmax,
-    smin, smax, s,
+    @Const(pgmin), @Const(pgmax),
+    @Const(qgmin), @Const(qgmax),
+    @Const(smin), @Const(smax), s,
     _A, _c)
 
     tx = @index(Local, Linear)
     I = @index(Group, Linear)
 
-    n = 2
+    x = @localmem Float64 (2,)
+    xl = @localmem Float64 (2,)
+    xu = @localmem Float64 (2,)
 
+    A = @localmem Float64 (2,2)
+    c = @localmem Float64 (2,)
+
+    @synchronize
     if I <= ngen
-        x = @localmem Float64 (n,)
-        xl = @localmem Float64 (n,)
-        xu = @localmem Float64 (n,)
-
-        A = @localmem Float64 (n,n)
-        c = @localmem Float64 (n,)
 
         pg_idx = gen_start + 2*(I-1)
         qg_idx = gen_start + 2*(I-1) + 1
 
-        u[qg_idx] = max(qgmin[I],
+        @inbounds u[qg_idx] = max(qgmin[I],
                         min(qgmax[I],
                             (-(l[qg_idx] + rho[qg_idx]*(-xbar[qg_idx] + z[qg_idx]))) / rho[qg_idx]))
 
         A_start = 4*(I-1)
         c_start = 2*(I-1)
-        if tx <= n
+        if tx <= 2
             @inbounds begin
-                for j=1:n
-                    A[tx,j] = _A[n*(j-1)+tx + A_start]
+                for j=1:2
+                    A[tx,j] = _A[2*(j-1)+tx + A_start]
                 end
                 c[tx] = _c[tx + c_start]
 
@@ -44,18 +44,22 @@
         @synchronize
 
         @inbounds begin
-            xl[1] = pgmin[I]
-            xu[1] = pgmax[I]
-            xl[2] = smin[I]
-            xu[2] = smax[I]
-            x[1] = min(xu[1], max(xl[1], u[pg_idx]))
-            x[2] = min(xu[2], max(xl[2], s[I]))
+            if tx == 1
+                xl[1] = pgmin[I]
+                xu[1] = pgmax[I]
+                xl[2] = smin[I]
+                xu[2] = smax[I]
+                x[1] = min(xu[1], max(xl[1], u[pg_idx]))
+                x[2] = min(xu[2], max(xl[2], s[I]))
+            end
             @synchronize
 
-            status, minor_iter = ExaTron.ExaTronKAKernels.tron_qp_kernel(n, 500, 200, 1e-6, 1.0, x, xl, xu, A, c, tx)
-
-            u[pg_idx] = x[1]
-            s[I] = x[2]
+            status, minor_iter = ExaAdmm.ExaTron.ExaTronKAKernels.tron_qp_kernel(2, 500, 200, 1e-6, 1.0, x, xl, xu, A, c, tx)
+            @synchronize
+            if tx == 1
+                u[pg_idx] = x[1]
+                s[I] = x[2]
+            end
         end
     end
 end
@@ -68,7 +72,7 @@ function generator_kernel_two_level(
 
     ngen = model.grid_data.ngen
 
-    generator_kernel_two_level_proxal_ka(device, 32, 32*ngen)(
+    generator_kernel_two_level_proxal_ka(device, 2, 2*ngen)(
         ngen, model.gen_start,
         u, xbar, zu, lu, rho_u,
         model.grid_data.pgmin, model.grid_data.pgmax,
