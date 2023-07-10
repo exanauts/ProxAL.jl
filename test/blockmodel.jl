@@ -24,21 +24,9 @@ load_file = joinpath(DATA_DIR, "mp_demand", "$(case)_oneweek_168")
 
 solver_list = ["ExaAdmmCPU"]
 if CUDA.has_cuda_gpu()
-    function ProxAL.ExaAdmm.KAArray{T}(n::Int, device::CUDABackend) where {T}
-        return CuArray{T}(undef, n)
-    end
-    function ProxAL.ExaAdmm.KAArray{T}(n1::Int, n2::Int, device::CUDABackend) where {T}
-        return CuArray{T}(undef, n1, n2)
-    end
     gpu_device = CUDABackend()
     push!(solver_list, "ExaAdmmGPUKA")
 elseif AMDGPU.has_rocm_gpu()
-    function ProxAL.ExaAdmm.KAArray{T}(n::Int, device::ROCBackend) where {T}
-        return ROCArray{T}(undef, n)
-    end
-    function ProxAL.ExaAdmm.KAArray{T}(n1::Int, n2::Int, device::ROCBackend) where {T}
-        return ROCArray{T}(undef, n1, n2)
-    end
     gpu_device = ROCBackend()
     push!(solver_list, "ExaAdmmGPUKA")
 end

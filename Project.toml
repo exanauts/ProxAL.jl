@@ -1,10 +1,10 @@
 name = "ProxAL"
 uuid = "12c3852d-bf95-4e7b-be60-68937c3c927b"
 authors = ["Anirudh Subramanyam <asubramanyam@anl.gov>", "Youngdae Kim <youngdae@anl.gov>", "Francois Pacaud <fpacaud@anl.gov>", "Michel Schanen <mschanen@anl.gov>"]
-version = "0.10.0"
+version = "0.11.0"
 
 [deps]
-AMDGPU = "21141c5a-9bdb-4563-92ae-f87d6854732e"
+Adapt = "79e6a3ab-5dfb-504d-930d-738a2a938a0e"
 CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
 CatViews = "81a5f4ea-a946-549a-aa7e-2a7f63a27d31"
 DelimitedFiles = "8bb1440f-4735-579b-a4ab-409b98df4dab"
@@ -23,10 +23,9 @@ TOML = "fa267f1f-6049-4f14-aa54-33bafae1ed76"
 
 [compat]
 Adapt = "3"
-AMDGPU = "0.4"
 CUDA = "4.1"
 CatViews = "1"
-ExaAdmm = "0.5"
+ExaAdmm = "0.6"
 ExaPF = "0.9"
 ExaTron = "3"
 HDF5 = "0.16"
