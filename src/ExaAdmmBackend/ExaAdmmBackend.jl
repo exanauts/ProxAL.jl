@@ -1,7 +1,7 @@
 module ExaAdmmBackend
 
+using Adapt
 using CUDA
-using AMDGPU
 import MPI
 using KernelAbstractions
 using ExaAdmm
@@ -129,9 +129,9 @@ function ExaAdmm.AdmmEnv(opfdata, rho_va::Float64, rho_pq::Float64; use_gpu=fals
     T = Float64
     if use_gpu
         if !isa(ka_device, Nothing)
-            VT = typeof(ExaAdmm.KAArray{Float64}(0, ka_device))
-            VI = typeof(ExaAdmm.KAArray{Int}(0, ka_device))
-            MT = typeof(ExaAdmm.KAArray{Float64}(0, 0, ka_device))
+            VT = typeof(adapt(ka_device, Vector{Float64}(undef, 0)))
+            VI = typeof(adapt(ka_device, Vector{Int}(undef, 0)))
+            MT = typeof(adapt(ka_device, Matrix{Float64}(undef, 0, 0)))
         else
             VT = CuVector{Float64}
             VI = CuVector{Int}
