@@ -1,7 +1,7 @@
 name = "ProxAL"
 uuid = "12c3852d-bf95-4e7b-be60-68937c3c927b"
 authors = ["Anirudh Subramanyam <asubramanyam@anl.gov>", "Youngdae Kim <youngdae@anl.gov>", "Francois Pacaud <fpacaud@anl.gov>", "Michel Schanen <mschanen@anl.gov>"]
-version = "0.11.0"
+version = "0.11.1"
 
 [deps]
 Adapt = "79e6a3ab-5dfb-504d-930d-738a2a938a0e"
@@ -23,12 +23,12 @@ TOML = "fa267f1f-6049-4f14-aa54-33bafae1ed76"
 
 [compat]
 Adapt = "3"
-CUDA = "4.1"
+CUDA = "4.1, 5"
 CatViews = "1"
 ExaAdmm = "0.6"
 ExaPF = "0.9"
 ExaTron = "3"
-HDF5 = "0.16"
+HDF5 = "0.16, 0.17"
 Ipopt = "1"
 JuMP = "1"
 KernelAbstractions = "0.9"
